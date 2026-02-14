@@ -1,0 +1,15 @@
+{
+  "name": "claude-telegram",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun run --watch src/index.ts"
+  },
+  "dependencies": {
+    "grammy": "^1.40.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

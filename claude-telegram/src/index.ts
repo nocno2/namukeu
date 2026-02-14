@@ -1,0 +1,55 @@
+import { mkdir } from "fs/promises";
+import { join } from "path";
+import { acquireLock, releaseLock } from "./session";
+import { createBot } from "./bot";
+
+const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
+const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
+
+function validateConfig(): void {
+  const required = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_USER_ID"];
+  const missing = required.filter((key) => !process.env[key]);
+
+  if (missing.length > 0) {
+    console.error(`Missing required environment variables: ${missing.join(", ")}`);
+    console.error("Copy .env.example to .env and fill in the values.");
+    process.exit(1);
+  }
+}
+
+async function ensureDirectories(): Promise<void> {
+  await mkdir(DATA_DIR, { recursive: true });
+  await mkdir(UPLOADS_DIR, { recursive: true });
+}
+
+async function main(): Promise<void> {
+  validateConfig();
+  await ensureDirectories();
+
+  const locked = await acquireLock();
+  if (!locked) {
+    process.exit(1);
+  }
+
+  // Cleanup on exit
+  const cleanup = async () => {
+    await releaseLock();
+    process.exit(0);
+  };
+  process.on("SIGINT", cleanup);
+  process.on("SIGTERM", cleanup);
+
+  const bot = await createBot();
+
+  console.log("Claude Telegram Relay v2 starting...");
+  bot.start({
+    onStart: () => {
+      console.log("Bot is running. Waiting for messages...");
+    },
+  });
+}
+
+main().catch((err) => {
+  console.error("Fatal error:", err);
+  process.exit(1);
+});

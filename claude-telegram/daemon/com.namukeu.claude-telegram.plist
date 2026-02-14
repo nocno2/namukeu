@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.namukeu.claude-telegram</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/namwook/.bun/bin/bun</string>
+        <string>run</string>
+        <string>src/index.ts</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/namwook/Documents/namukeu/claude-telegram</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/namwook/.bun/bin:/Users/namwook/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/namwook</string>
+    </dict>
+
+    <!-- Start when loaded (= on login/boot) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Auto-restart on crash -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Wait 10 seconds before restarting after crash -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Log files -->
+    <key>StandardOutPath</key>
+    <string>/Users/namwook/Library/Logs/claude-telegram.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/namwook/Library/Logs/claude-telegram.error.log</string>
+</dict>
+</plist>
