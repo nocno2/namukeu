@@ -6,8 +6,8 @@
 
 ```
 namukeu/
-├── project-a/
-├── project-b/
+├── claude-telegram/   # Telegram-to-Claude Code relay bot (Bun + TypeScript)
+├── train-go/          # SRT + Korail 기차 자동 예매 서버 (Python 3.12)
 └── ...
 ```
 

@@ -92,6 +92,9 @@ export async function processMemoryTags(response: string): Promise<string> {
     await saveMemory(store);
   }
 
+  // Strip [PROGRESS: ...] tags (already sent as real-time updates)
+  clean = clean.replace(/\[PROGRESS:\s*.+?\]/gi, "");
+
   return clean.trim();
 }
 

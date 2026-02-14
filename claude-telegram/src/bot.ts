@@ -12,6 +12,13 @@ import {
 } from "./memory";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
+import {
+  initDb,
+  saveMessage,
+  getRecentMessages,
+  searchMessages,
+  getMessageCount,
+} from "./db";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const ALLOWED_USER_ID = parseInt(process.env.TELEGRAM_USER_ID!, 10);
@@ -72,6 +79,14 @@ function buildSystemPrompt(memoryContext: string): string {
       "\n[DONE: search text for completed goal]"
   );
 
+  parts.push(
+    "\nPROGRESS REPORTING:" +
+      "\nThe user communicates via Telegram and cannot see your intermediate work." +
+      "\nFor tasks taking more than 2 minutes, include [PROGRESS: brief status] tags periodically." +
+      "\nThese are sent to the user as real-time updates and stripped from the final response." +
+      "\nExamples: [PROGRESS: 프로젝트 구조 분석 중], [PROGRESS: API 3/5개 구현 완료]"
+  );
+
   return parts.join("\n");
 }
 
@@ -105,8 +120,19 @@ function formatUptime(seconds: number): string {
   return `${s}s`;
 }
 
+function formatTimestamp(iso: string): string {
+  return new Date(iso).toLocaleString("ko-KR", {
+    timeZone: USER_TIMEZONE,
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export async function createBot(): Promise<Bot> {
   await loadProfile();
+  initDb();
 
   const bot = new Bot(BOT_TOKEN);
   const sessions = new SessionTracker();
@@ -116,7 +142,7 @@ export async function createBot(): Promise<Bot> {
   // --- Auth middleware ---
   bot.use(async (ctx, next) => {
     if (ctx.from?.id !== ALLOWED_USER_ID) {
-      return; // Silently ignore unauthorized users
+      return;
     }
     await next();
   });
@@ -131,7 +157,9 @@ export async function createBot(): Promise<Bot> {
         "/reset — Start a new conversation\n" +
         "/status — Show bot status\n" +
         "/memory — Show stored memories\n" +
-        "/forget — Clear all memories"
+        "/forget — Clear all memories\n" +
+        "/history — Recent conversation history\n" +
+        "/search <query> — Search past messages"
     );
   });
 
@@ -146,12 +174,14 @@ export async function createBot(): Promise<Bot> {
     const chatId = ctx.chat.id;
     const session = sessions.getSession(chatId);
     const memorySummary = await getMemorySummary();
+    const msgCount = getMessageCount(chatId);
     const uptime = (Date.now() - startTime) / 1000;
 
     const lines = [
       "Bot Status",
       `Session: ${session ? session.sessionId.slice(0, 8) + "..." : "none"}`,
-      `Messages: ${session?.messageCount || 0}`,
+      `Session messages: ${session?.messageCount || 0}`,
+      `Total messages (DB): ${msgCount}`,
       `Generation: ${session?.generation || 0}`,
       `Memory: ${memorySummary}`,
       `Uptime: ${formatUptime(uptime)}`,
@@ -170,6 +200,61 @@ export async function createBot(): Promise<Bot> {
     await ctx.reply("모든 기억이 삭제되었습니다.");
   });
 
+  bot.command("history", async (ctx) => {
+    const chatId = ctx.chat.id;
+    const limitStr = ctx.match?.trim();
+    const limit = Math.min(parseInt(limitStr || "10", 10) || 10, 50);
+
+    const messages = getRecentMessages(chatId, limit);
+    if (messages.length === 0) {
+      await ctx.reply("No conversation history yet.");
+      return;
+    }
+
+    // Messages come in DESC order, reverse to show chronologically
+    const lines = messages.reverse().map((m) => {
+      const time = formatTimestamp(m.created_at);
+      const role = m.role === "user" ? "You" : "Claude";
+      const content =
+        m.content.length > 150 ? m.content.slice(0, 150) + "..." : m.content;
+      return `[${time}] ${role}: ${content}`;
+    });
+
+    const total = getMessageCount(chatId);
+    const header = `Recent ${messages.length} of ${total} messages:\n\n`;
+    await sendResponse(ctx, header + lines.join("\n\n"));
+  });
+
+  bot.command("search", async (ctx) => {
+    const query = ctx.match?.trim();
+    if (!query) {
+      await ctx.reply("Usage: /search <keyword>\nExample: /search GitHub");
+      return;
+    }
+
+    const chatId = ctx.chat.id;
+    const messages = searchMessages(chatId, query, 10);
+
+    if (messages.length === 0) {
+      await ctx.reply(`No messages found matching "${query}".`);
+      return;
+    }
+
+    const lines = messages.map((m) => {
+      const time = formatTimestamp(m.created_at);
+      const role = m.role === "user" ? "You" : "Claude";
+      const content =
+        m.content.length > 200 ? m.content.slice(0, 200) + "..." : m.content;
+      return `[${time}] ${role}: ${content}`;
+    });
+
+    await sendResponse(
+      ctx,
+      `Found ${messages.length} messages matching "${query}":\n\n` +
+        lines.join("\n\n")
+    );
+  });
+
   // --- Message handlers ---
 
   async function processMessage(
@@ -182,6 +267,9 @@ export async function createBot(): Promise<Bot> {
       const stopTyping = startTypingIndicator(ctx);
 
       try {
+        // Save user message to DB
+        saveMessage(chatId, "user", prompt);
+
         const isNew = sessions.isNewSession(chatId);
         const sessionId = sessions.getSessionId(chatId);
 
@@ -201,6 +289,9 @@ export async function createBot(): Promise<Bot> {
           sessionId,
           isNewSession: isNew,
           systemPrompt,
+          onProgress: (message) => {
+            sendResponse(ctx, message).catch(() => {});
+          },
         });
 
         if (!result.success) {
@@ -210,6 +301,13 @@ export async function createBot(): Promise<Bot> {
 
         // Process memory tags and strip them from response
         const cleanResponse = await processMemoryTags(result.result);
+
+        // Save assistant response to DB
+        saveMessage(chatId, "assistant", cleanResponse, {
+          costUsd: result.costUsd,
+          durationMs: result.durationMs,
+        });
+
         await sessions.markActive(chatId);
         await sendResponse(ctx, cleanResponse);
 
@@ -229,7 +327,6 @@ export async function createBot(): Promise<Bot> {
 
   // Text messages
   bot.on("message:text", async (ctx) => {
-    // Skip if it's a command (already handled above)
     if (ctx.message.text.startsWith("/")) return;
     console.log(`Text from ${ctx.from?.id}: ${ctx.message.text.slice(0, 50)}...`);
     await processMessage(ctx, ctx.message.text);
@@ -241,7 +338,7 @@ export async function createBot(): Promise<Bot> {
 
     try {
       const photos = ctx.message.photo;
-      const photo = photos[photos.length - 1]; // Highest resolution
+      const photo = photos[photos.length - 1];
       const file = await ctx.api.getFile(photo.file_id);
 
       const timestamp = Date.now();
@@ -258,7 +355,6 @@ export async function createBot(): Promise<Bot> {
 
       await processMessage(ctx, prompt);
 
-      // Cleanup temp file after processing
       await unlink(filePath).catch(() => {});
     } catch (err) {
       console.error("Photo error:", err);
@@ -288,7 +384,6 @@ export async function createBot(): Promise<Bot> {
 
       await processMessage(ctx, prompt);
 
-      // Cleanup temp file
       await unlink(filePath).catch(() => {});
     } catch (err) {
       console.error("Document error:", err);
