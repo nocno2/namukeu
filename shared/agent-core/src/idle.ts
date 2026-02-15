@@ -67,6 +67,45 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
       "- 코드 변경 범위\n\n" +
       "작은 것부터 — 대규모 리팩터링은 피해.\n{GOALS_CONTEXT}",
   },
+  {
+    id: "service-evolution",
+    title: "서비스 진화 제안",
+    project: "RANDOM",
+    weight: 3,
+    promptTemplate:
+      "{PROJECT} 프로젝트({PROJECT_DIR}/)를 서비스 관점에서 분석해.\n\n" +
+      "코드 품질이 아니라 사용자 가치와 서비스 성장을 기준으로 생각해:\n" +
+      "- 사용자 경험을 개선할 수 있는 점\n" +
+      "- 현재 기능을 확장하거나 조합해서 새로운 가치를 만들 수 있는 점\n" +
+      "- 비슷한 서비스들의 트렌드에서 배울 수 있는 점\n" +
+      "- 자동화하면 사용자가 편해질 수 있는 반복 작업\n\n" +
+      "가장 임팩트 있는 제안 1개를 구체적으로 설명해. 왜 그게 중요한지, 어떻게 구현할지까지.\n{GOALS_CONTEXT}",
+  },
+  {
+    id: "user-flow-analysis",
+    title: "사용자 흐름 분석",
+    project: "RANDOM",
+    weight: 2,
+    promptTemplate:
+      "{PROJECT} 프로젝트({PROJECT_DIR}/)의 주요 사용자 흐름을 코드에서 추적해.\n\n" +
+      "- 사용자가 가장 자주 하는 동작은 무엇인지\n" +
+      "- 그 과정에서 불편하거나 단계가 많은 부분이 있는지\n" +
+      "- 더 직관적으로 바꿀 수 있는 UX가 있는지\n\n" +
+      "코드를 실제로 읽고 구체적인 개선안 1개를 제안.\n{GOALS_CONTEXT}",
+  },
+  {
+    id: "goal-next-step",
+    title: "목표 다음 단계 제안",
+    project: "RANDOM",
+    weight: 3,
+    promptTemplate:
+      "{PROJECT} 프로젝트({PROJECT_DIR}/)의 현재 상태와 목표를 분석해.\n{GOALS_CONTEXT}\n\n" +
+      "프로젝트 목표를 달성하기 위해 지금 바로 실행할 수 있는 구체적인 다음 단계 1개를 제안해.\n" +
+      "- 현재 어디까지 와 있는지 (코드 기반 판단)\n" +
+      "- 목표까지 무엇이 부족한지\n" +
+      "- 다음에 할 일과 그 이유\n\n" +
+      "추상적이지 않게, 실제 파일/함수 수준으로 구체적으로.",
+  },
 ];
 
 const PROJECT_POOL: ProjectCode[] = ["COIN", "BLOG", "DASH", "TRAIN", "TGBOT", "DCBOT"];
