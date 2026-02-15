@@ -64,5 +64,21 @@ export function seedInitialTasks(taskStore: TaskStore): void {
     notifyUser: true,
   });
 
-  console.log("[agent] 3 initial tasks seeded.");
+  // Server down auto-response
+  taskStore.createTask({
+    title: "서버 장애 대응",
+    prompt:
+      "서버 장애가 감지되었습니다. 아래 이벤트 컨텍스트를 확인하고:\n\n" +
+      "1. 해당 서비스의 프로세스 상태 확인 (ps aux | grep)\n" +
+      "2. 최근 로그에서 에러 원인 파악\n" +
+      "3. 가능하면 서비스 재시작 시도 (launchctl stop/start)\n" +
+      "4. 결과를 보고\n\n" +
+      "주의: 무한 재시작하지 마. 1번만 시도해.",
+    type: "event",
+    eventTrigger: "server_down",
+    project: "GENERAL",
+    notifyUser: true,
+  });
+
+  console.log("[agent] 4 initial tasks seeded.");
 }

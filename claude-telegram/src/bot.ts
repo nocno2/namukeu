@@ -27,9 +27,11 @@ import {
   ForbiddenActions,
   AuditLog,
   Heartbeat,
+  GoalStore,
   loadSoul,
   buildAgentSystemPrompt,
   type HeartbeatConfig,
+  type MonitorDefinition,
 } from "@namukeu/agent-core";
 import { createTelegramAdapter } from "./platform";
 import { seedInitialTasks } from "./seed-tasks";
@@ -48,6 +50,7 @@ const startTime = Date.now();
 // Agent system exports
 export let heartbeat: Heartbeat | null = null;
 export let taskStore: TaskStore | null = null;
+export let goalStore: GoalStore | null = null;
 export let forbidden: ForbiddenActions | null = null;
 export let auditLog: AuditLog | null = null;
 
@@ -198,6 +201,8 @@ export async function createBot(): Promise<Bot> {
   taskStore = new TaskStore(db);
   setTaskStore(taskStore);
 
+  goalStore = new GoalStore(db);
+
   forbidden = new ForbiddenActions(join(CONFIG_DIR, "forbidden.json"));
   await forbidden.load();
 
@@ -212,7 +217,33 @@ export async function createBot(): Promise<Bot> {
     quietHoursEnd: parseInt(process.env.QUIET_HOURS_END || "8", 10),
     maxProactivePerHour: 5,
     timezone: USER_TIMEZONE,
+    idle: {
+      enabled: process.env.IDLE_TASKS_ENABLED !== "false",
+      idleThresholdMs: parseInt(process.env.IDLE_THRESHOLD_MS || "1800000", 10),
+      maxIdleTasksPerDay: parseInt(process.env.IDLE_MAX_PER_DAY || "3", 10),
+    },
+    monitorsEnabled: process.env.MONITORS_ENABLED !== "false",
+    chainingEnabled: process.env.CHAINING_ENABLED !== "false",
   };
+
+  const defaultMonitors: MonitorDefinition[] = [
+    {
+      id: "health-all",
+      name: "Service Health Check",
+      eventName: "server_down",
+      intervalMs: 60_000,
+      enabled: true,
+      config: {
+        type: "health_check",
+        endpoints: [
+          { name: "coin-auto-trade", url: "http://127.0.0.1:8001/health", project: "COIN" },
+          { name: "train-go", url: "http://127.0.0.1:8000/health", project: "TRAIN" },
+          { name: "dashboard", url: "http://127.0.0.1:8002/health", project: "DASH" },
+        ],
+        failureThreshold: 3,
+      },
+    },
+  ];
 
   if (AGENT_ENABLED) {
     heartbeat = new Heartbeat({
@@ -222,6 +253,8 @@ export async function createBot(): Promise<Bot> {
       platform,
       config: heartbeatConfig,
       notifyChatId: ALLOWED_USER_ID.toString(),
+      monitors: defaultMonitors,
+      goalStore,
       executeTask: async (task) => {
         const memoryContext = await getMemoryContext();
         const activeTasks = taskStore!
@@ -239,6 +272,12 @@ export async function createBot(): Promise<Bot> {
           minute: "2-digit",
         });
 
+        const goalsContext = goalStore ? goalStore.getByProject(task.project as any)
+          .map(g => {
+            const shared = g.projects.length > 1 ? ` (공유: ${g.projects.join(", ")})` : "";
+            return `- [${g.priority.toUpperCase()}] ${g.title}${shared}`;
+          }).join("\n") : "";
+
         const systemPrompt = buildAgentSystemPrompt({
           soul: soulContent,
           forbiddenBlock: forbidden!.formatForPrompt(),
@@ -246,6 +285,8 @@ export async function createBot(): Promise<Bot> {
           activeTasksSummary: activeTasks,
           userName: USER_NAME,
           currentTime: timeStr,
+          goalsContext,
+          chainingEnabled: heartbeatConfig.chainingEnabled,
         });
 
         const agentSessionId = `agent-${task.id.slice(0, 8)}`;
@@ -298,9 +339,13 @@ export async function createBot(): Promise<Bot> {
         "Agent Commands:\n" +
         "/tasks — View autonomous tasks\n" +
         "/cancel <id> — Cancel a task\n" +
+        "/goals — View active goals\n" +
+        "/monitors — View monitor status\n" +
         "/forbidden — View forbidden actions\n" +
         "/stop — Emergency stop agent\n" +
-        "/resume_agent — Resume agent"
+        "/resume_agent — Resume agent\n" +
+        "/idle_on, /idle_off — Toggle idle exploration\n" +
+        "/chain_on, /chain_off — Toggle task chaining"
     );
   });
 
@@ -476,6 +521,49 @@ export async function createBot(): Promise<Bot> {
     } else {
       await ctx.reply("Agent system is not initialized.");
     }
+  });
+
+  bot.command("goals", async (ctx) => {
+    if (!goalStore) { await ctx.reply("Goal system not initialized."); return; }
+    const goals = goalStore.getActive();
+    if (goals.length === 0) { await ctx.reply("활성 목표가 없습니다."); return; }
+    const lines = ["Active Goals:"];
+    for (const g of goals) {
+      const prio = g.priority === "high" ? "★" : g.priority === "medium" ? "●" : "○";
+      const shared = g.projects.length > 1 ? ` [${g.projects.join(",")}]` : ` [${g.projects[0]}]`;
+      const deadline = g.deadline ? ` (by ${g.deadline})` : "";
+      lines.push(`${prio} ${g.title}${shared}${deadline}`);
+      if (g.progress) lines.push(`   → ${g.progress}`);
+    }
+    await sendResponse(ctx, lines.join("\n"));
+  });
+
+  bot.command("idle_on", async (ctx) => {
+    if (heartbeat) { heartbeat.setIdleEnabled(true); await ctx.reply("Idle exploration enabled."); }
+  });
+  bot.command("idle_off", async (ctx) => {
+    if (heartbeat) { heartbeat.setIdleEnabled(false); await ctx.reply("Idle exploration disabled."); }
+  });
+  bot.command("chain_on", async (ctx) => {
+    if (heartbeat) { heartbeat.setChainingEnabled(true); await ctx.reply("Task chaining enabled."); }
+  });
+  bot.command("chain_off", async (ctx) => {
+    if (heartbeat) { heartbeat.setChainingEnabled(false); await ctx.reply("Task chaining disabled."); }
+  });
+  bot.command("monitors", async (ctx) => {
+    if (!heartbeat) { await ctx.reply("Agent not active."); return; }
+    const ms = heartbeat.getMonitorSystem();
+    if (!ms) { await ctx.reply("Monitors not configured."); return; }
+    const status = ms.getStatus();
+    const { healthy, total } = ms.getHealthyCount();
+    const lines = [`Monitor Status: ${healthy}/${total} healthy`];
+    for (const m of status.monitors) {
+      const indicator = m.enabled ? "●" : "○";
+      const failEntries = Object.entries(m.failures);
+      const failStr = failEntries.length > 0 ? ` — ${failEntries.map(([k, v]) => `${k}: ${v}`).join(", ")}` : "";
+      lines.push(`${indicator} ${m.name}${failStr}`);
+    }
+    await sendResponse(ctx, lines.join("\n"));
   });
 
   // --- Message handlers ---

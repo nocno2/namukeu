@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { processTags, type MemoryStore } from "@namukeu/agent-core";
-import type { TaskStore } from "@namukeu/agent-core";
+import type { TaskStore, TagProcessContext } from "@namukeu/agent-core";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const MEMORY_FILE = join(DATA_DIR, "memory.json");
@@ -29,9 +29,9 @@ async function saveMemory(store: MemoryStore): Promise<void> {
  * Parse all tags from Claude's response (memory + task tags),
  * store them, and return the cleaned response.
  */
-export async function processMemoryTags(response: string): Promise<string> {
+export async function processMemoryTags(response: string, context?: TagProcessContext): Promise<string> {
   const store = await loadMemory();
-  const result = processTags(response, store, taskStoreRef || undefined);
+  const result = processTags(response, store, taskStoreRef || undefined, context);
 
   if (result.memoryChanged) {
     await saveMemory(store);
