@@ -8,11 +8,16 @@ interface Props {
   onTogglePin: () => void;
 }
 
+interface RunningTask {
+  title: string;
+  project: string;
+  startedAt: number;
+}
+
 // Actual API response shape
 interface AgentStatusResponse {
   running: boolean;
-  executing: boolean;
-  currentTask: { title: string; startedAt: number } | null;
+  runningTasks: RunningTask[];
   idleEnabled: boolean;
   chainingEnabled: boolean;
   monitorsEnabled: boolean;
@@ -49,9 +54,19 @@ function timeAgo(ts: number | null): string {
   return `${Math.floor(hr / 24)}일 전`;
 }
 
+function elapsed(ts: number): string {
+  const diff = Date.now() - ts;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}초`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분 ${sec % 60}초`;
+  return `${Math.floor(min / 60)}시간 ${min % 60}분`;
+}
+
 export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
   const [status, setStatus] = useState<AgentStatusResponse | null>(null);
   const [error, setError] = useState(false);
+  const [, setTick] = useState(0);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -69,6 +84,13 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
     return () => clearInterval(interval);
   }, [fetchStatus]);
 
+  // Re-render every 5s to update elapsed time while tasks are running
+  useEffect(() => {
+    if (!status?.runningTasks?.length) return;
+    const interval = setInterval(() => setTick(t => t + 1), 5000);
+    return () => clearInterval(interval);
+  }, [status?.runningTasks?.length]);
+
   const toggle = async (feature: "idle" | "chain" | "monitors", enabled: boolean) => {
     try {
       await api.agentToggle(feature, enabled);
@@ -77,6 +99,7 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
   };
 
   const borderClass = pinned ? "border-primary/40" : "border-border";
+  const isExecuting = (status?.runningTasks?.length ?? 0) > 0;
 
   // Monitor failures
   const monitors = status?.monitorStatus?.monitors || [];
@@ -86,11 +109,13 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
     return (
       <div className={`bg-surface border ${borderClass} rounded-xl p-3 flex items-center justify-between`}>
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${status?.executing ? "bg-warning animate-pulse" : status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
+          <span className={`w-2 h-2 rounded-full ${isExecuting ? "bg-warning animate-pulse" : status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
           <span className="text-sm font-medium">Agent</span>
           {status && (
             <span className="text-[10px] text-text-muted">
-              {status.executing ? `실행 중: ${status.currentTask?.title?.slice(0, 20) || "..."}` : `idle ${status.idleEnabled ? "on" : "off"} · tasks ${status.todayTaskCount}`}
+              {isExecuting
+                ? `실행 중 ${status.runningTasks.length}건: ${status.runningTasks.map(t => t.project).join(", ")}`
+                : `idle ${status.idleEnabled ? "on" : "off"} · tasks ${status.todayTaskCount}`}
             </span>
           )}
         </div>
@@ -112,7 +137,7 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
     <div className={`bg-surface border ${borderClass} rounded-xl p-5`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
+          <span className={`w-2 h-2 rounded-full ${isExecuting ? "bg-warning animate-pulse" : status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
           <h3 className="font-semibold text-sm">자율 에이전트</h3>
         </div>
         <div className="flex items-center gap-1">
@@ -135,14 +160,21 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-text-muted">상태</span>
-            <span className={status.executing ? "text-warning" : status.running ? "text-success" : "text-danger"}>
-              {status.executing ? "태스크 실행 중" : status.running ? "대기 중" : "중지됨"}
+            <span className={isExecuting ? "text-warning" : status.running ? "text-success" : "text-danger"}>
+              {isExecuting ? `${status.runningTasks.length}건 실행 중` : status.running ? "대기 중" : "중지됨"}
             </span>
           </div>
-          {status.currentTask && (
-            <div className="bg-warning/10 border border-warning/20 rounded-lg p-2">
-              <div className="text-xs text-warning font-medium">{status.currentTask.title}</div>
-              <div className="text-[10px] text-text-muted mt-0.5">{timeAgo(status.currentTask.startedAt)}부터 실행 중</div>
+          {status.runningTasks.length > 0 && (
+            <div className="space-y-1.5">
+              {status.runningTasks.map((task, i) => (
+                <div key={i} className="bg-warning/10 border border-warning/20 rounded-lg p-2 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs text-warning font-medium">{task.title}</div>
+                    <div className="text-[10px] text-text-muted mt-0.5">{task.project}</div>
+                  </div>
+                  <span className="text-[10px] text-text-muted tabular-nums">{elapsed(task.startedAt)}</span>
+                </div>
+              ))}
             </div>
           )}
           <div className="flex items-center justify-between text-sm">

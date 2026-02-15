@@ -2,7 +2,7 @@ import type { TaskStore } from "./tasks";
 import type { ForbiddenActions } from "./forbidden";
 import type { AuditLog } from "./audit";
 import type { GoalStore } from "./goals";
-import type { AgentTask, ChannelMap, HeartbeatConfig, MonitorDefinition, PlatformAdapter } from "./types";
+import type { AgentTask, ChannelMap, HeartbeatConfig, MonitorDefinition, PlatformAdapter, ProjectCode } from "./types";
 import { MonitorSystem } from "./monitors";
 import { selectIdleStrategy, buildIdlePrompt } from "./idle";
 
@@ -19,15 +19,19 @@ export interface HeartbeatDeps {
   executeTask: (task: AgentTask) => Promise<{ result: string; costUsd?: number; durationMs?: number }>;
 }
 
+interface RunningTask {
+  title: string;
+  project: string;
+  startedAt: number;
+}
+
 export class Heartbeat {
   private timer: ReturnType<typeof setInterval> | null = null;
   private stopped = false;
   private deps: HeartbeatDeps;
 
-  // Execution guard
-  private executing = false;
-  private currentTaskTitle: string | null = null;
-  private currentTaskStartedAt: number | null = null;
+  // Per-project execution slots
+  private runningTasks: Map<string, RunningTask> = new Map();
 
   // Idle tracking
   private lastTaskExecutedAt: number = Date.now();
@@ -98,13 +102,8 @@ export class Heartbeat {
 
   private async tick(): Promise<void> {
     if (this.stopped) return;
-    if (this.executing) {
-      console.log("[heartbeat] Previous task still running, skipping tick");
-      return;
-    }
 
     try {
-      this.executing = true;
       // Check quiet hours
       if (this.isQuietHours()) return;
 
@@ -133,25 +132,36 @@ export class Heartbeat {
       const dueTasks = this.deps.taskStore.getDueTasks();
 
       if (dueTasks.length === 0) {
-        // No due tasks — try idle task if enabled
-        await this.maybeRunIdleTask();
+        // No due tasks — try idle tasks if enabled
+        await this.maybeRunIdleTasks();
         return;
       }
 
-      console.log(`[heartbeat] ${dueTasks.length} task(s) due`);
+      // Filter out tasks whose project already has a running task
+      const tasksToRun = dueTasks.filter(t => {
+        const key = t.project || "GENERAL";
+        return !this.runningTasks.has(key);
+      });
 
-      for (const task of dueTasks) {
-        if (this.stopped) break;
-        await this.executeTask(task);
+      if (tasksToRun.length === 0) {
+        const running = Array.from(this.runningTasks.values()).map(r => r.project);
+        console.log(`[heartbeat] All due tasks blocked by running: ${running.join(", ")}`);
+        return;
       }
+
+      console.log(`[heartbeat] ${tasksToRun.length} task(s) to run (${this.runningTasks.size} already running)`);
+
+      // Launch all in parallel
+      const promises = tasksToRun.map(task => this.executeTask(task));
+      await Promise.allSettled(promises);
     } catch (err) {
       console.error("[heartbeat] Tick error:", err);
-    } finally {
-      this.executing = false;
     }
   }
 
   private async executeTask(task: AgentTask): Promise<void> {
+    const projectKey = task.project || "GENERAL";
+
     // Check if approval required
     if (task.requires_approval) {
       const targetChatId = this.getTargetChatId(task);
@@ -162,11 +172,14 @@ export class Heartbeat {
       return;
     }
 
-    // Mark as running
-    this.currentTaskTitle = task.title;
-    this.currentTaskStartedAt = Date.now();
+    // Register running task
+    this.runningTasks.set(projectKey, {
+      title: task.title,
+      project: projectKey,
+      startedAt: Date.now(),
+    });
     this.deps.taskStore.updateStatus(task.id, "running");
-    console.log(`[heartbeat] Executing task: ${task.title}`);
+    console.log(`[heartbeat] Executing task: ${task.title} (${projectKey})`);
 
     try {
       const { result, costUsd, durationMs } =
@@ -199,14 +212,10 @@ export class Heartbeat {
         await this.deps.platform.sendMessage(targetChatId, message);
       }
 
-      this.currentTaskTitle = null;
-      this.currentTaskStartedAt = null;
       console.log(
         `[heartbeat] Task "${task.title}" completed ($${costUsd?.toFixed(4) || "0"})`
       );
     } catch (err) {
-      this.currentTaskTitle = null;
-      this.currentTaskStartedAt = null;
       console.error(`[heartbeat] Task "${task.title}" failed:`, err);
       this.deps.taskStore.updateStatus(task.id, "failed");
 
@@ -223,11 +232,13 @@ export class Heartbeat {
         task: task.title,
         violations: [],
       });
+    } finally {
+      this.runningTasks.delete(projectKey);
     }
   }
 
-  /** Run an idle task if conditions are met */
-  private async maybeRunIdleTask(): Promise<void> {
+  /** Run idle tasks for projects that don't have a running task */
+  private async maybeRunIdleTasks(): Promise<void> {
     if (!this.idleEnabled) return;
 
     const idleConfig = this.deps.config.idle;
@@ -251,44 +262,68 @@ export class Heartbeat {
       return;
     }
 
-    // Select and run idle strategy
-    const { strategy, project } = selectIdleStrategy(undefined, this.deps.goalStore);
-    const prompt = buildIdlePrompt(strategy, project, this.deps.goalStore);
+    // Pick multiple idle strategies for different projects
+    const projectPool: ProjectCode[] = ["COIN", "BLOG", "DASH", "TRAIN", "TGBOT", "DCBOT"];
+    const available = projectPool.filter(p => !this.runningTasks.has(p));
+    if (available.length === 0) return;
 
-    console.log(`[heartbeat] Running idle task: ${strategy.title} (${project})`);
+    // Run up to 3 idle tasks in parallel (respecting daily limit)
+    const maxParallel = Math.min(3, available.length, idleConfig.maxIdleTasksPerDay - this.idleTasksToday);
+    const idlePromises: Promise<void>[] = [];
 
-    const idleTask: AgentTask = {
-      id: crypto.randomUUID(),
-      type: "one-time",
-      status: "running",
-      title: `[IDLE] ${strategy.title} - ${project}`,
-      prompt,
-      project,
-      schedule_cron: null,
-      schedule_next: null,
-      event_trigger: null,
-      last_run_at: null,
-      last_result: null,
-      run_count: 0,
-      max_runs: 1,
-      notify_user: true,
-      requires_approval: false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    for (let i = 0; i < maxParallel; i++) {
+      const { strategy, project } = selectIdleStrategy(undefined, this.deps.goalStore, available[i]);
+      if (this.runningTasks.has(project)) continue;
+
+      const prompt = buildIdlePrompt(strategy, project, this.deps.goalStore);
+      console.log(`[heartbeat] Running idle task: ${strategy.title} (${project})`);
+
+      const idleTask: AgentTask = {
+        id: crypto.randomUUID(),
+        type: "one-time",
+        status: "running",
+        title: `[IDLE] ${strategy.title} - ${project}`,
+        prompt,
+        project,
+        schedule_cron: null,
+        schedule_next: null,
+        event_trigger: null,
+        last_run_at: null,
+        last_result: null,
+        run_count: 0,
+        max_runs: 1,
+        notify_user: true,
+        requires_approval: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      this.idleTasksToday++;
+      idlePromises.push(this.executeIdleTask(idleTask, project));
+    }
+
+    await Promise.allSettled(idlePromises);
+  }
+
+  private async executeIdleTask(task: AgentTask, project: string): Promise<void> {
+    const projectKey = project;
+    this.runningTasks.set(projectKey, {
+      title: task.title,
+      project: projectKey,
+      startedAt: Date.now(),
+    });
 
     try {
       const { result, costUsd, durationMs } =
-        await this.deps.executeTask(idleTask);
+        await this.deps.executeTask(task);
 
       this.lastTaskExecutedAt = Date.now();
-      this.idleTasksToday++;
 
       // Audit
       await this.deps.audit.record({
         ts: new Date().toISOString(),
         type: "heartbeat",
-        task: idleTask.title,
+        task: task.title,
         violations: [],
         cost: costUsd,
         duration: durationMs,
@@ -296,7 +331,7 @@ export class Heartbeat {
 
       // Notify
       if (result) {
-        const targetChatId = this.getTargetChatId(idleTask);
+        const targetChatId = this.getTargetChatId(task);
         const prefix = `[IDLE/${project}] `;
         const message =
           result.length > 3800
@@ -306,10 +341,12 @@ export class Heartbeat {
       }
 
       console.log(
-        `[heartbeat] Idle task "${idleTask.title}" completed ($${costUsd?.toFixed(4) || "0"})`
+        `[heartbeat] Idle task "${task.title}" completed ($${costUsd?.toFixed(4) || "0"})`
       );
     } catch (err) {
-      console.error(`[heartbeat] Idle task failed:`, err);
+      console.error(`[heartbeat] Idle task "${task.title}" failed:`, err);
+    } finally {
+      this.runningTasks.delete(projectKey);
     }
   }
 
@@ -352,15 +389,14 @@ export class Heartbeat {
     }
 
     const tasks = this.deps.taskStore.getEventTasks(eventName);
-    for (const task of tasks) {
-      // Append context to prompt if provided
+    const promises = tasks.map(task => {
       if (context) {
         const enrichedTask = { ...task, prompt: `${task.prompt}\n\nContext: ${context}` };
-        await this.executeTask(enrichedTask);
-      } else {
-        await this.executeTask(task);
+        return this.executeTask(enrichedTask);
       }
-    }
+      return this.executeTask(task);
+    });
+    await Promise.allSettled(promises);
   }
 
   // ─── Feature Toggles ───
@@ -402,8 +438,7 @@ export class Heartbeat {
 
   async getStatus(): Promise<{
     running: boolean;
-    executing: boolean;
-    currentTask: { title: string; startedAt: number } | null;
+    runningTasks: RunningTask[];
     idleEnabled: boolean;
     chainingEnabled: boolean;
     monitorsEnabled: boolean;
@@ -415,10 +450,7 @@ export class Heartbeat {
     const stats = await this.deps.audit.getTodayStats(this.deps.config.timezone);
     return {
       running: !this.stopped,
-      executing: this.executing,
-      currentTask: this.currentTaskTitle
-        ? { title: this.currentTaskTitle, startedAt: this.currentTaskStartedAt! }
-        : null,
+      runningTasks: Array.from(this.runningTasks.values()),
       idleEnabled: this.idleEnabled,
       chainingEnabled: this.chainingEnabled,
       monitorsEnabled: this.monitorsEnabled,
