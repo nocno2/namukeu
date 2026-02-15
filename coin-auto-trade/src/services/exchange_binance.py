@@ -82,82 +82,105 @@ class BinanceExchange:
 
     async def get_ohlcv(
         self, ticker: str, interval: str = "minute1", count: int = 200, to: str | None = None
-    ) -> pd.DataFrame:
-        await self._rate_limit()
-        symbol = self._to_binance_symbol(ticker)
-        bi = _INTERVAL_MAP.get(interval, BinanceClient.KLINE_INTERVAL_1MINUTE)
+    ) -> pd.DataFrame | None:
+        try:
+            await self._rate_limit()
+            symbol = self._to_binance_symbol(ticker)
+            bi = _INTERVAL_MAP.get(interval, BinanceClient.KLINE_INTERVAL_1MINUTE)
 
-        kwargs: dict = {"symbol": symbol, "interval": bi, "limit": count}
-        if to:
-            # 'to' is an ISO timestamp string, convert to ms
-            try:
-                end_ts = int(pd.Timestamp(to).timestamp() * 1000)
-                kwargs["endTime"] = end_ts
-            except Exception:
-                pass
+            kwargs: dict = {"symbol": symbol, "interval": bi, "limit": count}
+            if to:
+                try:
+                    end_ts = int(pd.Timestamp(to).timestamp() * 1000)
+                    kwargs["endTime"] = end_ts
+                except Exception:
+                    pass
 
-        klines = await asyncio.to_thread(self._client.get_klines, **kwargs)
+            klines = await asyncio.to_thread(self._client.get_klines, **kwargs)
 
-        if not klines:
-            return pd.DataFrame()
+            if not klines:
+                return pd.DataFrame()
 
-        df = pd.DataFrame(klines, columns=[
-            "timestamp", "open", "high", "low", "close", "volume",
-            "close_time", "quote_volume", "trades", "taker_buy_base",
-            "taker_buy_quote", "ignore",
-        ])
-        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
-        df = df.set_index("timestamp")
-        for col in ["open", "high", "low", "close", "volume"]:
-            df[col] = df[col].astype(float)
-        return df[["open", "high", "low", "close", "volume"]]
+            df = pd.DataFrame(klines, columns=[
+                "timestamp", "open", "high", "low", "close", "volume",
+                "close_time", "quote_volume", "trades", "taker_buy_base",
+                "taker_buy_quote", "ignore",
+            ])
+            df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+            df = df.set_index("timestamp")
+            for col in ["open", "high", "low", "close", "volume"]:
+                df[col] = df[col].astype(float)
+            return df[["open", "high", "low", "close", "volume"]]
+        except Exception as e:
+            logger.error(f"[Binance] get_ohlcv 실패 ({ticker}): {e}")
+            return None
 
-    async def get_current_price(self, tickers: str | list[str]) -> dict | float:
-        await self._rate_limit()
-        if isinstance(tickers, str):
-            symbol = self._to_binance_symbol(tickers)
-            result = await asyncio.to_thread(self._client.get_symbol_ticker, symbol=symbol)
-            return float(result["price"])
-        else:
-            all_prices = await asyncio.to_thread(self._client.get_all_tickers)
-            price_map = {p["symbol"]: float(p["price"]) for p in all_prices}
-            return {t: price_map.get(self._to_binance_symbol(t), 0) for t in tickers}
+    async def get_current_price(self, tickers: str | list[str]) -> dict | float | None:
+        try:
+            await self._rate_limit()
+            if isinstance(tickers, str):
+                symbol = self._to_binance_symbol(tickers)
+                result = await asyncio.to_thread(self._client.get_symbol_ticker, symbol=symbol)
+                return float(result["price"])
+            else:
+                all_prices = await asyncio.to_thread(self._client.get_all_tickers)
+                price_map = {p["symbol"]: float(p["price"]) for p in all_prices}
+                return {t: price_map.get(self._to_binance_symbol(t), 0) for t in tickers}
+        except Exception as e:
+            logger.error(f"[Binance] get_current_price 실패 ({tickers}): {e}")
+            return None
 
-    async def get_orderbook(self, ticker: str) -> list:
-        await self._rate_limit()
-        symbol = self._to_binance_symbol(ticker)
-        result = await asyncio.to_thread(self._client.get_order_book, symbol=symbol)
-        return result.get("bids", [])
+    async def get_orderbook(self, ticker: str) -> list | None:
+        try:
+            await self._rate_limit()
+            symbol = self._to_binance_symbol(ticker)
+            result = await asyncio.to_thread(self._client.get_order_book, symbol=symbol)
+            return result.get("bids", [])
+        except Exception as e:
+            logger.error(f"[Binance] get_orderbook 실패 ({ticker}): {e}")
+            return None
 
     async def get_tickers(self, fiat: str | None = None) -> list[str]:
-        await self._rate_limit()
-        quote = fiat or "USDT"
-        prices = await asyncio.to_thread(self._client.get_all_tickers)
-        return [
-            self._to_unified_ticker(p["symbol"], quote)
-            for p in prices
-            if p["symbol"].endswith(quote)
-        ]
+        try:
+            await self._rate_limit()
+            quote = fiat or "USDT"
+            prices = await asyncio.to_thread(self._client.get_all_tickers)
+            return [
+                self._to_unified_ticker(p["symbol"], quote)
+                for p in prices
+                if p["symbol"].endswith(quote)
+            ]
+        except Exception as e:
+            logger.error(f"[Binance] get_tickers 실패: {e}")
+            return []
 
     # --- Exchange (authenticated) ---
 
-    async def get_balance(self, ticker: str | None = None) -> float:
-        ticker = ticker or "USDT"
-        await self._rate_limit()
-        account = await asyncio.to_thread(self._client.get_account)
-        for b in account["balances"]:
-            if b["asset"] == ticker:
-                return float(b["free"])
-        return 0.0
+    async def get_balance(self, ticker: str | None = None) -> float | None:
+        try:
+            ticker = ticker or "USDT"
+            await self._rate_limit()
+            account = await asyncio.to_thread(self._client.get_account)
+            for b in account["balances"]:
+                if b["asset"] == ticker:
+                    return float(b["free"])
+            return 0.0
+        except Exception as e:
+            logger.error(f"[Binance] get_balance 실패 ({ticker}): {e}")
+            return None
 
     async def get_balances(self) -> list[dict]:
-        await self._rate_limit()
-        account = await asyncio.to_thread(self._client.get_account)
-        return [
-            {"currency": b["asset"], "balance": float(b["free"]), "locked": float(b["locked"])}
-            for b in account["balances"]
-            if float(b["free"]) > 0 or float(b["locked"]) > 0
-        ]
+        try:
+            await self._rate_limit()
+            account = await asyncio.to_thread(self._client.get_account)
+            return [
+                {"currency": b["asset"], "balance": float(b["free"]), "locked": float(b["locked"])}
+                for b in account["balances"]
+                if float(b["free"]) > 0 or float(b["locked"]) > 0
+            ]
+        except Exception as e:
+            logger.error(f"[Binance] get_balances 실패: {e}")
+            return []
 
     async def buy_market_order(self, ticker: str, amount: float) -> OrderResult | None:
         if self._dry_run:

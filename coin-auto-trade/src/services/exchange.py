@@ -51,38 +51,64 @@ class UpbitExchange:
 
     async def get_ohlcv(
         self, ticker: str, interval: str = "minute1", count: int = 200, to: str | None = None
-    ) -> pd.DataFrame:
-        await self._rate_limit(0.11)
-        return await asyncio.to_thread(
-            pyupbit.get_ohlcv, ticker, interval=interval, count=count, to=to
-        )
+    ) -> pd.DataFrame | None:
+        try:
+            await self._rate_limit(0.11)
+            return await asyncio.to_thread(
+                pyupbit.get_ohlcv, ticker, interval=interval, count=count, to=to
+            )
+        except Exception as e:
+            logger.error(f"[Upbit] get_ohlcv 실패 ({ticker}): {e}")
+            return None
 
-    async def get_current_price(self, tickers: str | list[str]) -> dict | float:
-        await self._rate_limit(0.11)
-        return await asyncio.to_thread(pyupbit.get_current_price, tickers)
+    async def get_current_price(self, tickers: str | list[str]) -> dict | float | None:
+        try:
+            await self._rate_limit(0.11)
+            return await asyncio.to_thread(pyupbit.get_current_price, tickers)
+        except Exception as e:
+            logger.error(f"[Upbit] get_current_price 실패 ({tickers}): {e}")
+            return None
 
-    async def get_orderbook(self, ticker: str) -> list:
-        await self._rate_limit(0.11)
-        return await asyncio.to_thread(pyupbit.get_orderbook, ticker)
+    async def get_orderbook(self, ticker: str) -> list | None:
+        try:
+            await self._rate_limit(0.11)
+            return await asyncio.to_thread(pyupbit.get_orderbook, ticker)
+        except Exception as e:
+            logger.error(f"[Upbit] get_orderbook 실패 ({ticker}): {e}")
+            return None
 
     async def get_tickers(self, fiat: str | None = None) -> list[str]:
-        await self._rate_limit(0.11)
-        return await asyncio.to_thread(pyupbit.get_tickers, fiat=fiat or "KRW")
+        try:
+            await self._rate_limit(0.11)
+            return await asyncio.to_thread(pyupbit.get_tickers, fiat=fiat or "KRW")
+        except Exception as e:
+            logger.error(f"[Upbit] get_tickers 실패: {e}")
+            return []
 
     # --- Exchange (authenticated) ---
 
-    async def get_balance(self, ticker: str | None = None) -> float:
-        await self._rate_limit()
-        return await asyncio.to_thread(self._upbit.get_balance, ticker or "KRW")
+    async def get_balance(self, ticker: str | None = None) -> float | None:
+        try:
+            await self._rate_limit()
+            return await asyncio.to_thread(self._upbit.get_balance, ticker or "KRW")
+        except Exception as e:
+            logger.error(f"[Upbit] get_balance 실패 ({ticker or 'KRW'}): {e}")
+            return None
 
     async def get_balances(self) -> list[dict]:
-        await self._rate_limit()
-        result = await asyncio.to_thread(self._upbit.get_balances)
-        if isinstance(result, dict) and "error" in result:
-            raise RuntimeError(result["error"].get("message", str(result["error"])))
-        if not isinstance(result, list):
-            raise RuntimeError(f"Unexpected response: {result}")
-        return result
+        try:
+            await self._rate_limit()
+            result = await asyncio.to_thread(self._upbit.get_balances)
+            if isinstance(result, dict) and "error" in result:
+                logger.error(f"[Upbit] get_balances API 에러: {result['error']}")
+                return []
+            if not isinstance(result, list):
+                logger.error(f"[Upbit] get_balances 예상치 못한 응답: {result}")
+                return []
+            return result
+        except Exception as e:
+            logger.error(f"[Upbit] get_balances 실패: {e}")
+            return []
 
     async def buy_market_order(self, ticker: str, amount: float) -> OrderResult | None:
         if self._dry_run:

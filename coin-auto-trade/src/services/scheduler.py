@@ -189,6 +189,9 @@ class TradingScheduler:
             return  # 이미 보유 중
 
         balance = await self.exchange.get_balance()
+        if balance is None:
+            logger.warning(f"잔고 조회 실패, 매수 스킵: {ticker}")
+            return
         amount = self.risk_manager.calculate_position_size(balance, len(positions))
 
         if amount < min_order:
@@ -207,19 +210,23 @@ class TradingScheduler:
         if result:
             self.db.update_order_state(order_id, "done", result.created_at)
             price = await self.exchange.get_current_price(ticker)
-            if price:
+            if price is not None and price:
                 volume = amount * (1 - fee_rate) / float(price)
                 self.db.upsert_position(ticker, volume, float(price), strategy_id, float(price),
                                         exchange=self.exchange.name)
+            else:
+                logger.warning(f"매수 후 가격 조회 실패, 포지션 미등록: {ticker}")
             await self.notifier.notify_trade("buy", ticker, amount, float(price or 0), signal.reason,
                                              quote_currency=quote)
         elif self.exchange.dry_run:
             self.db.update_order_state(order_id, "done")
             price = await self.exchange.get_current_price(ticker)
-            if price:
+            if price is not None and price:
                 volume = amount * (1 - fee_rate) / float(price)
                 self.db.upsert_position(ticker, volume, float(price), strategy_id, float(price),
                                         exchange=self.exchange.name)
+            else:
+                logger.warning(f"[DRY-RUN] 매수 후 가격 조회 실패, 포지션 미등록: {ticker}")
 
     async def _execute_sell(self, ticker: str, signal, strategy_id: int | None, quote: str):
         positions = self.db.get_positions()
@@ -242,7 +249,7 @@ class TradingScheduler:
             self.db.update_order_state(order_id, "done", result.created_at)
             self.db.delete_position(ticker)
             price = await self.exchange.get_current_price(ticker)
-            amount = volume * float(price or 0)
+            amount = volume * float(price or 0) if price is not None else 0
             await self.notifier.notify_trade("sell", ticker, amount, float(price or 0), signal.reason,
                                              quote_currency=quote)
         elif self.exchange.dry_run:
@@ -284,6 +291,9 @@ class TradingScheduler:
             # Close short
             volume = existing["volume"]
             price = await self.exchange.get_current_price(ticker)
+            if price is None:
+                logger.warning(f"가격 조회 실패, 숏 청산 스킵: {ticker}")
+                return
             amount = volume * float(price or 0)
             order_id = self.db.create_order(
                 ticker=ticker, side="buy", order_type="market",
@@ -303,6 +313,9 @@ class TradingScheduler:
         # No position: open long
         leverage = params.get("leverage", 20)
         balance = await self.exchange.get_balance()
+        if balance is None:
+            logger.warning(f"잔고 조회 실패, 롱 진입 스킵: {ticker}")
+            return
         amount = self.risk_manager.calculate_position_size(balance, len(positions))
         if amount < min_order:
             return
@@ -322,12 +335,14 @@ class TradingScheduler:
             else:
                 self.db.update_order_state(order_id, "done")
             price = await self.exchange.get_current_price(ticker)
-            if price:
+            if price is not None and price:
                 volume = leveraged_amount * (1 - fee_rate) / float(price)
                 self.db.upsert_position(
                     ticker, volume, float(price), strategy_id, float(price),
                     exchange=self.exchange.name, side="long", leverage=leverage,
                 )
+            else:
+                logger.warning(f"롱 진입 후 가격 조회 실패, 포지션 미등록: {ticker}")
             await self.notifier.notify_trade(
                 "open_long", ticker, leveraged_amount, float(price or 0),
                 f"[{leverage}x] {signal.reason}", quote_currency=quote,
@@ -357,7 +372,7 @@ class TradingScheduler:
                 self.db.update_order_state(order_id, "done", result.created_at if result else None)
                 self.db.delete_position(ticker)
                 price = await self.exchange.get_current_price(ticker)
-                amount = volume * float(price or 0)
+                amount = volume * float(price or 0) if price is not None else 0
                 await self.notifier.notify_trade("close_long", ticker, amount,
                                                   float(price or 0), signal.reason, quote_currency=quote)
             return
@@ -365,6 +380,9 @@ class TradingScheduler:
         # No position: open short
         leverage = params.get("leverage", 20)
         balance = await self.exchange.get_balance()
+        if balance is None:
+            logger.warning(f"잔고 조회 실패, 숏 진입 스킵: {ticker}")
+            return
         amount = self.risk_manager.calculate_position_size(balance, len(positions))
         if amount < min_order:
             return

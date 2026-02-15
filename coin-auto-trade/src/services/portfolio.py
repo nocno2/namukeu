@@ -23,6 +23,9 @@ class PortfolioTracker:
         tickers = [p["ticker"] for p in positions]
         try:
             prices = await self.exchange.get_current_price(tickers)
+            if prices is None:
+                logger.warning("포지션 시세 조회 실패 (None 반환), 업데이트 스킵")
+                return
             if isinstance(prices, dict):
                 for p in positions:
                     price = prices.get(p["ticker"])
@@ -45,7 +48,8 @@ class PortfolioTracker:
         cash = 0.0
         if self.exchange:
             try:
-                cash = await self.exchange.get_balance()
+                result = await self.exchange.get_balance()
+                cash = result if result is not None else 0.0
             except Exception as e:
                 logger.error(f"잔고 조회 실패: {e}")
 
