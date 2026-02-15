@@ -152,7 +152,9 @@ export interface TrainReservation {
   time_range_end?: string;
   seat_type?: string;
   status?: string;
+  train_info?: string | null;
   created_at?: string;
+  reserved_at?: string | null;
   [key: string]: unknown;
 }
 

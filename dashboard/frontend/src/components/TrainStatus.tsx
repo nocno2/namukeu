@@ -8,47 +8,98 @@ interface Props {
   onTogglePin: () => void;
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  reserved: "text-success bg-success/10 border-success/20",
-  searching: "text-warning bg-warning/10 border-warning/20",
-  pending: "text-blue-400 bg-blue-400/10 border-blue-400/20",
-  failed: "text-danger bg-danger/10 border-danger/20",
-  cancelled: "text-text-muted bg-bg border-border",
+const STATUS_MAP: Record<string, { label: string; cls: string }> = {
+  searching: { label: "검색 중", cls: "text-warning bg-warning/10 border-warning/20" },
+  reserved: { label: "예약 완료", cls: "text-success bg-success/10 border-success/20" },
+  pending: { label: "대기", cls: "text-blue-400 bg-blue-400/10 border-blue-400/20" },
+  failed: { label: "실패", cls: "text-danger bg-danger/10 border-danger/20" },
+  timeout: { label: "시간 초과", cls: "text-text-muted bg-bg border-border" },
+  cancelled: { label: "취소", cls: "text-text-muted bg-bg border-border" },
 };
 
 function StatusBadge({ status }: { status: string }) {
-  const cls = STATUS_COLORS[status] || "text-text-muted bg-bg border-border";
+  const info = STATUS_MAP[status] || { label: status, cls: "text-text-muted bg-bg border-border" };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-mono ${cls}`}>
-      {status}
+    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${info.cls}`}>
+      {info.label}
     </span>
   );
 }
 
 function formatTime(hhmm?: string): string {
-  if (!hhmm || hhmm.length !== 4) return "";
-  return `${hhmm.slice(0, 2)}:${hhmm.slice(2)}`;
+  if (!hhmm || hhmm.length < 4) return "";
+  return `${hhmm.slice(0, 2)}:${hhmm.slice(2, 4)}`;
 }
 
 function formatDate(yyyymmdd?: string): string {
   if (!yyyymmdd || yyyymmdd.length !== 8) return yyyymmdd || "";
-  return `${yyyymmdd.slice(4, 6)}/${yyyymmdd.slice(6)}`;
+  const m = parseInt(yyyymmdd.slice(4, 6));
+  const d = parseInt(yyyymmdd.slice(6));
+  return `${m}월 ${d}일`;
 }
 
-function MacroItem({ r }: { r: TrainReservation }) {
+function timeAgo(dateStr?: string): string {
+  if (!dateStr) return "";
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return "방금";
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  return `${Math.floor(hr / 24)}일 전`;
+}
+
+function parseTrainInfo(r: TrainReservation): string | null {
+  if (!r.train_info) return null;
+  try {
+    const info = typeof r.train_info === "string" ? JSON.parse(r.train_info) : r.train_info;
+    if (info.reservation) return info.reservation;
+    const depTime = formatTime(info.dep_time?.slice(0, 4));
+    const arrTime = formatTime(info.arr_time?.slice(0, 4));
+    return `${info.train_name || ""} ${info.dep_station}→${info.arr_station} ${depTime}~${arrTime}`;
+  } catch {
+    return null;
+  }
+}
+
+function ReservationCard({ r, isActive }: { r: TrainReservation; isActive: boolean }) {
+  const trainInfo = parseTrainInfo(r);
+
   return (
-    <div className="bg-bg/50 border border-border rounded-lg px-3 py-2">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5 text-xs">
-          <span className="text-[10px] text-text-muted font-mono uppercase">{r.provider}</span>
-          <span className="font-medium">{r.dep_station} → {r.arr_station}</span>
+    <div className={`rounded-lg px-3 py-2.5 ${isActive ? "bg-warning/5 border border-warning/20" : "bg-bg/50 border border-border"}`}>
+      {/* 구간 + 상태 */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          {isActive && (
+            <span className="relative flex h-1.5 w-1.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
+            </span>
+          )}
+          <span className="font-medium text-sm">{r.dep_station} → {r.arr_station}</span>
         </div>
-        <StatusBadge status={r.status || "searching"} />
+        <StatusBadge status={r.status || "pending"} />
       </div>
-      <div className="flex items-center gap-2 mt-1 text-[10px] text-text-muted">
+
+      {/* 상세 정보 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-1.5 text-[11px] text-text-muted">
         <span>{formatDate(r.date)}</span>
         <span>{formatTime(r.time_range_start)}~{formatTime(r.time_range_end)}</span>
-        <span>{r.seat_type === "special" ? "특실" : "일반"}</span>
+        <span className="uppercase text-[10px] font-mono">{r.provider}</span>
+        <span>{r.seat_type === "special" ? "특실" : "일반실"}</span>
+      </div>
+
+      {/* 예약 성공 시 열차 정보 */}
+      {trainInfo && (
+        <div className="mt-1.5 text-[11px] text-success bg-success/5 rounded px-2 py-1">
+          {trainInfo}
+        </div>
+      )}
+
+      {/* 등록 시간 */}
+      <div className="mt-1 text-[10px] text-text-muted/60">
+        등록 {timeAgo(r.created_at)}
+        {r.reserved_at && <> · 예약 {timeAgo(r.reserved_at)}</>}
       </div>
     </div>
   );
@@ -75,15 +126,18 @@ export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }
 
   if (error || !data) return null;
 
+  const activeIds = new Set(data.active_reservations.map((r) => r.id));
+  const allReservations = data.recent_reservations;
+
   return (
     <div className={`bg-surface border rounded-xl ${pinned ? "border-primary/40" : "border-border"} ${collapsed ? "p-3" : "p-5"}`}>
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">Train Go</h3>
+          <h3 className="font-semibold text-sm">기차 예약</h3>
           {data.active_macros > 0 && (
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-warning" />
+            <span className="text-[10px] text-warning font-medium">
+              매크로 {data.active_macros}개 실행 중
             </span>
           )}
         </div>
@@ -101,69 +155,50 @@ export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }
 
       {collapsed ? (
         <div className="flex items-center gap-2 mt-1.5 text-[10px]">
-          <span className="text-text-muted">Active</span>
-          <span className="font-mono">{data.active_macros}</span>
-          <span className="text-text-muted">·</span>
-          <span className="text-text-muted">Reserved</span>
-          <span className="font-mono">{data.by_status.reserved || 0}</span>
-          <span className="text-text-muted">·</span>
-          <span className="text-text-muted">Total</span>
-          <span className="font-mono">{data.total_reservations}</span>
+          {data.active_macros > 0 && (
+            <>
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
+              </span>
+              <span className="text-warning font-medium">검색 중 {data.by_status.searching || 0}</span>
+              <span className="text-text-muted">·</span>
+            </>
+          )}
+          <span className="text-success">예약 {data.by_status.reserved || 0}</span>
+          <span className="text-text-muted">· 전체 {data.total_reservations}</span>
         </div>
       ) : (
-        <div className="mt-4 space-y-4">
-          {/* Summary */}
-          <div className="flex gap-4">
-            <div>
-              <div className="text-2xl font-bold">{data.active_macros}</div>
-              <div className="text-[10px] text-text-muted">활성 매크로</div>
-            </div>
-            <div>
-              <div className="text-2xl font-bold">{data.total_reservations}</div>
-              <div className="text-[10px] text-text-muted">전체 예약</div>
-            </div>
-          </div>
-
-          {/* Status breakdown */}
-          {Object.keys(data.by_status).length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {Object.entries(data.by_status).map(([status, count]) => (
-                <span key={status} className="text-[10px] text-text-muted">
-                  <StatusBadge status={status} /> <span className="font-mono">{count}</span>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Active macros */}
+        <div className="mt-3 space-y-3">
+          {/* 활성 매크로 섹션 */}
           {data.active_reservations.length > 0 && (
             <div>
-              <div className="text-[10px] text-text-muted mb-1.5">매크로 등록 현황</div>
-              <div className="space-y-1.5">
+              <div className="text-[11px] text-text-muted font-medium mb-2">검색 중인 매크로</div>
+              <div className="space-y-2">
                 {data.active_reservations.map((r, i) => (
-                  <MacroItem key={r.id ?? i} r={r} />
+                  <ReservationCard key={r.id ?? i} r={r} isActive={true} />
                 ))}
               </div>
             </div>
           )}
 
-          {/* Recent reservations */}
-          {data.recent_reservations.length > 0 && (
+          {/* 완료된 예약 / 전체 이력 */}
+          {allReservations.filter((r) => !activeIds.has(r.id)).length > 0 && (
             <div>
-              <div className="text-[10px] text-text-muted mb-1.5">최근 예약</div>
-              <div className="space-y-1.5">
-                {data.recent_reservations.slice(0, 5).map((r, i) => (
-                  <div key={r.id ?? i} className="flex items-center justify-between text-xs gap-2">
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className="text-[10px] text-text-muted font-mono uppercase">{r.provider}</span>
-                      <span className="truncate">{r.dep_station} → {r.arr_station}</span>
-                      <span className="text-[10px] text-text-muted">{formatDate(r.date)}</span>
-                    </div>
-                    <StatusBadge status={r.status || "unknown"} />
-                  </div>
-                ))}
+              <div className="text-[11px] text-text-muted font-medium mb-2">예약 이력</div>
+              <div className="space-y-2">
+                {allReservations
+                  .filter((r) => !activeIds.has(r.id))
+                  .slice(0, 5)
+                  .map((r, i) => (
+                    <ReservationCard key={r.id ?? i} r={r} isActive={false} />
+                  ))}
               </div>
             </div>
+          )}
+
+          {allReservations.length === 0 && (
+            <div className="text-xs text-text-muted text-center py-4">등록된 예약이 없습니다</div>
           )}
         </div>
       )}
