@@ -103,6 +103,19 @@ function buildSystemPrompt(memoryContext: string, conversationRecap?: string): s
     if (forbiddenBlock) parts.push(`\n${forbiddenBlock}`);
   }
 
+  parts.push(
+    `\nPROJECT CONTEXT:` +
+    `\nYou work on a monorepo at /Users/namwook/Documents/namukeu/ with these projects:` +
+    `\n- COIN (coin-auto-trade/): Upbit 자동매매 서버 (Python FastAPI :8001)` +
+    `\n- BLOG (ai-blog/): 수익형 블로그 (Next.js + Bun :3100)` +
+    `\n- DASH (dashboard/): 개인 대시보드 (React + FastAPI :8002)` +
+    `\n- TRAIN (train-go/): SRT/Korail 자동예매 서버 (Python FastAPI :8000)` +
+    `\n- TGBOT (claude-telegram/): Telegram 릴레이 봇 (Bun + grammY)` +
+    `\n- DCBOT (claude-discord/): Discord 릴레이 봇 (Bun + discord.js)` +
+    `\nThis is a Telegram chat — the user may discuss any project. Infer the relevant project from context.` +
+    `\nRefer to each project's CLAUDE.md for project-specific guidelines.`
+  );
+
   if (profileContext) parts.push(`\nProfile:\n${profileContext}`);
   if (memoryContext) parts.push(`\n${memoryContext}`);
   if (conversationRecap) parts.push(`\n${conversationRecap}`);
@@ -737,6 +750,30 @@ export async function createBot(): Promise<Bot> {
       await ctx.reply("Could not process document.");
     }
   });
+
+  // Register bot commands with Telegram (replaces any old commands)
+  await bot.api.setMyCommands([
+    { command: "reset", description: "세션 초기화 — 새 대화 시작" },
+    { command: "status", description: "봇 상태 확인" },
+    { command: "memory", description: "저장된 기억 보기" },
+    { command: "forget", description: "모든 기억 삭제" },
+    { command: "history", description: "최근 대화 내역" },
+    { command: "search", description: "메시지 검색" },
+    { command: "tasks", description: "자율 태스크 목록" },
+    { command: "cancel", description: "태스크 취소" },
+    { command: "pending", description: "승인 대기 태스크 보기" },
+    { command: "approve", description: "태스크 승인" },
+    { command: "goals", description: "프로젝트 목표 보기" },
+    { command: "monitors", description: "서비스 모니터 상태" },
+    { command: "idle_on", description: "자율 탐색 활성화" },
+    { command: "idle_off", description: "자율 탐색 비활성화" },
+    { command: "chain_on", description: "작업 연쇄 활성화" },
+    { command: "chain_off", description: "작업 연쇄 비활성화" },
+    { command: "stop", description: "에이전트 긴급 중지" },
+    { command: "resume_agent", description: "에이전트 재개" },
+    { command: "forbidden", description: "금지 동작 목록" },
+  ]);
+  console.log("[bot] Telegram commands registered");
 
   return bot;
 }

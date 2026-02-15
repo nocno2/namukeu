@@ -28,6 +28,19 @@
 - `/memory` — Show stored facts and goals
 - `/forget` — Clear all memories
 
+## 프로젝트 컨텍스트
+
+텔레그램은 단일 채팅이므로 채널별 프로젝트 구분이 없다. 대신 세션 시작 시 모노레포 전체 프로젝트 목록이 시스템 프롬프트에 주입된다.
+
+- COIN (coin-auto-trade/): Upbit 자동매매 서버
+- BLOG (ai-blog/): 수익형 블로그
+- DASH (dashboard/): 개인 대시보드
+- TRAIN (train-go/): SRT/Korail 자동예매 서버
+- TGBOT (claude-telegram/): 이 봇
+- DCBOT (claude-discord/): Discord 봇
+
+대화 내용에서 관련 프로젝트를 추론하여 대응한다. 세션이 초기화되어도 프로젝트 컨텍스트는 항상 유지된다.
+
 ## Session Management
 
 - Chat ID → deterministic UUID v5 → `--session-id` (new) or `--resume` (existing)
