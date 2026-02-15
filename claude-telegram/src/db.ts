@@ -6,6 +6,10 @@ const DB_PATH = join(DATA_DIR, "messages.db");
 
 let db: Database;
 
+export function getDb(): Database {
+  return db;
+}
+
 export function initDb(): void {
   db = new Database(DB_PATH);
   db.run("PRAGMA journal_mode = WAL");

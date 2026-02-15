@@ -8,7 +8,8 @@
   },
   "dependencies": {
     "grammy": "^1.40.0",
-    "@namukeu/playwright-mcp": "file:../shared/playwright-mcp"
+    "@namukeu/playwright-mcp": "file:../shared/playwright-mcp",
+    "@namukeu/agent-core": "file:../shared/agent-core"
   },
   "devDependencies": {
     "@types/bun": "latest"

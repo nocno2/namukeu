@@ -1,30 +1,18 @@
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
+import { processTags, type MemoryStore } from "@namukeu/agent-core";
+import type { TaskStore } from "@namukeu/agent-core";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const MEMORY_FILE = join(DATA_DIR, "memory.json");
 
-interface MemoryFact {
-  id: string;
-  content: string;
-  createdAt: string;
+let taskStoreRef: TaskStore | null = null;
+
+export function setTaskStore(ts: TaskStore): void {
+  taskStoreRef = ts;
 }
 
-interface MemoryGoal {
-  id: string;
-  content: string;
-  deadline: string | null;
-  status: "active" | "completed";
-  createdAt: string;
-  completedAt: string | null;
-}
-
-interface MemoryStore {
-  facts: MemoryFact[];
-  goals: MemoryGoal[];
-}
-
-async function loadMemory(): Promise<MemoryStore> {
+export async function loadMemory(): Promise<MemoryStore> {
   try {
     const raw = await readFile(MEMORY_FILE, "utf-8");
     return JSON.parse(raw);
@@ -38,64 +26,18 @@ async function saveMemory(store: MemoryStore): Promise<void> {
 }
 
 /**
- * Parse REMEMBER/GOAL/DONE tags from Claude's response,
- * store them in local JSON, and return the cleaned response.
+ * Parse all tags from Claude's response (memory + task tags),
+ * store them, and return the cleaned response.
  */
 export async function processMemoryTags(response: string): Promise<string> {
   const store = await loadMemory();
-  let clean = response;
-  let changed = false;
+  const result = processTags(response, store, taskStoreRef || undefined);
 
-  // [REMEMBER: fact to store]
-  for (const match of response.matchAll(/\[REMEMBER:\s*(.+?)\]/gi)) {
-    store.facts.push({
-      id: crypto.randomUUID(),
-      content: match[1].trim(),
-      createdAt: new Date().toISOString(),
-    });
-    clean = clean.replace(match[0], "");
-    changed = true;
-  }
-
-  // [GOAL: text] or [GOAL: text | DEADLINE: date]
-  for (const match of response.matchAll(
-    /\[GOAL:\s*(.+?)(?:\s*\|\s*DEADLINE:\s*(.+?))?\]/gi
-  )) {
-    store.goals.push({
-      id: crypto.randomUUID(),
-      content: match[1].trim(),
-      deadline: match[2]?.trim() || null,
-      status: "active",
-      createdAt: new Date().toISOString(),
-      completedAt: null,
-    });
-    clean = clean.replace(match[0], "");
-    changed = true;
-  }
-
-  // [DONE: search text for completed goal]
-  for (const match of response.matchAll(/\[DONE:\s*(.+?)\]/gi)) {
-    const searchText = match[1].trim().toLowerCase();
-    const goal = store.goals.find(
-      (g) =>
-        g.status === "active" && g.content.toLowerCase().includes(searchText)
-    );
-    if (goal) {
-      goal.status = "completed";
-      goal.completedAt = new Date().toISOString();
-    }
-    clean = clean.replace(match[0], "");
-    changed = true;
-  }
-
-  if (changed) {
+  if (result.memoryChanged) {
     await saveMemory(store);
   }
 
-  // Strip [PROGRESS: ...] tags (already sent as real-time updates)
-  clean = clean.replace(/\[PROGRESS:\s*.+?\]/gi, "");
-
-  return clean.trim();
+  return result.cleanText;
 }
 
 /**

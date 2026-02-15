@@ -1,7 +1,7 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
 import { acquireLock, releaseLock } from "./session";
-import { createBot } from "./bot";
+import { createBot, heartbeat } from "./bot";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
@@ -42,6 +42,7 @@ async function main(): Promise<void> {
 
   // Cleanup on exit
   const cleanup = async () => {
+    if (heartbeat) heartbeat.stop();
     await stopPlaywrightMCP();
     await releaseLock();
     process.exit(0);
@@ -55,6 +56,11 @@ async function main(): Promise<void> {
   bot.start({
     onStart: () => {
       console.log("Bot is running. Waiting for messages...");
+
+      // Start heartbeat after bot is ready
+      if (heartbeat) {
+        heartbeat.start();
+      }
     },
   });
 }

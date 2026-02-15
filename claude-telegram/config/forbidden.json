@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "rules": [
+    {
+      "id": "no-git-push-force",
+      "description": "git force push 금지",
+      "pattern": "git push.*--force|git push.*-f\\b",
+      "type": "command",
+      "severity": "critical"
+    },
+    {
+      "id": "no-delete-data",
+      "description": "DB 파일이나 data 디렉토리 삭제 금지",
+      "pattern": "rm.*\\.db|rm.*data/|rmdir.*data",
+      "type": "command",
+      "severity": "critical"
+    },
+    {
+      "id": "no-env-expose",
+      "description": ".env 파일 내용 노출 금지",
+      "pattern": "cat.*\\.env|echo.*TOKEN|echo.*SECRET|echo.*PASSWORD",
+      "type": "command",
+      "severity": "critical"
+    },
+    {
+      "id": "no-system-modify",
+      "description": "시스템 파일 및 LaunchAgent 수정 금지",
+      "pattern": "launchctl|crontab|/etc/|/System/",
+      "type": "command",
+      "severity": "critical"
+    },
+    {
+      "id": "no-npm-global",
+      "description": "글로벌 패키지 설치 금지",
+      "pattern": "npm install -g|bun install -g|pip install(?!.*-r)",
+      "type": "command",
+      "severity": "warning"
+    },
+    {
+      "id": "no-rm-rf",
+      "description": "rm -rf 사용 금지",
+      "pattern": "rm\\s+-rf\\s+/|rm\\s+-rf\\s+~",
+      "type": "command",
+      "severity": "critical"
+    },
+    {
+      "id": "no-git-push-main",
+      "description": "main 브랜치에 직접 push 금지 (자율 모드에서)",
+      "pattern": "git push.*main|git push.*master",
+      "type": "command",
+      "severity": "warning"
+    },
+    {
+      "id": "cost-limit",
+      "description": "실행당 $2 초과 금지",
+      "type": "cost_limit",
+      "max_cost_usd": 2.0,
+      "severity": "critical"
+    },
+    {
+      "id": "rate-limit",
+      "description": "시간당 5개 초과 능동 메시지 금지",
+      "type": "rate_limit",
+      "max_per_hour": 5,
+      "severity": "critical"
+    }
+  ],
+  "updated_at": "2026-02-15T00:00:00Z"
+}

@@ -9,17 +9,30 @@ import {
   getMemorySummary,
   getMemoryDetail,
   clearMemory,
+  setTaskStore,
 } from "./memory";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
 import {
   initDb,
+  getDb,
   saveMessage,
   getRecentMessages,
   searchMessages,
   getMessageCount,
   getConversationRecap,
 } from "./db";
+import {
+  TaskStore,
+  ForbiddenActions,
+  AuditLog,
+  Heartbeat,
+  loadSoul,
+  buildAgentSystemPrompt,
+  type HeartbeatConfig,
+} from "@namukeu/agent-core";
+import { createTelegramAdapter } from "./platform";
+import { seedInitialTasks } from "./seed-tasks";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const ALLOWED_USER_ID = parseInt(process.env.TELEGRAM_USER_ID!, 10);
@@ -28,8 +41,15 @@ const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
 
 let profileContext = "";
+let soulContent = "";
 
 const startTime = Date.now();
+
+// Agent system exports
+export let heartbeat: Heartbeat | null = null;
+export let taskStore: TaskStore | null = null;
+export let forbidden: ForbiddenActions | null = null;
+export let auditLog: AuditLog | null = null;
 
 async function loadProfile(): Promise<void> {
   try {
@@ -40,6 +60,12 @@ async function loadProfile(): Promise<void> {
   } catch {
     console.log("No profile.md found, running without profile context.");
   }
+}
+
+async function loadSoulFile(): Promise<void> {
+  soulContent = await loadSoul(
+    join(import.meta.dir, "..", "config", "SOUL.md")
+  );
 }
 
 function buildSystemPrompt(memoryContext: string, conversationRecap?: string): string {
@@ -68,6 +94,12 @@ function buildSystemPrompt(memoryContext: string, conversationRecap?: string): s
   });
   parts.push(`Current time: ${timeStr}`);
 
+  // Inject forbidden actions at the top
+  if (forbidden) {
+    const forbiddenBlock = forbidden.formatForPrompt();
+    if (forbiddenBlock) parts.push(`\n${forbiddenBlock}`);
+  }
+
   if (profileContext) parts.push(`\nProfile:\n${profileContext}`);
   if (memoryContext) parts.push(`\n${memoryContext}`);
   if (conversationRecap) parts.push(`\n${conversationRecap}`);
@@ -86,6 +118,14 @@ function buildSystemPrompt(memoryContext: string, conversationRecap?: string): s
       "\n[REMEMBER: fact to store]" +
       "\n[GOAL: goal text | DEADLINE: optional date]" +
       "\n[DONE: search text for completed goal]"
+  );
+
+  parts.push(
+    "\nTASK SCHEDULING:" +
+      "\nYou can create autonomous tasks that run on a schedule. Include these tags:" +
+      "\n[TASK: title | CRON: cron expression | PROMPT: what to do]" +
+      "\n[TASK: title | AT: ISO datetime | PROMPT: what to do]" +
+      "\n[CANCEL_TASK: search text for task title]"
   );
 
   parts.push(
@@ -141,12 +181,99 @@ function formatTimestamp(iso: string): string {
 
 export async function createBot(): Promise<Bot> {
   await loadProfile();
+  await loadSoulFile();
   initDb();
 
   const bot = new Bot(BOT_TOKEN);
   const sessions = new SessionTracker();
   await sessions.load();
   const queue = new MessageQueue();
+
+  // --- Agent system initialization ---
+  const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
+  const CONFIG_DIR = join(import.meta.dir, "..", "config");
+  const AGENT_ENABLED = process.env.AGENT_ENABLED !== "false";
+
+  const db = getDb();
+  taskStore = new TaskStore(db);
+  setTaskStore(taskStore);
+
+  forbidden = new ForbiddenActions(join(CONFIG_DIR, "forbidden.json"));
+  await forbidden.load();
+
+  auditLog = new AuditLog(join(DATA_DIR, "audit.log"));
+
+  const platform = createTelegramAdapter(bot);
+
+  const heartbeatConfig: HeartbeatConfig = {
+    intervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || "300000", 10),
+    dailyBudgetUsd: parseFloat(process.env.AGENT_DAILY_BUDGET_USD || "1.0"),
+    quietHoursStart: parseInt(process.env.QUIET_HOURS_START || "23", 10),
+    quietHoursEnd: parseInt(process.env.QUIET_HOURS_END || "8", 10),
+    maxProactivePerHour: 5,
+    timezone: USER_TIMEZONE,
+  };
+
+  if (AGENT_ENABLED) {
+    heartbeat = new Heartbeat({
+      taskStore,
+      forbidden,
+      audit: auditLog,
+      platform,
+      config: heartbeatConfig,
+      notifyChatId: ALLOWED_USER_ID.toString(),
+      executeTask: async (task) => {
+        const memoryContext = await getMemoryContext();
+        const activeTasks = taskStore!
+          .getActive()
+          .map((t) => `- ${t.title} (${t.type})`)
+          .join("\n");
+
+        const timeStr = new Date().toLocaleString("en-US", {
+          timeZone: USER_TIMEZONE,
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        const systemPrompt = buildAgentSystemPrompt({
+          soul: soulContent,
+          forbiddenBlock: forbidden!.formatForPrompt(),
+          memoryContext,
+          activeTasksSummary: activeTasks,
+          userName: USER_NAME,
+          currentTime: timeStr,
+        });
+
+        const agentSessionId = `agent-${task.id.slice(0, 8)}`;
+        const result = await callClaude(task.prompt, {
+          sessionId: agentSessionId,
+          isNewSession: true,
+          systemPrompt,
+        });
+
+        // Process tags in agent response too
+        if (result.success) {
+          const cleaned = await processMemoryTags(result.result);
+          return {
+            result: cleaned,
+            costUsd: result.costUsd,
+            durationMs: result.durationMs,
+          };
+        }
+        return {
+          result: result.error || "Task failed",
+          costUsd: result.costUsd,
+          durationMs: result.durationMs,
+        };
+      },
+    });
+    seedInitialTasks(taskStore);
+    console.log("[agent] Autonomous agent system initialized");
+  }
 
   // --- Auth middleware ---
   bot.use(async (ctx, next) => {
@@ -160,15 +287,20 @@ export async function createBot(): Promise<Bot> {
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
-      "Claude Telegram Relay v2 is running.\n" +
-        "Send me a message and I'll respond using Claude Code.\n\n" +
+      "Claude Telegram Relay v2 + Agent System\n\n" +
         "Commands:\n" +
         "/reset — Start a new conversation\n" +
         "/status — Show bot status\n" +
         "/memory — Show stored memories\n" +
         "/forget — Clear all memories\n" +
         "/history — Recent conversation history\n" +
-        "/search <query> — Search past messages"
+        "/search <query> — Search past messages\n\n" +
+        "Agent Commands:\n" +
+        "/tasks — View autonomous tasks\n" +
+        "/cancel <id> — Cancel a task\n" +
+        "/forbidden — View forbidden actions\n" +
+        "/stop — Emergency stop agent\n" +
+        "/resume_agent — Resume agent"
     );
   });
 
@@ -186,6 +318,13 @@ export async function createBot(): Promise<Bot> {
     const msgCount = getMessageCount(chatId);
     const uptime = (Date.now() - startTime) / 1000;
 
+    const agentStatus = heartbeat
+      ? heartbeat.isStopped()
+        ? "stopped"
+        : "running"
+      : "disabled";
+    const activeTaskCount = taskStore ? taskStore.getActive().length : 0;
+
     const lines = [
       "Bot Status",
       `Session: ${session ? session.sessionId.slice(0, 8) + "..." : "none"}`,
@@ -193,6 +332,7 @@ export async function createBot(): Promise<Bot> {
       `Total messages (DB): ${msgCount}`,
       `Generation: ${session?.generation || 0}`,
       `Memory: ${memorySummary}`,
+      `Agent: ${agentStatus} | Tasks: ${activeTaskCount}`,
       `Uptime: ${formatUptime(uptime)}`,
     ];
 
@@ -262,6 +402,80 @@ export async function createBot(): Promise<Bot> {
       `Found ${messages.length} messages matching "${query}":\n\n` +
         lines.join("\n\n")
     );
+  });
+
+  // --- Agent commands ---
+
+  bot.command("tasks", async (ctx) => {
+    if (!taskStore) {
+      await ctx.reply("Agent system is not enabled.");
+      return;
+    }
+    const active = taskStore.getActive();
+    if (active.length === 0) {
+      await ctx.reply("No active tasks.");
+      return;
+    }
+
+    const lines = ["Active Tasks:"];
+    for (const t of active) {
+      const status = t.status === "running" ? "🔄" : "⏳";
+      const next = t.schedule_next
+        ? ` (next: ${new Date(t.schedule_next).toLocaleString("ko-KR", { timeZone: USER_TIMEZONE, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })})`
+        : "";
+      const cron = t.schedule_cron ? ` [${t.schedule_cron}]` : "";
+      lines.push(`${status} ${t.title}${cron}${next}\n   id: ${t.id.slice(0, 8)} | runs: ${t.run_count}`);
+    }
+    await sendResponse(ctx, lines.join("\n"));
+  });
+
+  bot.command("cancel", async (ctx) => {
+    if (!taskStore) return;
+    const search = ctx.match?.trim();
+    if (!search) {
+      await ctx.reply("Usage: /cancel <task-id or title>");
+      return;
+    }
+
+    // Try by ID prefix first
+    const all = taskStore.getActive();
+    const byId = all.find((t) => t.id.startsWith(search));
+    if (byId && taskStore.cancelTask(byId.id)) {
+      await ctx.reply(`Task cancelled: ${byId.title}`);
+      return;
+    }
+
+    // Try by title
+    const byTitle = taskStore.findByTitle(search);
+    if (byTitle && taskStore.cancelTask(byTitle.id)) {
+      await ctx.reply(`Task cancelled: ${byTitle.title}`);
+      return;
+    }
+
+    await ctx.reply("Task not found.");
+  });
+
+  bot.command("forbidden", async (ctx) => {
+    if (!forbidden) return;
+    await sendResponse(ctx, forbidden.formatForDisplay());
+  });
+
+  bot.command("stop", async (ctx) => {
+    if (heartbeat) {
+      heartbeat.stop();
+      await ctx.reply("Agent stopped. Use /resume_agent to restart.");
+    } else {
+      await ctx.reply("Agent system is not running.");
+    }
+  });
+
+  bot.command("resume_agent", async (ctx) => {
+    if (heartbeat) {
+      heartbeat.resume();
+      await ctx.reply("Agent resumed.");
+    } else {
+      await ctx.reply("Agent system is not initialized.");
+    }
   });
 
   // --- Message handlers ---
