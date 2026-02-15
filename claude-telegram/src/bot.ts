@@ -219,7 +219,7 @@ export async function createBot(): Promise<Bot> {
     timezone: USER_TIMEZONE,
     idle: {
       enabled: process.env.IDLE_TASKS_ENABLED !== "false",
-      idleThresholdMs: parseInt(process.env.IDLE_THRESHOLD_MS || "1800000", 10),
+      idleThresholdMs: parseInt(process.env.IDLE_THRESHOLD_MS || "600000", 10),
       maxIdleTasksPerDay: parseInt(process.env.IDLE_MAX_PER_DAY || "3", 10),
     },
     monitorsEnabled: process.env.MONITORS_ENABLED !== "false",

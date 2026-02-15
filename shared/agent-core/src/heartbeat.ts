@@ -24,6 +24,9 @@ export class Heartbeat {
   private stopped = false;
   private deps: HeartbeatDeps;
 
+  // Execution guard
+  private executing = false;
+
   // Idle tracking
   private lastTaskExecutedAt: number = Date.now();
   private idleTasksToday: number = 0;
@@ -93,8 +96,13 @@ export class Heartbeat {
 
   private async tick(): Promise<void> {
     if (this.stopped) return;
+    if (this.executing) {
+      console.log("[heartbeat] Previous task still running, skipping tick");
+      return;
+    }
 
     try {
+      this.executing = true;
       // Check quiet hours
       if (this.isQuietHours()) return;
 
@@ -136,6 +144,8 @@ export class Heartbeat {
       }
     } catch (err) {
       console.error("[heartbeat] Tick error:", err);
+    } finally {
+      this.executing = false;
     }
   }
 
