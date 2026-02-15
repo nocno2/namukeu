@@ -55,7 +55,7 @@ async function handleRequest(req: Request): Promise<Response> {
   // --- Status ---
   if (path === "/api/status" && method === "GET") {
     const hb = deps.heartbeat;
-    const status = hb ? hb.getStatus() : null;
+    const status = hb ? await hb.getStatus() : null;
     return json(status || { error: "Heartbeat not initialized" });
   }
 

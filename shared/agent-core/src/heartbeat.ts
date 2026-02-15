@@ -392,22 +392,25 @@ export class Heartbeat {
 
   // ─── Status ───
 
-  getStatus(): {
+  async getStatus(): Promise<{
     running: boolean;
     idleEnabled: boolean;
     chainingEnabled: boolean;
     monitorsEnabled: boolean;
-    idleTasksToday: number;
-    lastTaskExecutedAt: number;
+    todayTaskCount: number;
+    todayCost: number;
+    lastTaskExecutedAt: number | null;
     monitorStatus: ReturnType<MonitorSystem["getStatus"]> | null;
-  } {
+  }> {
+    const stats = await this.deps.audit.getTodayStats(this.deps.config.timezone);
     return {
       running: !this.stopped,
       idleEnabled: this.idleEnabled,
       chainingEnabled: this.chainingEnabled,
       monitorsEnabled: this.monitorsEnabled,
-      idleTasksToday: this.idleTasksToday,
-      lastTaskExecutedAt: this.lastTaskExecutedAt,
+      todayTaskCount: stats.taskCount,
+      todayCost: stats.totalCost,
+      lastTaskExecutedAt: stats.lastTaskAt,
       monitorStatus: this.monitorSystem?.getStatus() ?? null,
     };
   }

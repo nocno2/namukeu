@@ -53,4 +53,26 @@ export class AuditLog {
         new Date(e.ts).getTime() > oneHourAgo
     ).length;
   }
+
+  async getTodayStats(timezone: string): Promise<{ taskCount: number; totalCost: number; lastTaskAt: number | null }> {
+    const entries = await this.getRecent(200);
+    const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: timezone });
+
+    let taskCount = 0;
+    let totalCost = 0;
+    let lastTaskAt: number | null = null;
+
+    for (const entry of entries) {
+      const entryDate = new Date(entry.ts).toLocaleDateString("en-CA", { timeZone: timezone });
+      if (entryDate !== todayStr) continue;
+      if (entry.type !== "heartbeat") continue;
+
+      taskCount++;
+      if (entry.cost) totalCost += entry.cost;
+      const entryTime = new Date(entry.ts).getTime();
+      if (!lastTaskAt || entryTime > lastTaskAt) lastTaskAt = entryTime;
+    }
+
+    return { taskCount, totalCost, lastTaskAt };
+  }
 }
