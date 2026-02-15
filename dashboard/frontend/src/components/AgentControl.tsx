@@ -11,6 +11,8 @@ interface Props {
 // Actual API response shape
 interface AgentStatusResponse {
   running: boolean;
+  executing: boolean;
+  currentTask: { title: string; startedAt: number } | null;
   idleEnabled: boolean;
   chainingEnabled: boolean;
   monitorsEnabled: boolean;
@@ -84,11 +86,11 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
     return (
       <div className={`bg-surface border ${borderClass} rounded-xl p-3 flex items-center justify-between`}>
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
+          <span className={`w-2 h-2 rounded-full ${status?.executing ? "bg-warning animate-pulse" : status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
           <span className="text-sm font-medium">Agent</span>
           {status && (
             <span className="text-[10px] text-text-muted">
-              idle {status.idleEnabled ? "on" : "off"} · tasks {status.todayTaskCount}
+              {status.executing ? `실행 중: ${status.currentTask?.title?.slice(0, 20) || "..."}` : `idle ${status.idleEnabled ? "on" : "off"} · tasks ${status.todayTaskCount}`}
             </span>
           )}
         </div>
@@ -133,10 +135,16 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-text-muted">상태</span>
-            <span className={status.running ? "text-success" : "text-danger"}>
-              {status.running ? "실행 중" : "중지됨"}
+            <span className={status.executing ? "text-warning" : status.running ? "text-success" : "text-danger"}>
+              {status.executing ? "태스크 실행 중" : status.running ? "대기 중" : "중지됨"}
             </span>
           </div>
+          {status.currentTask && (
+            <div className="bg-warning/10 border border-warning/20 rounded-lg p-2">
+              <div className="text-xs text-warning font-medium">{status.currentTask.title}</div>
+              <div className="text-[10px] text-text-muted mt-0.5">{timeAgo(status.currentTask.startedAt)}부터 실행 중</div>
+            </div>
+          )}
           <div className="flex items-center justify-between text-sm">
             <span className="text-text-muted">오늘 작업</span>
             <span>{status.todayTaskCount}건 · ${status.todayCost.toFixed(2)}</span>
@@ -147,9 +155,9 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
           </div>
 
           <div className="border-t border-border pt-3 space-y-3">
-            <Toggle label="Idle Exploration" enabled={status.idleEnabled} onChange={(v) => toggle("idle", v)} />
-            <Toggle label="Task Chaining" enabled={status.chainingEnabled} onChange={(v) => toggle("chain", v)} />
-            <Toggle label="Monitors" enabled={status.monitorsEnabled} onChange={(v) => toggle("monitors", v)} />
+            <Toggle label="자율 탐색" enabled={status.idleEnabled} onChange={(v) => toggle("idle", v)} />
+            <Toggle label="작업 연쇄" enabled={status.chainingEnabled} onChange={(v) => toggle("chain", v)} />
+            <Toggle label="서비스 감시" enabled={status.monitorsEnabled} onChange={(v) => toggle("monitors", v)} />
           </div>
 
           {monitors.length > 0 && (

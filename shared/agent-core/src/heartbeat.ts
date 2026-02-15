@@ -26,6 +26,8 @@ export class Heartbeat {
 
   // Execution guard
   private executing = false;
+  private currentTaskTitle: string | null = null;
+  private currentTaskStartedAt: number | null = null;
 
   // Idle tracking
   private lastTaskExecutedAt: number = Date.now();
@@ -161,6 +163,8 @@ export class Heartbeat {
     }
 
     // Mark as running
+    this.currentTaskTitle = task.title;
+    this.currentTaskStartedAt = Date.now();
     this.deps.taskStore.updateStatus(task.id, "running");
     console.log(`[heartbeat] Executing task: ${task.title}`);
 
@@ -195,10 +199,14 @@ export class Heartbeat {
         await this.deps.platform.sendMessage(targetChatId, message);
       }
 
+      this.currentTaskTitle = null;
+      this.currentTaskStartedAt = null;
       console.log(
         `[heartbeat] Task "${task.title}" completed ($${costUsd?.toFixed(4) || "0"})`
       );
     } catch (err) {
+      this.currentTaskTitle = null;
+      this.currentTaskStartedAt = null;
       console.error(`[heartbeat] Task "${task.title}" failed:`, err);
       this.deps.taskStore.updateStatus(task.id, "failed");
 
@@ -394,6 +402,8 @@ export class Heartbeat {
 
   async getStatus(): Promise<{
     running: boolean;
+    executing: boolean;
+    currentTask: { title: string; startedAt: number } | null;
     idleEnabled: boolean;
     chainingEnabled: boolean;
     monitorsEnabled: boolean;
@@ -405,6 +415,10 @@ export class Heartbeat {
     const stats = await this.deps.audit.getTodayStats(this.deps.config.timezone);
     return {
       running: !this.stopped,
+      executing: this.executing,
+      currentTask: this.currentTaskTitle
+        ? { title: this.currentTaskTitle, startedAt: this.currentTaskStartedAt! }
+        : null,
       idleEnabled: this.idleEnabled,
       chainingEnabled: this.chainingEnabled,
       monitorsEnabled: this.monitorsEnabled,
