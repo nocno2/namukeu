@@ -213,8 +213,8 @@ export async function createBot(): Promise<Bot> {
   const heartbeatConfig: HeartbeatConfig = {
     intervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || "300000", 10),
     dailyBudgetUsd: parseFloat(process.env.AGENT_DAILY_BUDGET_USD || "999"),
-    quietHoursStart: parseInt(process.env.QUIET_HOURS_START || "23", 10),
-    quietHoursEnd: parseInt(process.env.QUIET_HOURS_END || "8", 10),
+    quietHoursStart: parseInt(process.env.QUIET_HOURS_START || "-1", 10),
+    quietHoursEnd: parseInt(process.env.QUIET_HOURS_END || "-1", 10),
     maxProactivePerHour: 5,
     timezone: USER_TIMEZONE,
     idle: {
