@@ -1,7 +1,10 @@
 import type { TaskStore } from "./tasks";
 import type { ForbiddenActions } from "./forbidden";
 import type { AuditLog } from "./audit";
-import type { AgentTask, ChannelMap, HeartbeatConfig, PlatformAdapter } from "./types";
+import type { GoalStore } from "./goals";
+import type { AgentTask, ChannelMap, HeartbeatConfig, MonitorDefinition, PlatformAdapter } from "./types";
+import { MonitorSystem } from "./monitors";
+import { selectIdleStrategy, buildIdlePrompt } from "./idle";
 
 export interface HeartbeatDeps {
   taskStore: TaskStore;
@@ -11,6 +14,8 @@ export interface HeartbeatDeps {
   config: HeartbeatConfig;
   notifyChatId: string;
   channelMap?: ChannelMap;
+  monitors?: MonitorDefinition[];
+  goalStore?: GoalStore;
   executeTask: (task: AgentTask) => Promise<{ result: string; costUsd?: number; durationMs?: number }>;
 }
 
@@ -19,8 +24,24 @@ export class Heartbeat {
   private stopped = false;
   private deps: HeartbeatDeps;
 
+  // Idle tracking
+  private lastTaskExecutedAt: number = Date.now();
+  private idleTasksToday: number = 0;
+  private idleTasksResetDate: string = new Date().toISOString().slice(0, 10);
+
+  // Monitor system
+  private monitorSystem: MonitorSystem | null = null;
+
+  // Feature toggles (initialized from config)
+  private idleEnabled: boolean;
+  private chainingEnabled: boolean;
+  private monitorsEnabled: boolean;
+
   constructor(deps: HeartbeatDeps) {
     this.deps = deps;
+    this.idleEnabled = deps.config.idle?.enabled ?? false;
+    this.chainingEnabled = deps.config.chainingEnabled ?? false;
+    this.monitorsEnabled = deps.config.monitorsEnabled ?? false;
   }
 
   start(): void {
@@ -28,6 +49,15 @@ export class Heartbeat {
     console.log(
       `[heartbeat] Started (interval: ${this.deps.config.intervalMs / 1000}s)`
     );
+
+    // Start monitor system if monitors provided and enabled
+    if (this.monitorsEnabled && this.deps.monitors && this.deps.monitors.length > 0) {
+      this.monitorSystem = new MonitorSystem(
+        this.deps.monitors,
+        (eventName, context) => this.fireEvent(eventName, context)
+      );
+      this.monitorSystem.start();
+    }
 
     // Run first tick after a short delay
     setTimeout(() => this.tick(), 5000);
@@ -43,6 +73,10 @@ export class Heartbeat {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+    if (this.monitorSystem) {
+      this.monitorSystem.stop();
+      this.monitorSystem = null;
     }
     console.log("[heartbeat] Stopped");
   }
@@ -87,7 +121,12 @@ export class Heartbeat {
 
       // Get due tasks
       const dueTasks = this.deps.taskStore.getDueTasks();
-      if (dueTasks.length === 0) return;
+
+      if (dueTasks.length === 0) {
+        // No due tasks — try idle task if enabled
+        await this.maybeRunIdleTask();
+        return;
+      }
 
       console.log(`[heartbeat] ${dueTasks.length} task(s) due`);
 
@@ -118,6 +157,9 @@ export class Heartbeat {
     try {
       const { result, costUsd, durationMs } =
         await this.deps.executeTask(task);
+
+      // Update last task execution time
+      this.lastTaskExecutedAt = Date.now();
 
       // Complete the run (handles recurring re-scheduling)
       this.deps.taskStore.completeRun(task.id, result, costUsd);
@@ -166,6 +208,93 @@ export class Heartbeat {
     }
   }
 
+  /** Run an idle task if conditions are met */
+  private async maybeRunIdleTask(): Promise<void> {
+    if (!this.idleEnabled) return;
+
+    const idleConfig = this.deps.config.idle;
+    if (!idleConfig?.enabled) return;
+
+    // Reset daily counter if date changed
+    const today = new Date().toISOString().slice(0, 10);
+    if (today !== this.idleTasksResetDate) {
+      this.idleTasksToday = 0;
+      this.idleTasksResetDate = today;
+    }
+
+    // Check daily idle task limit
+    if (this.idleTasksToday >= idleConfig.maxIdleTasksPerDay) {
+      return;
+    }
+
+    // Check idle threshold
+    const elapsed = Date.now() - this.lastTaskExecutedAt;
+    if (elapsed < idleConfig.idleThresholdMs) {
+      return;
+    }
+
+    // Select and run idle strategy
+    const { strategy, project } = selectIdleStrategy();
+    const prompt = buildIdlePrompt(strategy, project, this.deps.goalStore);
+
+    console.log(`[heartbeat] Running idle task: ${strategy.title} (${project})`);
+
+    const idleTask: AgentTask = {
+      id: crypto.randomUUID(),
+      type: "one-time",
+      status: "running",
+      title: `[IDLE] ${strategy.title} - ${project}`,
+      prompt,
+      project,
+      schedule_cron: null,
+      schedule_next: null,
+      event_trigger: null,
+      last_run_at: null,
+      last_result: null,
+      run_count: 0,
+      max_runs: 1,
+      notify_user: true,
+      requires_approval: false,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const { result, costUsd, durationMs } =
+        await this.deps.executeTask(idleTask);
+
+      this.lastTaskExecutedAt = Date.now();
+      this.idleTasksToday++;
+
+      // Audit
+      await this.deps.audit.record({
+        ts: new Date().toISOString(),
+        type: "heartbeat",
+        task: idleTask.title,
+        violations: [],
+        cost: costUsd,
+        duration: durationMs,
+      });
+
+      // Notify
+      if (result) {
+        const targetChatId = this.getTargetChatId(idleTask);
+        const prefix = `[IDLE/${project}] `;
+        const message =
+          result.length > 3800
+            ? prefix + result.slice(0, 3800) + "..."
+            : prefix + result;
+        await this.deps.platform.sendMessage(targetChatId, message);
+      }
+
+      console.log(
+        `[heartbeat] Idle task "${idleTask.title}" completed ($${costUsd?.toFixed(4) || "0"})`
+      );
+    } catch (err) {
+      console.error(`[heartbeat] Idle task failed:`, err);
+    }
+  }
+
   /** Resolve the target chat/channel ID for a task based on its project */
   private getTargetChatId(task: AgentTask): string {
     if (this.deps.channelMap && task.project) {
@@ -194,13 +323,82 @@ export class Heartbeat {
     return hour >= quietHoursStart && hour < quietHoursEnd;
   }
 
-  /** Fire event-triggered tasks */
-  async fireEvent(eventName: string): Promise<void> {
+  /** Fire event-triggered tasks, optionally with context */
+  async fireEvent(eventName: string, context?: string): Promise<void> {
     if (this.stopped) return;
+
+    // Guard: don't fire during quiet hours
+    if (this.isQuietHours()) {
+      console.log(`[heartbeat] Event "${eventName}" suppressed (quiet hours)`);
+      return;
+    }
 
     const tasks = this.deps.taskStore.getEventTasks(eventName);
     for (const task of tasks) {
-      await this.executeTask(task);
+      // Append context to prompt if provided
+      if (context) {
+        const enrichedTask = { ...task, prompt: `${task.prompt}\n\nContext: ${context}` };
+        await this.executeTask(enrichedTask);
+      } else {
+        await this.executeTask(task);
+      }
     }
+  }
+
+  // ─── Feature Toggles ───
+
+  setIdleEnabled(enabled: boolean): void {
+    this.idleEnabled = enabled;
+    console.log(`[heartbeat] Idle tasks ${enabled ? "enabled" : "disabled"}`);
+  }
+
+  setChainingEnabled(enabled: boolean): void {
+    this.chainingEnabled = enabled;
+    console.log(`[heartbeat] Task chaining ${enabled ? "enabled" : "disabled"}`);
+  }
+
+  setMonitorsEnabled(enabled: boolean): void {
+    this.monitorsEnabled = enabled;
+    if (enabled && !this.monitorSystem && this.deps.monitors && this.deps.monitors.length > 0) {
+      this.monitorSystem = new MonitorSystem(
+        this.deps.monitors,
+        (eventName, context) => this.fireEvent(eventName, context)
+      );
+      this.monitorSystem.start();
+    } else if (!enabled && this.monitorSystem) {
+      this.monitorSystem.stop();
+      this.monitorSystem = null;
+    }
+    console.log(`[heartbeat] Monitors ${enabled ? "enabled" : "disabled"}`);
+  }
+
+  getMonitorSystem(): MonitorSystem | null {
+    return this.monitorSystem;
+  }
+
+  isChainingEnabled(): boolean {
+    return this.chainingEnabled;
+  }
+
+  // ─── Status ───
+
+  getStatus(): {
+    running: boolean;
+    idleEnabled: boolean;
+    chainingEnabled: boolean;
+    monitorsEnabled: boolean;
+    idleTasksToday: number;
+    lastTaskExecutedAt: number;
+    monitorStatus: ReturnType<MonitorSystem["getStatus"]> | null;
+  } {
+    return {
+      running: !this.stopped,
+      idleEnabled: this.idleEnabled,
+      chainingEnabled: this.chainingEnabled,
+      monitorsEnabled: this.monitorsEnabled,
+      idleTasksToday: this.idleTasksToday,
+      lastTaskExecutedAt: this.lastTaskExecutedAt,
+      monitorStatus: this.monitorSystem?.getStatus() ?? null,
+    };
   }
 }

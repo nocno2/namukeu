@@ -23,6 +23,8 @@ export function buildAgentSystemPrompt(params: {
   activeTasksSummary: string;
   userName: string;
   currentTime: string;
+  goalsContext?: string;
+  chainingEnabled?: boolean;
 }): string {
   const parts: string[] = [];
 
@@ -41,6 +43,10 @@ export function buildAgentSystemPrompt(params: {
     parts.push(`\n${params.memoryContext}`);
   }
 
+  if (params.goalsContext) {
+    parts.push(`\nPROJECT GOALS:\n${params.goalsContext}`);
+  }
+
   if (params.activeTasksSummary) {
     parts.push(`\nACTIVE TASKS:\n${params.activeTasksSummary}`);
   }
@@ -51,6 +57,16 @@ export function buildAgentSystemPrompt(params: {
       "\nBe concise in your response. Focus on the task at hand." +
       "\nYour response will be sent directly to the user via messaging."
   );
+
+  if (params.chainingEnabled) {
+    parts.push(
+      "\nTASK CHAINING:" +
+        "\nIf your current task reveals a follow-up action needed, you can chain a new task:" +
+        "\n[CHAIN: task title | PROMPT: what to do | DELAY: minutes]" +
+        "\nDELAY is optional (default: 5 minutes). Use chaining sparingly — only when a follow-up is clearly necessary." +
+        "\nChains are depth-limited to prevent infinite loops."
+    );
+  }
 
   return parts.join("\n");
 }

@@ -57,6 +57,8 @@ export interface AgentTask {
   requires_approval: boolean;
   created_at: string;
   updated_at: string;
+  chain_depth?: number;
+  chain_parent_id?: string;
 }
 
 /** Maps project codes to platform-specific channel/chat IDs */
@@ -109,4 +111,68 @@ export interface HeartbeatConfig {
   quietHoursEnd: number;   // 0-23
   maxProactivePerHour: number;
   timezone: string;
+  idle: IdleConfig;
+  monitorsEnabled: boolean;
+  chainingEnabled: boolean;
+}
+
+// ─── Monitors ───
+
+export interface HealthCheckEndpoint {
+  name: string;
+  url: string;
+  timeoutMs?: number;
+  project?: ProjectCode;
+}
+
+export interface HealthCheckMonitorConfig {
+  type: "health_check";
+  endpoints: HealthCheckEndpoint[];
+  failureThreshold: number;
+}
+
+export interface MonitorDefinition {
+  id: string;
+  name: string;
+  eventName: string;
+  intervalMs: number;
+  enabled: boolean;
+  config: HealthCheckMonitorConfig;
+}
+
+export interface MonitorState {
+  failureCounts: Record<string, number>;
+  lastCheckAt: string | null;
+  firedEvents: Record<string, string>;
+}
+
+// ─── Idle ───
+
+export interface IdleConfig {
+  enabled: boolean;
+  idleThresholdMs: number;
+  maxIdleTasksPerDay: number;
+}
+
+// ─── Goals ───
+
+export interface Goal {
+  id: string;
+  title: string;
+  description: string;
+  projects: ProjectCode[];
+  status: "active" | "completed" | "paused";
+  priority: "high" | "medium" | "low";
+  deadline: string | null;
+  progress: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Tag Process Context ───
+
+export interface TagProcessContext {
+  chainDepth?: number;
+  parentTaskId?: string;
+  maxChainDepth?: number;
 }

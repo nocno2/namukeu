@@ -8,3 +8,7 @@ export { getNextCronTime, cronMatchesNow, isValidCron } from "./cron";
 export { loadSoul, buildAgentSystemPrompt } from "./soul";
 export { processTags } from "./tags";
 export type { MemoryStore, TagProcessResult } from "./tags";
+export { GoalStore } from "./goals";
+export { MonitorSystem } from "./monitors";
+export { selectIdleStrategy, buildIdlePrompt, DEFAULT_IDLE_STRATEGIES } from "./idle";
+export type { IdleStrategy } from "./idle";

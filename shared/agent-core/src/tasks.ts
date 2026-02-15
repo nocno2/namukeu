@@ -38,6 +38,14 @@ export class TaskStore {
     this.db = db;
     this.db.run(CREATE_TABLE_SQL);
     this.db.run(CREATE_INDEX_SQL);
+
+    // Migration: add chain columns if not exist
+    try {
+      this.db.run("ALTER TABLE agent_tasks ADD COLUMN chain_depth INTEGER DEFAULT 0");
+    } catch { /* column already exists */ }
+    try {
+      this.db.run("ALTER TABLE agent_tasks ADD COLUMN chain_parent_id TEXT");
+    } catch { /* column already exists */ }
   }
 
   createTask(params: {
@@ -237,5 +245,7 @@ function rowToTask(row: any): AgentTask {
     ...row,
     notify_user: !!row.notify_user,
     requires_approval: !!row.requires_approval,
+    chain_depth: row.chain_depth || 0,
+    chain_parent_id: row.chain_parent_id || null,
   };
 }

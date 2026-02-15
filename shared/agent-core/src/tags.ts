@@ -1,4 +1,5 @@
 import type { TaskStore } from "./tasks";
+import type { TagProcessContext } from "./types";
 import { isValidCron } from "./cron";
 
 interface MemoryFact {
@@ -39,7 +40,8 @@ export interface TagProcessResult {
 export function processTags(
   response: string,
   memory: MemoryStore,
-  taskStore?: TaskStore
+  taskStore?: TaskStore,
+  context?: TagProcessContext
 ): TagProcessResult {
   let clean = response;
   let memoryChanged = false;
@@ -126,6 +128,27 @@ export function processTags(
       if (task && taskStore.cancelTask(task.id)) {
         tasksCancelled.push(task.title);
       }
+    }
+    clean = clean.replace(match[0], "");
+  }
+
+  // [CHAIN: title | PROMPT: text | DELAY: minutes(optional, default 5)]
+  for (const match of response.matchAll(
+    /\[CHAIN:\s*(.+?)\s*\|\s*PROMPT:\s*(.+?)(?:\s*\|\s*DELAY:\s*(\d+))?\]/gi
+  )) {
+    if (taskStore && (!context || (context.chainDepth || 0) < (context.maxChainDepth ?? 2))) {
+      const delayMinutes = parseInt(match[3] || "5", 10);
+      const scheduleAt = new Date(Date.now() + delayMinutes * 60_000).toISOString();
+      const task = taskStore.createTask({
+        title: match[1].trim(),
+        prompt: match[2].trim(),
+        type: "one-time",
+        scheduleAt,
+        notifyUser: true,
+      });
+      tasksCreated.push(`\u26D3 ${task.title}`);
+    } else if (context && (context.chainDepth || 0) >= (context.maxChainDepth ?? 2)) {
+      console.log(`[tags] Chain suppressed (depth ${context.chainDepth} >= max ${context.maxChainDepth ?? 2})`);
     }
     clean = clean.replace(match[0], "");
   }
