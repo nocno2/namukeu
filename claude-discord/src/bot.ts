@@ -43,6 +43,15 @@ const DEDICATED_CHANNELS = new Set(
     .filter(Boolean)
 );
 
+// Channel → Project context mapping
+// When the user talks in a project-specific channel, the assistant should
+// focus on that project's codebase and avoid confusion after session resets.
+const CHANNEL_PROJECT_MAP: Record<string, { project: string; codename: string; dir: string; description: string }> = {
+  "1472150448558444576": { project: "coin-auto-trade", codename: "COIN", dir: "coin-auto-trade/", description: "Upbit 자동매매 서버 (Python FastAPI :8001)" },
+  "1472220621340676217": { project: "ai-blog", codename: "BLOG", dir: "ai-blog/", description: "수익형 블로그 (Next.js + Bun :3100)" },
+  "1472220670497788147": { project: "dashboard", codename: "DASH", dir: "dashboard/", description: "개인 대시보드 (React + FastAPI :8002)" },
+};
+
 let profileContext = "";
 const startTime = Date.now();
 
@@ -57,7 +66,7 @@ async function loadProfile(): Promise<void> {
   }
 }
 
-function buildSystemPrompt(memoryContext: string, conversationRecap?: string): string {
+function buildSystemPrompt(memoryContext: string, conversationRecap?: string, channelId?: string): string {
   const parts: string[] = [];
 
   parts.push(
@@ -69,6 +78,27 @@ function buildSystemPrompt(memoryContext: string, conversationRecap?: string): s
   parts.push(
     "You have full agent capabilities: read/write files, run commands, search the web."
   );
+
+  // Inject project context based on channel
+  const channelProject = channelId ? CHANNEL_PROJECT_MAP[channelId] : undefined;
+  if (channelProject) {
+    parts.push(
+      `\nPROJECT CONTEXT:` +
+      `\nThis channel is dedicated to the **${channelProject.project}** project [${channelProject.codename}].` +
+      `\n- Directory: /Users/namwook/Documents/namukeu/${channelProject.dir}` +
+      `\n- Description: ${channelProject.description}` +
+      `\nFocus on this project when the user asks about code, bugs, features, or deployments.` +
+      `\nAlways check the project's CLAUDE.md for project-specific guidelines.` +
+      `\nThe user may still ask general questions or cross-project tasks — handle those naturally.`
+    );
+  } else {
+    parts.push(
+      `\nPROJECT CONTEXT:` +
+      `\nThis is a general channel. The user may discuss any project in the monorepo at /Users/namwook/Documents/namukeu/.` +
+      `\nProjects: COIN (coin-auto-trade), BLOG (ai-blog), DASH (dashboard), TRAIN (train-go), TGBOT (claude-telegram), DCBOT (claude-discord).` +
+      `\nRefer to the root CLAUDE.md for the full project structure.`
+    );
+  }
 
   if (USER_NAME) parts.push(`You are speaking with ${USER_NAME}.`);
 
@@ -394,7 +424,7 @@ export async function createBot(): Promise<Client> {
         if (isNew) {
           const memoryContext = await getMemoryContext();
           const recap = getConversationRecap(channelId, 30);
-          systemPrompt = buildSystemPrompt(memoryContext, recap);
+          systemPrompt = buildSystemPrompt(memoryContext, recap, channelId);
           finalPrompt = prompt;
         } else {
           const prefix = buildResumePrefix();

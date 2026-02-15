@@ -44,6 +44,20 @@
 - `COIN_API_URL` (기본: `http://127.0.0.1:8001`) + `COIN_API_TOKEN` 설정 필요
 - `/coin` 커맨드: `/status`, `/trading/positions`, `/trading/orders`, `/strategies/configs`, `/portfolio/summary` API를 병렬 호출하여 Discord 메시지로 포맷팅
 
+## 채널별 프로젝트 컨텍스트
+
+디스코드 채널은 각각 특정 프로젝트에 매핑되어 있다. 세션이 초기화되더라도 채널에 따라 자동으로 프로젝트 컨텍스트가 주입된다.
+
+| 채널 ID | 채널명 | 프로젝트 | 코드네임 | 디렉토리 |
+|---------|--------|----------|----------|----------|
+| 1472150448558444576 | 코인자동매매 | coin-auto-trade | COIN | `coin-auto-trade/` |
+| 1472220621340676217 | 수익형블로그 | ai-blog | BLOG | `ai-blog/` |
+| 1472220670497788147 | 개인용대시보드 | dashboard | DASH | `dashboard/` |
+
+- 매핑된 채널에서 대화하면 해당 프로젝트에 집중한다
+- DM이나 일반 채널에서는 모노레포 전체를 대상으로 한다
+- 사용자가 다른 프로젝트를 언급하면 자연스럽게 전환한다
+
 ## Session Management
 
 - Channel ID → deterministic UUID v5 → `--session-id` (new) or `--resume` (existing)
