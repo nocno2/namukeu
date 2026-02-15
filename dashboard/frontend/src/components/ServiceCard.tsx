@@ -1,0 +1,205 @@
+import { useState } from "react";
+import { api, type ServiceStatus } from "../lib/api";
+
+interface Props {
+  service: ServiceStatus;
+  collapsed: boolean;
+  pinned: boolean;
+  onClick: () => void;
+  onRefresh: () => void;
+  onToggleCollapse: () => void;
+  onTogglePin: () => void;
+  onShowLogs: () => void;
+}
+
+const TYPE_LABELS: Record<string, string> = {
+  http: "HTTP",
+  process: "Process",
+  self: "Self",
+};
+
+function DetailItem({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="flex justify-between text-xs">
+      <span className="text-text-muted">{label}</span>
+      <span className="font-mono">{value}</span>
+    </div>
+  );
+}
+
+function formatDetails(details: Record<string, unknown>): [string, string | number][] {
+  const items: [string, string | number][] = [];
+  for (const [key, val] of Object.entries(details)) {
+    if (val === null || val === undefined) continue;
+    if (typeof val === "object") {
+      for (const [k2, v2] of Object.entries(val as Record<string, unknown>)) {
+        if (v2 !== null && v2 !== undefined && typeof v2 !== "object") {
+          items.push([k2, String(v2)]);
+        }
+      }
+    } else {
+      items.push([key, typeof val === "number" ? val : String(val)]);
+    }
+  }
+  return items.slice(0, 6);
+}
+
+function timeAgo(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const secs = Math.floor(diff / 1000);
+  if (secs < 10) return "방금";
+  if (secs < 60) return `${secs}초 전`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}분 전`;
+  const hours = Math.floor(mins / 60);
+  return `${hours}시간 전`;
+}
+
+export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, onToggleCollapse, onTogglePin, onShowLogs }: Props) {
+  const isRunning = service.status === "running";
+  const canRestart = service.type !== "self";
+  const [restarting, setRestarting] = useState(false);
+
+  const handleRestart = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`${service.display_name}을(를) 재시작하시겠습니까?`)) return;
+
+    setRestarting(true);
+    try {
+      await api.restart(service.name);
+      setTimeout(onRefresh, 2000);
+    } catch {
+      alert("재시작 실패");
+    } finally {
+      setRestarting(false);
+    }
+  };
+
+  const handleCollapse = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleCollapse();
+  };
+
+  const handlePin = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onTogglePin();
+  };
+
+  return (
+    <div
+      onClick={onClick}
+      className={`bg-surface border rounded-xl transition-colors cursor-pointer ${
+        pinned ? "border-primary/40" : "border-border"
+      } ${collapsed ? "p-3" : "p-5"} hover:bg-surface-hover`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2 min-w-0">
+          <div
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              isRunning ? "bg-success" : "bg-danger"
+            }`}
+          />
+          <h3 className="font-semibold text-sm truncate">{service.display_name}</h3>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={handlePin}
+            className={`p-1 rounded transition-colors ${
+              pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"
+            }`}
+            title={pinned ? "고정 해제" : "상단 고정"}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+              <path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" />
+            </svg>
+          </button>
+          <button
+            onClick={handleCollapse}
+            className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors"
+            title={collapsed ? "펼치기" : "접기"}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              {collapsed ? (
+                <polyline points="6 9 12 15 18 9" />
+              ) : (
+                <polyline points="6 15 12 9 18 15" />
+              )}
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {collapsed ? (
+        /* Collapsed: minimal info */
+        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-text-muted">
+          <span className="font-mono">{TYPE_LABELS[service.type] || service.type}</span>
+          {service.port && <span className="font-mono">:{service.port}</span>}
+          <span>·</span>
+          <span>{timeAgo(service.checked_at)}</span>
+        </div>
+      ) : (
+        /* Expanded: full view */
+        <>
+          <p className="text-xs text-text-muted mt-1 ml-4">{service.description}</p>
+
+          {/* Meta */}
+          <div className="flex gap-2 mt-3 mb-3">
+            <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border font-mono">
+              {TYPE_LABELS[service.type] || service.type}
+            </span>
+            {service.port && (
+              <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border font-mono">
+                :{service.port}
+              </span>
+            )}
+          </div>
+
+          {/* Details */}
+          {service.details && (
+            <div className="space-y-1.5 border-t border-border pt-3">
+              {formatDetails(service.details).map(([label, value]) => (
+                <DetailItem key={label} label={label} value={value} />
+              ))}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="mt-3 flex gap-2">
+            {service.dashboard_url && isRunning && (
+              <a
+                href={service.dashboard_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="flex-1 block text-center text-xs text-blue-400 bg-blue-400/10 hover:bg-blue-400/20 border border-blue-400/20 rounded-lg py-2 transition-colors"
+              >
+                대시보드 열기
+              </a>
+            )}
+            <button
+              onClick={(e) => { e.stopPropagation(); onShowLogs(); }}
+              className="flex-1 text-xs text-text-muted bg-bg hover:bg-surface-hover border border-border rounded-lg py-2 transition-colors cursor-pointer"
+            >
+              로그
+            </button>
+            {canRestart && (
+              <button
+                onClick={handleRestart}
+                disabled={restarting}
+                className="flex-1 text-xs text-warning bg-warning/10 hover:bg-warning/20 disabled:opacity-50 border border-warning/20 rounded-lg py-2 transition-colors cursor-pointer"
+              >
+                {restarting ? "재시작 중..." : "재시작"}
+              </button>
+            )}
+          </div>
+
+          {/* Checked at */}
+          <div className="mt-3 text-[10px] text-text-muted">
+            {timeAgo(service.checked_at)}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
