@@ -54,7 +54,7 @@ Rules:
 
 사용자가 기차 예약을 요청하면 train-go API를 호출한다.
 - **Base URL:** `http://127.0.0.1:8000`
-- **인증:** `Authorization: Bearer {TRAIN_GO_API_TOKEN}`
+- **인증:** `Authorization: Bearer {TRAIN_GO_API_TOKEN}` (토큰은 `../train-go/.env`의 API_TOKEN 값)
 - 자연어 요청을 파싱하여 적절한 API 호출로 변환
 - 예약 상태 조회 시 `GET /reservations` 호출
 - 상세 API 명세는 `../train-go/CLAUDE.md` 참조

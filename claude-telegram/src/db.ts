@@ -80,3 +80,30 @@ export function getMessageCount(chatId: number): number {
     .get(chatId) as { count: number };
   return row.count;
 }
+
+/**
+ * Build a conversation recap from recent DB messages for new session context.
+ * Returns empty string if no history exists.
+ */
+export function getConversationRecap(
+  chatId: number,
+  limit: number = 30
+): string {
+  const messages = getRecentMessages(chatId, limit);
+  if (messages.length === 0) return "";
+
+  // Reverse to chronological order
+  messages.reverse();
+
+  const lines = messages.map((m) => {
+    const content =
+      m.content.length > 300 ? m.content.slice(0, 300) + "..." : m.content;
+    return `${m.role === "user" ? "User" : "Assistant"}: ${content}`;
+  });
+
+  return (
+    "PREVIOUS CONVERSATION RECAP (from before session reset):\n" +
+    "Below is a summary of recent messages. Use this to maintain continuity.\n\n" +
+    lines.join("\n\n")
+  );
+}

@@ -18,6 +18,7 @@ import {
   getRecentMessages,
   searchMessages,
   getMessageCount,
+  getConversationRecap,
 } from "./db";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
@@ -41,7 +42,7 @@ async function loadProfile(): Promise<void> {
   }
 }
 
-function buildSystemPrompt(memoryContext: string): string {
+function buildSystemPrompt(memoryContext: string, conversationRecap?: string): string {
   const parts: string[] = [];
 
   parts.push(
@@ -69,6 +70,14 @@ function buildSystemPrompt(memoryContext: string): string {
 
   if (profileContext) parts.push(`\nProfile:\n${profileContext}`);
   if (memoryContext) parts.push(`\n${memoryContext}`);
+  if (conversationRecap) parts.push(`\n${conversationRecap}`);
+
+  parts.push(
+    "\nBROWSER CAPABILITIES:" +
+      "\nYou have Playwright browser tools via MCP." +
+      "\nYou can navigate to URLs, take screenshots, click elements, fill forms, and extract content from web pages." +
+      "\nUse browser tools when the user asks to check websites, capture screenshots, or interact with web pages."
+  );
 
   parts.push(
     "\nMEMORY MANAGEMENT:" +
@@ -278,7 +287,8 @@ export async function createBot(): Promise<Bot> {
 
         if (isNew) {
           const memoryContext = await getMemoryContext();
-          systemPrompt = buildSystemPrompt(memoryContext);
+          const recap = getConversationRecap(chatId, 30);
+          systemPrompt = buildSystemPrompt(memoryContext, recap);
           finalPrompt = prompt;
         } else {
           const prefix = buildResumePrefix();

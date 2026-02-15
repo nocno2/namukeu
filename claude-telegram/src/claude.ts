@@ -132,6 +132,9 @@ async function parseStream(
   let costUsd: number | undefined;
   let durationMs: number | undefined;
 
+  // Collect text blocks as fallback when result is empty
+  const textBlocks: string[] = [];
+
   // Progress tracking
   let lastProgressTime = Date.now();
   let recentActivities: string[] = [];
@@ -199,6 +202,7 @@ async function parseStream(
           checkProgress();
         }
         if (block.type === "text" && block.text) {
+          textBlocks.push(block.text);
           // Check for [PROGRESS: ...] tags from Claude
           const progressMatches = block.text.matchAll(
             /\[PROGRESS:\s*(.+?)\]/gi
@@ -221,8 +225,11 @@ async function parseStream(
     }
   }
 
+  // Use finalResult from result event; fall back to collected text blocks
+  const result = finalResult || textBlocks.join("\n\n") || "";
+
   return {
-    result: finalResult ?? "",
+    result,
     sessionId,
     costUsd,
     durationMs,

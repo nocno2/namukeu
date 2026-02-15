@@ -2,6 +2,7 @@ import { mkdir } from "fs/promises";
 import { join } from "path";
 import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
+import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -31,8 +32,17 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Start Playwright MCP daemon
+  try {
+    await startPlaywrightMCP();
+  } catch (err) {
+    console.warn("[playwright-mcp] Failed to start:", err);
+    console.warn("[playwright-mcp] Browser capabilities will not be available.");
+  }
+
   // Cleanup on exit
   const cleanup = async () => {
+    await stopPlaywrightMCP();
     await releaseLock();
     process.exit(0);
   };
