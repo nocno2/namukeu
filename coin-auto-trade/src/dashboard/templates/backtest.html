@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}백테스팅 - coin-auto-trade{% endblock %}
+
+{% block content %}
+<div class="section" style="margin-top: 20px;">
+    <div class="section-header">
+        <h2>백테스트 실행</h2>
+    </div>
+    <div class="card">
+        <form id="backtest-form" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;">
+            <div class="form-group">
+                <label>전략</label>
+                <select name="strategy_name" required style="width:100%">
+                    {% for s in available %}
+                    <option value="{{ s.name }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>종목</label>
+                <input type="text" name="ticker" value="KRW-BTC" required style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>인터벌</label>
+                <select name="interval" style="width:100%">
+                    <option value="minute60">1시간</option>
+                    <option value="minute240">4시간</option>
+                    <option value="day" selected>일봉</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>시작일 (YYYYMMDD)</label>
+                <input type="text" name="start_date" placeholder="20250101" required style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>종료일 (YYYYMMDD)</label>
+                <input type="text" name="end_date" placeholder="20260101" required style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>초기 자본 (KRW)</label>
+                <input type="number" name="initial_capital" value="1000000" required style="width:100%">
+            </div>
+            <div style="grid-column:span 3;">
+                <button type="button" class="btn btn-primary" onclick="runBacktest()">백테스트 실행</button>
+            </div>
+        </form>
+        <div id="backtest-result" style="margin-top:16px;"></div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-header">
+        <h2>파라미터 최적화</h2>
+    </div>
+    <div class="card">
+        <form id="optimize-form" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;">
+            <div class="form-group">
+                <label>전략</label>
+                <select name="strategy_name" required style="width:100%">
+                    {% for s in available %}
+                    <option value="{{ s.name }}">{{ s.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>종목</label>
+                <input type="text" name="ticker" value="KRW-BTC" required style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>인터벌</label>
+                <select name="interval" style="width:100%">
+                    <option value="minute60">1시간</option>
+                    <option value="minute240">4시간</option>
+                    <option value="day" selected>일봉</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>시작일 (YYYYMMDD)</label>
+                <input type="text" name="start_date" placeholder="20250101" required style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>종료일 (YYYYMMDD)</label>
+                <input type="text" name="end_date" placeholder="20260101" required style="width:100%">
+            </div>
+            <div class="form-group">
+                <label>초기 자본</label>
+                <input type="number" name="initial_capital" value="1000000" required style="width:100%">
+            </div>
+            <div class="form-group" style="grid-column:span 2;">
+                <label>파라미터 그리드 (JSON)</label>
+                <textarea name="param_grid" rows="3" style="width:100%;"
+                    placeholder='{"rsi_period": [10, 14, 20], "rsi_oversold": [25, 30]}'></textarea>
+            </div>
+            <div class="form-group">
+                <label>Top N</label>
+                <input type="number" name="top_n" value="5" min="1" max="20" style="width:100%">
+            </div>
+            <div style="grid-column:span 3;">
+                <button type="button" class="btn btn-primary" onclick="runOptimize()">최적화 실행</button>
+            </div>
+        </form>
+        <div id="optimize-result" style="margin-top:16px;"></div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-header">
+        <h2>백테스트 결과 <span style="font-size:13px;color:var(--text-dim);font-weight:normal;">(총 {{ total }}건)</span></h2>
+    </div>
+    <div class="card">
+        {% if results %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>전략</th>
+                    <th>종목</th>
+                    <th>기간</th>
+                    <th>초기 자본</th>
+                    <th>최종 자본</th>
+                    <th>수익률</th>
+                    <th>MDD</th>
+                    <th>샤프</th>
+                    <th>승률</th>
+                    <th>거래 수</th>
+                    <th>실행일</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in results %}
+                <tr>
+                    <td>{{ r.id }}</td>
+                    <td>{{ r.strategy_name }}</td>
+                    <td>{{ r.ticker }}</td>
+                    <td style="font-family:var(--font);">{{ r.start_date }}~{{ r.end_date }}</td>
+                    <td>{{ "{:,.0f}".format(r.initial_capital) }}</td>
+                    <td>{{ "{:,.0f}".format(r.final_capital) }}</td>
+                    <td class="{{ 'positive' if r.total_return_pct >= 0 else 'negative' }}">
+                        {{ "{:+.2f}".format(r.total_return_pct) }}%
+                    </td>
+                    <td class="negative">{{ "{:.2f}".format(r.max_drawdown_pct) }}%</td>
+                    <td>{{ "{:.2f}".format(r.sharpe_ratio or 0) }}</td>
+                    <td>{{ "{:.1f}".format(r.win_rate or 0) }}%</td>
+                    <td>{{ r.total_trades or 0 }}</td>
+                    <td>{{ r.created_at[:10] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if total_pages > 1 %}
+        <div style="display:flex; justify-content:center; align-items:center; gap:8px; margin-top:16px; padding:8px 0;">
+            {% if page > 1 %}
+            <a href="?page=1" style="padding:6px 10px; border-radius:4px; background:var(--card-bg); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:13px;">&laquo;</a>
+            <a href="?page={{ page - 1 }}" style="padding:6px 10px; border-radius:4px; background:var(--card-bg); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:13px;">&lsaquo;</a>
+            {% endif %}
+            {% for p in range(1, total_pages + 1) %}
+                {% if p == page %}
+                <span style="padding:6px 10px; border-radius:4px; background:var(--accent); color:#fff; font-size:13px; font-weight:600;">{{ p }}</span>
+                {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+                <a href="?page={{ p }}" style="padding:6px 10px; border-radius:4px; background:var(--card-bg); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:13px;">{{ p }}</a>
+                {% elif p == page - 3 or p == page + 3 %}
+                <span style="color:var(--text-dim); font-size:13px;">...</span>
+                {% endif %}
+            {% endfor %}
+            {% if page < total_pages %}
+            <a href="?page={{ page + 1 }}" style="padding:6px 10px; border-radius:4px; background:var(--card-bg); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:13px;">&rsaquo;</a>
+            <a href="?page={{ total_pages }}" style="padding:6px 10px; border-radius:4px; background:var(--card-bg); border:1px solid var(--border); color:var(--text); text-decoration:none; font-size:13px;">&raquo;</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div style="text-align:center; color:var(--text-dim); padding:40px;">
+            백테스트 결과가 없습니다
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+async function runBacktest() {
+    const form = document.getElementById('backtest-form');
+    const formData = new FormData(form);
+    const data = {
+        strategy_name: formData.get('strategy_name'),
+        ticker: formData.get('ticker'),
+        interval: formData.get('interval'),
+        start_date: formData.get('start_date'),
+        end_date: formData.get('end_date'),
+        initial_capital: Number(formData.get('initial_capital')),
+        params: {}
+    };
+
+    const resultDiv = document.getElementById('backtest-result');
+    resultDiv.innerHTML = '<p style="color:var(--text-dim);">백테스트 실행 중...</p>';
+
+    try {
+        const resp = await fetch('/backtest/run', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer {{ token }}'
+            },
+            body: JSON.stringify(data)
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+            resultDiv.innerHTML = '<p class="negative">에러: ' + (result.detail || JSON.stringify(result)) + '</p>';
+            return;
+        }
+        resultDiv.innerHTML = `
+            <div class="grid grid-4" style="margin-top:8px;">
+                <div class="card"><h3>수익률</h3><div class="value ${result.total_return_pct >= 0 ? 'positive' : 'negative'}">${result.total_return_pct.toFixed(2)}%</div></div>
+                <div class="card"><h3>최대 낙폭</h3><div class="value negative">-${result.max_drawdown_pct.toFixed(2)}%</div></div>
+                <div class="card"><h3>승률</h3><div class="value">${result.win_rate.toFixed(1)}%</div></div>
+                <div class="card"><h3>거래 수</h3><div class="value">${result.total_trades}</div></div>
+            </div>
+            <p style="margin-top:8px;color:var(--text-dim);font-size:13px;">
+                최종 자본: ${Number(result.final_capital).toLocaleString()} KRW |
+                샤프: ${result.sharpe_ratio.toFixed(2)} |
+                Profit Factor: ${result.profit_factor.toFixed(2)}
+            </p>
+        `;
+        // 3초 후 페이지 새로고침 (결과 목록 갱신)
+        setTimeout(() => location.reload(), 3000);
+    } catch(e) {
+        resultDiv.innerHTML = '<p class="negative">요청 실패: ' + e.message + '</p>';
+    }
+}
+
+async function runOptimize() {
+    const form = document.getElementById('optimize-form');
+    const fd = new FormData(form);
+    let paramGrid;
+    try {
+        paramGrid = JSON.parse(fd.get('param_grid'));
+    } catch(e) {
+        alert('파라미터 그리드 JSON이 올바르지 않습니다.');
+        return;
+    }
+    const data = {
+        strategy_name: fd.get('strategy_name'),
+        ticker: fd.get('ticker'),
+        interval: fd.get('interval'),
+        start_date: fd.get('start_date'),
+        end_date: fd.get('end_date'),
+        initial_capital: Number(fd.get('initial_capital')),
+        param_grid: paramGrid,
+        top_n: Number(fd.get('top_n')),
+    };
+    const div = document.getElementById('optimize-result');
+    div.innerHTML = '<p style="color:var(--text-dim);">최적화 실행 중... (조합 수에 따라 시간이 걸릴 수 있습니다)</p>';
+    try {
+        const resp = await fetch('/backtest/optimize', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer {{ token }}' },
+            body: JSON.stringify(data)
+        });
+        const result = await resp.json();
+        if (!resp.ok) {
+            div.innerHTML = '<p class="negative">에러: ' + (result.detail || JSON.stringify(result)) + '</p>';
+            return;
+        }
+        const rows = result.top_results.map((r, i) => `
+            <tr>
+                <td>${i+1}</td>
+                <td style="font-size:11px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"
+                    title="${JSON.stringify(r.params).replace(/"/g,'&quot;')}">${JSON.stringify(r.params)}</td>
+                <td class="${r.total_return_pct >= 0 ? 'positive' : 'negative'}">${r.total_return_pct.toFixed(2)}%</td>
+                <td class="negative">${r.max_drawdown_pct.toFixed(2)}%</td>
+                <td>${(r.sharpe_ratio||0).toFixed(2)}</td>
+                <td>${(r.win_rate||0).toFixed(1)}%</td>
+                <td>${r.total_trades||0}</td>
+                <td>${(r.profit_factor||0).toFixed(2)}</td>
+            </tr>
+        `).join('');
+        div.innerHTML = `
+            <p style="color:var(--text-dim);font-size:13px;margin-bottom:8px;">
+                총 ${result.total_combinations}개 조합 중 ${result.completed}개 완료 — 상위 ${result.top_results.length}개
+            </p>
+            <table>
+                <thead><tr><th>#</th><th>파라미터</th><th>수익률</th><th>MDD</th><th>샤프</th><th>승률</th><th>거래</th><th>PF</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>`;
+    } catch(e) {
+        div.innerHTML = '<p class="negative">요청 실패: ' + e.message + '</p>';
+    }
+}
+</script>
+{% endblock %}

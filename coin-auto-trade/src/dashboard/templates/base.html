@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}coin-auto-trade{% endblock %}</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+    <nav>
+        <div class="container">
+            <span class="logo">coin-auto-trade</span>
+            <div class="links">
+                <a href="/" class="{% if active == 'home' %}active{% endif %}">대시보드</a>
+                <a href="/dashboard/trades" class="{% if active == 'trades' %}active{% endif %}">거래 내역</a>
+                <a href="/dashboard/strategies" class="{% if active == 'strategies' %}active{% endif %}">전략 관리</a>
+                <a href="/dashboard/backtest" class="{% if active == 'backtest' %}active{% endif %}">백테스팅</a>
+                <a href="/dashboard/pipeline-logs" class="{% if active == 'pipeline' %}active{% endif %}">파이프라인</a>
+            </div>
+            <span class="mode-badge {{ 'dry-run' if dry_run else 'live' }}">
+                {{ 'DRY-RUN' if dry_run else 'LIVE' }}
+            </span>
+            <a id="back-to-dash" href="/" style="display:none; font-size:12px; color:var(--blue); text-decoration:none; margin-left:12px;">
+                ← dashboard.namukeu.com
+            </a>
+        </div>
+    </nav>
+    <script>
+    if (location.pathname.startsWith('/proxy/')) {
+        const el = document.getElementById('back-to-dash');
+        el.href = location.origin;
+        el.style.display = 'inline';
+    }
+    </script>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

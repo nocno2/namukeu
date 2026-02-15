@@ -1,0 +1,22 @@
+[project]
+name = "coin-auto-trade"
+version = "0.2.0"
+description = "Upbit/Binance 암호화폐 자동 매매 서버"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "pyupbit>=0.2.33",
+    "python-binance>=1.0.19",
+    "pandas>=2.2.0",
+    "pandas-ta-classic>=0.1.0",
+    "cryptography>=44.0.0",
+    "httpx>=0.28.0",
+    "pydantic>=2.10.0",
+    "python-dotenv>=1.0.0",
+    "jinja2>=3.1.0",
+    "numpy>=1.26.0",
+]
+
+[project.scripts]
+coin-auto-trade = "src.main:main"

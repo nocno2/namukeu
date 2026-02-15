@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}거래 내역 - coin-auto-trade{% endblock %}
+
+{% block content %}
+<div class="section" style="margin-top: 20px;">
+    <div class="section-header">
+        <h2>거래 내역</h2>
+    </div>
+    <div class="card">
+        {% if orders %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>시간</th>
+                    <th>종목</th>
+                    <th>유형</th>
+                    <th>주문 방식</th>
+                    <th>가격</th>
+                    <th>수량</th>
+                    <th>금액 (KRW)</th>
+                    <th>수수료</th>
+                    <th>상태</th>
+                    <th>모드</th>
+                    <th>사유</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in orders %}
+                <tr>
+                    <td>{{ o.id }}</td>
+                    <td>{{ o.created_at[:16] }}</td>
+                    <td>{{ o.ticker }}</td>
+                    <td><span class="badge badge-{{ o.side }}">{{ o.side }}</span></td>
+                    <td>{{ o.order_type }}</td>
+                    <td>{{ "{:,.0f}".format(o.price or 0) }}</td>
+                    <td>{{ "{:.6f}".format(o.volume or 0) }}</td>
+                    <td>{{ "{:,.0f}".format(o.amount_krw or 0) }}</td>
+                    <td>{{ "{:,.0f}".format(o.fee or 0) }}</td>
+                    <td>{{ o.state }}</td>
+                    <td>{{ 'DRY' if o.is_dry_run else 'LIVE' }}</td>
+                    <td style="font-family:var(--font); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
+                        title="{{ o.signal_reason or '' }}">
+                        {{ o.signal_reason or '-' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="text-align:center; color:var(--text-dim); padding:40px;">
+            거래 내역이 없습니다
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

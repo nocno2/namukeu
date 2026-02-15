@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}전략 관리 - coin-auto-trade{% endblock %}
+
+{% block content %}
+<div class="section" style="margin-top: 20px;">
+    <div class="section-header">
+        <h2>전략 설정</h2>
+    </div>
+
+    <!-- Configured Strategies -->
+    <div class="card" style="margin-bottom: 16px;">
+        {% if configs %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>전략</th>
+                    <th>종목</th>
+                    <th>간격</th>
+                    <th>파라미터</th>
+                    <th>상태</th>
+                    <th>액션</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in configs %}
+                <tr>
+                    <td>{{ c.id }}</td>
+                    <td>{{ c.name }}</td>
+                    <td>{{ c.ticker }}</td>
+                    <td>{{ c.interval }}</td>
+                    <td style="font-size:12px; max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        {{ c.params }}
+                    </td>
+                    <td>
+                        <span class="badge {{ 'badge-enabled' if c.enabled else 'badge-disabled' }}">
+                            {{ '활성' if c.enabled else '비활성' }}
+                        </span>
+                    </td>
+                    <td>
+                        {% if c.enabled %}
+                        <button class="btn btn-sm btn-danger"
+                                hx-post="/strategies/configs/{{ c.id }}/disable"
+                                hx-headers='{"Authorization": "Bearer {{ token }}"}'
+                                hx-swap="none"
+                                hx-on::after-request="location.reload()">
+                            비활성화
+                        </button>
+                        {% else %}
+                        <button class="btn btn-sm btn-success"
+                                hx-post="/strategies/configs/{{ c.id }}/enable"
+                                hx-headers='{"Authorization": "Bearer {{ token }}"}'
+                                hx-swap="none"
+                                hx-on::after-request="location.reload()">
+                            활성화
+                        </button>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="text-align:center; color:var(--text-dim); padding:40px;">
+            설정된 전략이 없습니다
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Available Strategies -->
+    <div class="section-header">
+        <h2>사용 가능한 전략</h2>
+    </div>
+    <div class="grid grid-2">
+        {% for s in available %}
+        <div class="card">
+            <h3>{{ s.name }}</h3>
+            <div class="sub">필요 캔들: {{ s.required_candle_count }}개</div>
+            <div style="margin-top: 8px; font-size: 13px; color: var(--text-dim);">
+                기본 파라미터: <code>{{ s.default_params }}</code>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}대시보드 - coin-auto-trade{% endblock %}
+
+{% block content %}
+<div class="grid grid-4" style="margin-top: 20px;">
+    <div class="card" hx-get="/dashboard/partials/equity" hx-trigger="every 10s" hx-swap="innerHTML">
+        <h3>총 자산</h3>
+        <div class="value">{{ "{:,.0f}".format(portfolio.total_equity) }} <small style="font-size:14px">KRW</small></div>
+    </div>
+    <div class="card">
+        <h3>총 수익</h3>
+        <div class="value {{ 'positive' if portfolio.total_pnl >= 0 else 'negative' }}">
+            {{ "{:+,.0f}".format(portfolio.total_pnl) }} <small style="font-size:14px">KRW</small>
+        </div>
+        <div class="sub {{ 'positive' if portfolio.total_pnl_pct >= 0 else 'negative' }}">
+            {{ "{:+.2f}".format(portfolio.total_pnl_pct) }}%
+        </div>
+    </div>
+    <div class="card">
+        <h3>활성 포지션</h3>
+        <div class="value">{{ portfolio.active_positions }}</div>
+        <div class="sub">최대 {{ max_positions }}개</div>
+    </div>
+    <div class="card">
+        <h3>활성 전략</h3>
+        <div class="value">{{ active_strategies }}</div>
+    </div>
+</div>
+
+<!-- Positions -->
+<div class="section">
+    <div class="section-header">
+        <h2>보유 포지션</h2>
+    </div>
+    <div class="card" id="positions-container" hx-get="/dashboard/partials/positions" hx-trigger="load, every 30s" hx-swap="innerHTML">
+        <div style="text-align:center; color:var(--text-dim); padding:24px;">불러오는 중...</div>
+    </div>
+</div>
+
+<!-- Recent Orders -->
+<div class="section">
+    <div class="section-header">
+        <h2>최근 거래</h2>
+        <a href="/dashboard/trades" class="btn btn-sm">전체 보기</a>
+    </div>
+    <div class="card">
+        {% if orders %}
+        <table>
+            <thead>
+                <tr>
+                    <th>시간</th>
+                    <th>종목</th>
+                    <th>유형</th>
+                    <th>금액</th>
+                    <th>사유</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in orders[:10] %}
+                <tr>
+                    <td>{{ o.created_at[:16] }}</td>
+                    <td>{{ o.ticker }}</td>
+                    <td><span class="badge badge-{{ o.side }}">{{ o.side }}</span></td>
+                    <td>{{ "{:,.0f}".format(o.amount_krw or 0) }}</td>
+                    <td style="font-family:var(--font); max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                        {{ o.signal_reason or '-' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="text-align:center; color:var(--text-dim); padding:24px;">
+            거래 내역 없음
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

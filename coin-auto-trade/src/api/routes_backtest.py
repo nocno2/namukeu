@@ -1,0 +1,160 @@
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+
+from src.api.auth import verify
+from src.core.database import Database
+from src.core import runtime
+from src.models.backtest import BackfillRequest, BacktestRequest, BacktestResultResponse, OptimizeRequest
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/backtest", tags=["backtest"])
+
+
+def get_db() -> Database:
+    raise NotImplementedError
+
+
+@router.post("/run")
+async def run_backtest(
+    body: BacktestRequest,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    from src.services.backtester import Backtester, BacktestConfig
+    backtester = Backtester(db)
+    fee_rate = 0.0004 if body.leverage > 1 else 0.0005  # futures vs spot default
+    config = BacktestConfig(
+        ticker=body.ticker,
+        strategy_name=body.strategy_name,
+        strategy_params=body.params,
+        interval=body.interval,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        initial_capital=body.initial_capital,
+        fee_rate=fee_rate,
+        leverage=body.leverage,
+        enable_short=body.enable_short,
+    )
+    try:
+        result = await backtester.run(config)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("백테스트 실행 중 오류: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+    result_id = backtester.save_result(result)
+    return {
+        "id": result_id,
+        "total_return_pct": result.total_return_pct,
+        "max_drawdown_pct": result.max_drawdown_pct,
+        "sharpe_ratio": result.sharpe_ratio,
+        "win_rate": result.win_rate,
+        "total_trades": result.total_trades,
+        "profit_factor": result.profit_factor,
+        "final_capital": result.final_capital,
+    }
+
+
+@router.post("/data/backfill")
+async def backfill_data(
+    body: BackfillRequest,
+    _=Depends(verify),
+):
+    collector = None
+    if body.exchange and body.exchange in runtime.collectors:
+        collector = runtime.collectors[body.exchange]
+    else:
+        collector = runtime.collector
+    if not collector:
+        raise HTTPException(status_code=503, detail="거래소 자격증명이 등록되지 않았습니다")
+
+    try:
+        count = await collector.backfill(body.ticker, body.interval, body.days)
+    except Exception as e:
+        logger.exception("데이터 백필 중 오류: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    return {"message": f"{count}개 캔들 수집 완료", "ticker": body.ticker, "count": count}
+
+
+@router.post("/optimize")
+async def optimize_strategy(
+    body: OptimizeRequest,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    import itertools
+    from src.services.backtester import Backtester, BacktestConfig
+
+    backtester = Backtester(db)
+    fee_rate = 0.0004 if body.leverage > 1 else 0.0005
+
+    # Build param combinations from grid
+    keys = list(body.param_grid.keys())
+    values = [body.param_grid[k] if isinstance(body.param_grid[k], list) else [body.param_grid[k]] for k in keys]
+    combinations = [dict(zip(keys, combo)) for combo in itertools.product(*values)]
+
+    if len(combinations) > 200:
+        raise HTTPException(status_code=400, detail=f"조합 수 초과: {len(combinations)} (최대 200)")
+
+    results = []
+    for combo in combinations:
+        config = BacktestConfig(
+            ticker=body.ticker,
+            strategy_name=body.strategy_name,
+            strategy_params=combo,
+            interval=body.interval,
+            start_date=body.start_date,
+            end_date=body.end_date,
+            initial_capital=body.initial_capital,
+            fee_rate=fee_rate,
+            leverage=body.leverage,
+            enable_short=body.enable_short,
+        )
+        try:
+            result = await backtester.run(config)
+            results.append({
+                "params": combo,
+                "total_return_pct": result.total_return_pct,
+                "max_drawdown_pct": result.max_drawdown_pct,
+                "sharpe_ratio": result.sharpe_ratio,
+                "win_rate": result.win_rate,
+                "total_trades": result.total_trades,
+                "profit_factor": result.profit_factor,
+                "final_capital": result.final_capital,
+            })
+        except Exception as e:
+            logger.warning("최적화 조합 실패 %s: %s", combo, e)
+            continue
+
+    # Sort by Sharpe ratio desc, then return pct desc
+    results.sort(key=lambda r: (r["sharpe_ratio"], r["total_return_pct"]), reverse=True)
+    return {
+        "total_combinations": len(combinations),
+        "completed": len(results),
+        "top_results": results[:body.top_n],
+    }
+
+
+@router.get("/results", response_model=list[BacktestResultResponse])
+def list_results(
+    limit: int = 20,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    results = db.get_backtest_results(limit=limit)
+    return results
+
+
+@router.get("/results/{result_id}")
+def get_result(
+    result_id: int,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    result = db.get_backtest_result(result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Backtest result not found")
+    return result
