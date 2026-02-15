@@ -4,6 +4,7 @@ import { AgentControl } from "./AgentControl";
 import { BlogTraffic } from "./BlogTraffic";
 import { ClaudeUsage } from "./ClaudeUsage";
 import { CommitPanel } from "./CommitPanel";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { Header } from "./Header";
 import { LaunchAgents } from "./LaunchAgents";
 import { LogViewer } from "./LogViewer";
@@ -148,11 +149,11 @@ export function Dashboard({ username, onLogout }: Props) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedCards.map((card) => {
+              let content: React.ReactNode;
               switch (card.type) {
                 case "service":
-                  return (
+                  content = (
                     <ServiceCard
-                      key={card.id}
                       service={card.service}
                       {...cardProps(card.id)}
                       onClick={() => setSelectedService(card.id)}
@@ -160,23 +161,36 @@ export function Dashboard({ username, onLogout }: Props) {
                       onShowLogs={() => setLogService(card.id)}
                     />
                   );
+                  break;
                 case "system":
-                  return <SystemResources key={card.id} {...cardProps(card.id)} />;
+                  content = <SystemResources {...cardProps(card.id)} />;
+                  break;
                 case "claude":
-                  return <ClaudeUsage key={card.id} {...cardProps(card.id)} />;
+                  content = <ClaudeUsage {...cardProps(card.id)} />;
+                  break;
                 case "blog":
-                  return <BlogTraffic key={card.id} {...cardProps(card.id)} />;
+                  content = <BlogTraffic {...cardProps(card.id)} />;
+                  break;
                 case "train":
-                  return <TrainStatus key={card.id} {...cardProps(card.id)} />;
+                  content = <TrainStatus {...cardProps(card.id)} />;
+                  break;
                 case "launchagents":
-                  return <LaunchAgents key={card.id} {...cardProps(card.id)} />;
+                  content = <LaunchAgents {...cardProps(card.id)} />;
+                  break;
                 case "agent":
-                  return <AgentControl key={card.id} {...cardProps(card.id)} />;
+                  content = <AgentControl {...cardProps(card.id)} />;
+                  break;
                 case "goals":
-                  return <ProjectGoals key={card.id} {...cardProps(card.id)} />;
+                  content = <ProjectGoals {...cardProps(card.id)} />;
+                  break;
                 default:
-                  return null;
+                  content = null;
               }
+              return (
+                <ErrorBoundary key={card.id} name={card.id}>
+                  {content}
+                </ErrorBoundary>
+              );
             })}
           </div>
         )}
