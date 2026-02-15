@@ -2,7 +2,7 @@ import { Bot, type Context } from "grammy";
 import { readFile, writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { callClaude } from "./claude";
-import { SessionTracker } from "./session";
+import { SessionTracker, chatIdToSessionId } from "./session";
 import {
   processMemoryTags,
   getMemoryContext,
@@ -289,7 +289,7 @@ export async function createBot(): Promise<Bot> {
           chainingEnabled: heartbeatConfig.chainingEnabled,
         });
 
-        const agentSessionId = `agent-${task.id.slice(0, 8)}`;
+        const agentSessionId = chatIdToSessionId(0xA6E47, parseInt(task.id.replace(/-/g, "").slice(0, 8), 16));
         const result = await callClaude(task.prompt, {
           sessionId: agentSessionId,
           isNewSession: true,
