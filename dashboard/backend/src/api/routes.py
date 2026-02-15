@@ -354,6 +354,7 @@ LAUNCHD_LABELS = [
     ("com.namukeu.claude-telegram", "Claude Telegram"),
     ("com.namukeu.claude-discord", "Claude Discord"),
     ("com.namukeu.cloudflared", "Cloudflared"),
+    ("com.namukeu.check-ip", "IP 변경 감지"),
 ]
 
 

@@ -1,6 +1,8 @@
 #!/bin/bash
 # IP 변경 감지 스크립트 (launchd: com.namukeu.check-ip)
 
+export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
 IP_FILE="/Users/namwook/Documents/namukeu/coin-auto-trade/data/.current_ip"
 BOT_TOKEN="8564686870:AAEnY_WoW6ZMxX7Pn9eoO1ey-WY94dHgiWE"
 CHAT_ID="2141071966"
