@@ -222,6 +222,31 @@ export class TaskStore {
     this.updateStatus(id, "pending");
   }
 
+  updateTask(id: string, updates: Partial<Pick<AgentTask, "requires_approval" | "schedule_next" | "status">>): void {
+    const sets: string[] = [];
+    const values: any[] = [];
+
+    if (updates.requires_approval !== undefined) {
+      sets.push("requires_approval = ?");
+      values.push(updates.requires_approval ? 1 : 0);
+    }
+    if (updates.schedule_next !== undefined) {
+      sets.push("schedule_next = ?");
+      values.push(updates.schedule_next);
+    }
+    if (updates.status !== undefined) {
+      sets.push("status = ?");
+      values.push(updates.status);
+    }
+
+    if (sets.length === 0) return;
+    sets.push("updated_at = ?");
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    this.db.run(`UPDATE agent_tasks SET ${sets.join(", ")} WHERE id = ?`, values);
+  }
+
   deleteTask(id: string): void {
     this.db.run(`DELETE FROM agent_tasks WHERE id = ?`, [id]);
   }

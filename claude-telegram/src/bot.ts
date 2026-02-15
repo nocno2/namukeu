@@ -566,6 +566,41 @@ export async function createBot(): Promise<Bot> {
     await sendResponse(ctx, lines.join("\n"));
   });
 
+  bot.command("approve", async (ctx) => {
+    if (!taskStore) { await ctx.reply("Task store not initialized."); return; }
+    const searchText = ctx.match?.toString().trim();
+    if (!searchText) { await ctx.reply("사용법: /approve <태스크 ID 앞 8자리>"); return; }
+
+    const allTasks = taskStore.getActive();
+    const task = allTasks.find(t => t.id.startsWith(searchText) && t.requires_approval);
+    if (!task) {
+      await ctx.reply(`승인 대기 중인 태스크를 찾을 수 없습니다: ${searchText}`);
+      return;
+    }
+
+    // Remove approval requirement and set schedule to now
+    taskStore.updateTask(task.id, {
+      requires_approval: false,
+      schedule_next: new Date().toISOString(),
+    });
+
+    await ctx.reply(`승인 완료: "${task.title}"\n다음 heartbeat tick에서 실행됩니다.`);
+  });
+
+  bot.command("pending", async (ctx) => {
+    if (!taskStore) { await ctx.reply("Task store not initialized."); return; }
+    const allTasks = taskStore.getActive();
+    const pending = allTasks.filter(t => t.requires_approval);
+    if (pending.length === 0) {
+      await ctx.reply("승인 대기 중인 태스크가 없습니다.");
+      return;
+    }
+    const lines = pending.map(t =>
+      `• ${t.title}\n  /approve ${t.id.slice(0, 8)}`
+    );
+    await sendResponse(ctx, `승인 대기 (${pending.length}건):\n\n${lines.join("\n\n")}`);
+  });
+
   // --- Message handlers ---
 
   async function processMessage(

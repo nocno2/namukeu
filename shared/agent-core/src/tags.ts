@@ -132,12 +132,13 @@ export function processTags(
     clean = clean.replace(match[0], "");
   }
 
-  // [CHAIN: title | PROMPT: text | DELAY: minutes(optional, default 5)]
+  // [CHAIN: title | PROMPT: text | DELAY: minutes | APPROVAL: true/false]
   for (const match of response.matchAll(
-    /\[CHAIN:\s*(.+?)\s*\|\s*PROMPT:\s*(.+?)(?:\s*\|\s*DELAY:\s*(\d+))?\]/gi
+    /\[CHAIN:\s*(.+?)\s*\|\s*PROMPT:\s*(.+?)(?:\s*\|\s*DELAY:\s*(\d+))?(?:\s*\|\s*APPROVAL:\s*(true|false))?\]/gi
   )) {
     if (taskStore && (!context || (context.chainDepth || 0) < (context.maxChainDepth ?? 2))) {
       const delayMinutes = parseInt(match[3] || "5", 10);
+      const requiresApproval = match[4]?.toLowerCase() === "true";
       const scheduleAt = new Date(Date.now() + delayMinutes * 60_000).toISOString();
       const task = taskStore.createTask({
         title: match[1].trim(),
@@ -145,8 +146,9 @@ export function processTags(
         type: "one-time",
         scheduleAt,
         notifyUser: true,
+        requiresApproval,
       });
-      tasksCreated.push(`\u26D3 ${task.title}`);
+      tasksCreated.push(`${requiresApproval ? "\u{1F512}" : "\u26D3"} ${task.title}`);
     } else if (context && (context.chainDepth || 0) >= (context.maxChainDepth ?? 2)) {
       console.log(`[tags] Chain suppressed (depth ${context.chainDepth} >= max ${context.maxChainDepth ?? 2})`);
     }

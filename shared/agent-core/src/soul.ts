@@ -62,8 +62,9 @@ export function buildAgentSystemPrompt(params: {
     parts.push(
       "\nTASK CHAINING:" +
         "\nIf your current task reveals a follow-up action needed, you can chain a new task:" +
-        "\n[CHAIN: task title | PROMPT: what to do | DELAY: minutes]" +
-        "\nDELAY is optional (default: 5 minutes). Use chaining sparingly — only when a follow-up is clearly necessary." +
+        "\n[CHAIN: task title | PROMPT: what to do | DELAY: minutes | APPROVAL: true/false]" +
+        "\nDELAY is optional (default: 5 minutes). APPROVAL: true requires user approval before execution." +
+        "\nUse APPROVAL: true for significant changes. Use chaining sparingly." +
         "\nChains are depth-limited to prevent infinite loops."
     );
   }

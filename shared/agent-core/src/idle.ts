@@ -222,8 +222,16 @@ export function buildIdlePrompt(
     }
   }
 
+  const chainInstruction =
+    "\n\n## 제안 실행\n" +
+    "제안할 내용이 있으면, 반드시 아래 태그로 구현 태스크를 등록해:\n" +
+    "[CHAIN: 태스크 제목 | PROMPT: 구체적인 구현 지시 | APPROVAL: true]\n" +
+    "APPROVAL: true로 설정하면 사용자 승인 후에만 실행됨.\n" +
+    "PROMPT에는 제안을 실행하기 위한 구체적인 지시를 넣어 (파일 경로, 변경 내용 등).\n" +
+    "제안 내용을 설명한 뒤 마지막에 태그를 넣어.";
+
   return strategy.promptTemplate
     .replace(/\{PROJECT\}/g, project)
     .replace(/\{PROJECT_DIR\}/g, PROJECT_DIR_MAP[project] || ".")
-    .replace(/\{GOALS_CONTEXT\}/g, goalsContext);
+    .replace(/\{GOALS_CONTEXT\}/g, goalsContext) + chainInstruction;
 }
