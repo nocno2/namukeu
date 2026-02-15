@@ -387,3 +387,91 @@ def launchagent_status(_=Depends(verify_session)):
             info["status"] = "error"
         agents.append(info)
     return {"agents": agents}
+
+
+# --- Agent Control Proxy ---
+
+AGENT_API_BASE = "http://127.0.0.1:8003"
+AGENT_API_TOKEN = "agent-api-token"
+
+
+def _agent_headers():
+    return {"Authorization": f"Bearer {AGENT_API_TOKEN}"}
+
+
+@router.get("/agent/status")
+async def agent_status(_=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"{AGENT_API_BASE}/api/status", headers=_agent_headers(), timeout=5.0)
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="Agent API error")
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.post("/agent/toggle/{feature}")
+async def agent_toggle(feature: str, body: dict, _=Depends(verify_session)):
+    if feature not in ("idle", "chain", "monitors"):
+        raise HTTPException(status_code=400, detail="Invalid feature")
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/toggle/{feature}",
+                json=body, headers=_agent_headers(), timeout=5.0,
+            )
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.get("/agent/goals")
+async def agent_goals(_=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"{AGENT_API_BASE}/api/goals", headers=_agent_headers(), timeout=5.0)
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.post("/agent/goals")
+async def agent_create_goal(body: dict, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/goals",
+                json=body, headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code not in (200, 201):
+                raise HTTPException(status_code=r.status_code, detail=r.text)
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.put("/agent/goals/{goal_id}")
+async def agent_update_goal(goal_id: str, body: dict, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.put(
+                f"{AGENT_API_BASE}/api/goals/{goal_id}",
+                json=body, headers=_agent_headers(), timeout=5.0,
+            )
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.delete("/agent/goals/{goal_id}")
+async def agent_delete_goal(goal_id: str, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.delete(
+                f"{AGENT_API_BASE}/api/goals/{goal_id}",
+                headers=_agent_headers(), timeout=5.0,
+            )
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")

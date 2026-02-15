@@ -81,6 +81,36 @@ export const api = {
   launchAgents() {
     return request<{ agents: LaunchAgent[] }>("/api/system/launchagents");
   },
+
+  agentStatus() {
+    return request<AgentStatus>("/api/agent/status");
+  },
+  agentToggle(feature: "idle" | "chain" | "monitors", enabled: boolean) {
+    return request<{ ok: boolean }>(`/api/agent/toggle/${feature}`, {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    });
+  },
+  agentGoals() {
+    return request<AgentGoal[]>("/api/agent/goals");
+  },
+  agentCreateGoal(goal: { title: string; description: string; projects: string[]; priority?: string; deadline?: string }) {
+    return request<AgentGoal>("/api/agent/goals", {
+      method: "POST",
+      body: JSON.stringify(goal),
+    });
+  },
+  agentUpdateGoal(id: string, updates: Partial<AgentGoal>) {
+    return request<AgentGoal>(`/api/agent/goals/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+  },
+  agentDeleteGoal(id: string) {
+    return request<{ ok: boolean }>(`/api/agent/goals/${id}`, {
+      method: "DELETE",
+    });
+  },
 };
 
 export interface ServiceStatus {
@@ -164,4 +194,28 @@ export interface LaunchAgent {
   status: string;
   pid: number | null;
   last_exit: number | null;
+}
+
+export interface AgentStatus {
+  running: boolean;
+  uptime: number;
+  startedAt: string;
+  idle: { enabled: boolean; todayCount: number; maxPerDay: number; lastRun: string | null; thresholdMs: number };
+  chain: { enabled: boolean };
+  monitors: { enabled: boolean; healthy: number; total: number };
+  today: { taskCount: number; costUsd: number };
+  tasks: { active: number; nextRun: string | null; nextTitle: string | null };
+}
+
+export interface AgentGoal {
+  id: string;
+  title: string;
+  description: string;
+  projects: string[];
+  status: "active" | "completed" | "paused";
+  priority: "high" | "medium" | "low";
+  deadline: string | null;
+  progress: string | null;
+  created_at: string;
+  updated_at: string;
 }

@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type CardPreference, type ServiceStatus } from "../lib/api";
+import { AgentControl } from "./AgentControl";
 import { BlogTraffic } from "./BlogTraffic";
 import { ClaudeUsage } from "./ClaudeUsage";
 import { CommitPanel } from "./CommitPanel";
 import { Header } from "./Header";
 import { LaunchAgents } from "./LaunchAgents";
 import { LogViewer } from "./LogViewer";
+import { ProjectGoals } from "./ProjectGoals";
 import { ServiceCard } from "./ServiceCard";
 import { SystemResources } from "./SystemResources";
 import { TrainStatus } from "./TrainStatus";
@@ -23,7 +25,9 @@ type CardItem =
   | { type: "system"; id: string }
   | { type: "blog"; id: string }
   | { type: "train"; id: string }
-  | { type: "launchagents"; id: string };
+  | { type: "launchagents"; id: string }
+  | { type: "agent"; id: string }
+  | { type: "goals"; id: string };
 
 export function Dashboard({ username, onLogout }: Props) {
   const [services, setServices] = useState<ServiceStatus[]>([]);
@@ -87,6 +91,8 @@ export function Dashboard({ username, onLogout }: Props) {
     { type: "train", id: "train-status" },
     { type: "blog", id: "blog-traffic" },
     { type: "claude", id: "claude-usage" },
+    { type: "agent", id: "agent-control" },
+    { type: "goals", id: "project-goals" },
     { type: "launchagents", id: "launchagents" },
   ];
 
@@ -164,6 +170,10 @@ export function Dashboard({ username, onLogout }: Props) {
                   return <TrainStatus key={card.id} {...cardProps(card.id)} />;
                 case "launchagents":
                   return <LaunchAgents key={card.id} {...cardProps(card.id)} />;
+                case "agent":
+                  return <AgentControl key={card.id} {...cardProps(card.id)} />;
+                case "goals":
+                  return <ProjectGoals key={card.id} {...cardProps(card.id)} />;
                 default:
                   return null;
               }
