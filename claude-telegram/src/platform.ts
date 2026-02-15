@@ -1,6 +1,10 @@
 import type { Bot } from "grammy";
+import { InlineKeyboard } from "grammy";
 import type { PlatformAdapter } from "@namukeu/agent-core";
 import { sendResponse } from "./message";
+
+// Match approval notification: extract 8-char task ID from /approve <id>
+const APPROVE_PATTERN = /실행하려면 \/approve ([a-f0-9]{8})$/;
 
 /**
  * Create a Telegram platform adapter for the agent-core heartbeat system.
@@ -13,6 +17,28 @@ export function createTelegramAdapter(bot: Bot): PlatformAdapter {
     async sendMessage(chatId: string, text: string): Promise<void> {
       const numericChatId = parseInt(chatId, 10);
       if (!text) return;
+
+      // Auto-attach inline buttons to approval notifications
+      const approveMatch = text.match(APPROVE_PATTERN);
+      if (approveMatch) {
+        const taskIdPrefix = approveMatch[1];
+        const keyboard = new InlineKeyboard()
+          .text("✓ 승인", `app_${taskIdPrefix}`)
+          .text("✗ 거절", `rej_${taskIdPrefix}`);
+        // Strip the /approve instruction from message text
+        const cleanText = text.replace(/\n실행하려면 \/approve [a-f0-9]{8}$/, "");
+        try {
+          await bot.api.sendMessage(numericChatId, cleanText, {
+            parse_mode: "Markdown",
+            reply_markup: keyboard,
+          });
+        } catch {
+          await bot.api.sendMessage(numericChatId, cleanText, {
+            reply_markup: keyboard,
+          }).catch((err) => console.error("[platform] Failed to send approval message:", err));
+        }
+        return;
+      }
 
       // Split long messages
       if (text.length <= 4000) {
