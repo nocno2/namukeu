@@ -4,15 +4,18 @@ import type { GoalStore } from "./goals";
 export interface IdleStrategy {
   id: string;
   title: string;
+  category: "maintenance" | "evolution";
   project: ProjectCode | "RANDOM";
   promptTemplate: string;
   weight: number;
 }
 
 export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
+  // ─── 유지보수 (maintenance) ───
   {
     id: "code-review",
     title: "코드 리뷰",
+    category: "maintenance",
     project: "RANDOM",
     weight: 3,
     promptTemplate:
@@ -27,6 +30,7 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
   {
     id: "dependency-check",
     title: "의존성 점검",
+    category: "maintenance",
     project: "RANDOM",
     weight: 1,
     promptTemplate:
@@ -39,6 +43,7 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
   {
     id: "doc-check",
     title: "문서 점검",
+    category: "maintenance",
     project: "RANDOM",
     weight: 1,
     promptTemplate:
@@ -48,6 +53,7 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
   {
     id: "test-check",
     title: "테스트 점검",
+    category: "maintenance",
     project: "RANDOM",
     weight: 2,
     promptTemplate:
@@ -58,6 +64,7 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
   {
     id: "feature-idea",
     title: "기능 제안",
+    category: "maintenance",
     project: "RANDOM",
     weight: 1,
     promptTemplate:
@@ -67,9 +74,12 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
       "- 코드 변경 범위\n\n" +
       "작은 것부터 — 대규모 리팩터링은 피해.\n{GOALS_CONTEXT}",
   },
+
+  // ─── 서비스 진화 (evolution) ───
   {
     id: "service-evolution",
     title: "서비스 진화 제안",
+    category: "evolution",
     project: "RANDOM",
     weight: 3,
     promptTemplate:
@@ -84,6 +94,7 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
   {
     id: "user-flow-analysis",
     title: "사용자 흐름 분석",
+    category: "evolution",
     project: "RANDOM",
     weight: 2,
     promptTemplate:
@@ -96,6 +107,7 @@ export const DEFAULT_IDLE_STRATEGIES: IdleStrategy[] = [
   {
     id: "goal-next-step",
     title: "목표 다음 단계 제안",
+    category: "evolution",
     project: "RANDOM",
     weight: 3,
     promptTemplate:
@@ -120,27 +132,76 @@ const PROJECT_DIR_MAP: Record<ProjectCode, string> = {
   GENERAL: ".",
 };
 
-export function selectIdleStrategy(
-  strategies: IdleStrategy[] = DEFAULT_IDLE_STRATEGIES
-): { strategy: IdleStrategy; project: ProjectCode } {
-  const totalWeight = strategies.reduce((sum, s) => sum + s.weight, 0);
-  let rand = Math.random() * totalWeight;
-  let selected = strategies[0];
+// ─── 최근 실행 히스토리 (연속 중복 방지) ───
+const recentHistory: string[] = [];
+const MAX_HISTORY = 3;
 
-  for (const s of strategies) {
-    rand -= s.weight;
+function recordHistory(strategyId: string): void {
+  recentHistory.push(strategyId);
+  if (recentHistory.length > MAX_HISTORY) recentHistory.shift();
+}
+
+export function selectIdleStrategy(
+  strategies: IdleStrategy[] = DEFAULT_IDLE_STRATEGIES,
+  goalStore?: GoalStore,
+  project?: ProjectCode,
+): { strategy: IdleStrategy; project: ProjectCode } {
+  // 1. 프로젝트 먼저 선택
+  const selectedProject = project ??
+    PROJECT_POOL[Math.floor(Math.random() * PROJECT_POOL.length)];
+
+  // 2. 목표 유무에 따라 카테고리 가중치 결정
+  const hasGoals = goalStore
+    ? goalStore.getByProject(selectedProject).length > 0
+    : false;
+
+  // 목표 있으면 evolution 70%, 없으면 maintenance 70%
+  const evolutionBoost = hasGoals ? 2.5 : 0.4;
+
+  // 3. 동적 가중치 계산
+  const adjusted = strategies.map((s) => {
+    let w = s.weight;
+
+    // 카테고리 부스트
+    if (s.category === "evolution") w *= evolutionBoost;
+    else w *= (hasGoals ? 0.4 : 2.5);
+
+    // 최근 실행된 전략 페널티 (연속 방지)
+    const recentIndex = recentHistory.lastIndexOf(s.id);
+    if (recentIndex >= 0) {
+      // 최근일수록 강한 페널티
+      const recency = recentHistory.length - recentIndex;
+      w *= 0.1 * recency; // 가장 최근이면 0.1배, 2번째면 0.2배, 3번째면 0.3배
+    }
+
+    // goal-next-step은 목표가 없으면 0
+    if (s.id === "goal-next-step" && !hasGoals) w = 0;
+
+    return { strategy: s, weight: Math.max(w, 0) };
+  });
+
+  // 4. 가중치 기반 선택
+  const totalWeight = adjusted.reduce((sum, a) => sum + a.weight, 0);
+  if (totalWeight === 0) {
+    // fallback
+    return { strategy: strategies[0], project: selectedProject };
+  }
+
+  let rand = Math.random() * totalWeight;
+  let selected = adjusted[0].strategy;
+
+  for (const a of adjusted) {
+    rand -= a.weight;
     if (rand <= 0) {
-      selected = s;
+      selected = a.strategy;
       break;
     }
   }
 
-  const project =
-    selected.project === "RANDOM"
-      ? PROJECT_POOL[Math.floor(Math.random() * PROJECT_POOL.length)]
-      : selected.project;
+  // 5. 히스토리 기록
+  recordHistory(selected.id);
 
-  return { strategy: selected, project };
+  return { strategy: selected, project: selectedProject };
 }
 
 export function buildIdlePrompt(

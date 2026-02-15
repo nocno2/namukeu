@@ -244,7 +244,7 @@ export class Heartbeat {
     }
 
     // Select and run idle strategy
-    const { strategy, project } = selectIdleStrategy();
+    const { strategy, project } = selectIdleStrategy(undefined, this.deps.goalStore);
     const prompt = buildIdlePrompt(strategy, project, this.deps.goalStore);
 
     console.log(`[heartbeat] Running idle task: ${strategy.title} (${project})`);
