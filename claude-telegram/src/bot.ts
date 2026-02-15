@@ -1,4 +1,4 @@
-import { Bot, type Context } from "grammy";
+import { Bot, InlineKeyboard, type Context } from "grammy";
 import { readFile, writeFile, unlink } from "fs/promises";
 import { join } from "path";
 import { callClaude } from "./claude";
@@ -600,6 +600,21 @@ export async function createBot(): Promise<Bot> {
     await ctx.reply(`승인 완료: "${task.title}"\n다음 heartbeat tick에서 실행됩니다.`);
   });
 
+  bot.command("approve_all", async (ctx) => {
+    if (!taskStore) { await ctx.reply("Task store not initialized."); return; }
+    const pending = taskStore.getActive().filter(t => t.requires_approval);
+    if (pending.length === 0) {
+      await ctx.reply("승인 대기 중인 태스크가 없습니다.");
+      return;
+    }
+    const now = new Date().toISOString();
+    for (const t of pending) {
+      taskStore.updateTask(t.id, { requires_approval: false, schedule_next: now });
+    }
+    const titles = pending.map(t => `• ${t.title}`).join("\n");
+    await ctx.reply(`✓ ${pending.length}건 전체 승인 완료:\n${titles}`);
+  });
+
   bot.command("pending", async (ctx) => {
     if (!taskStore) { await ctx.reply("Task store not initialized."); return; }
     const allTasks = taskStore.getActive();
@@ -608,10 +623,46 @@ export async function createBot(): Promise<Bot> {
       await ctx.reply("승인 대기 중인 태스크가 없습니다.");
       return;
     }
-    const lines = pending.map(t =>
-      `• ${t.title}\n  /approve ${t.id.slice(0, 8)}`
-    );
-    await sendResponse(ctx, `승인 대기 (${pending.length}건):\n\n${lines.join("\n\n")}`);
+    for (const t of pending) {
+      const keyboard = new InlineKeyboard()
+        .text("✓ 승인", `app_${t.id.slice(0, 8)}`)
+        .text("✗ 거절", `rej_${t.id.slice(0, 8)}`);
+      const project = t.project ? ` [${t.project}]` : "";
+      await ctx.reply(`⏳ ${t.title}${project}`, { reply_markup: keyboard });
+    }
+  });
+
+  // --- Callback query handlers (inline buttons) ---
+
+  bot.callbackQuery(/^app_(.+)$/, async (ctx) => {
+    if (!taskStore) return;
+    const idPrefix = ctx.match[1];
+    const task = taskStore.getActive().find(t => t.id.startsWith(idPrefix) && t.requires_approval);
+    if (!task) {
+      await ctx.answerCallbackQuery({ text: "이미 처리된 태스크입니다." });
+      await ctx.editMessageText(`(이미 처리됨)`);
+      return;
+    }
+    taskStore.updateTask(task.id, {
+      requires_approval: false,
+      schedule_next: new Date().toISOString(),
+    });
+    await ctx.answerCallbackQuery({ text: "✓ 승인 완료!" });
+    await ctx.editMessageText(`✓ 승인됨: ${task.title}`);
+  });
+
+  bot.callbackQuery(/^rej_(.+)$/, async (ctx) => {
+    if (!taskStore) return;
+    const idPrefix = ctx.match[1];
+    const task = taskStore.getActive().find(t => t.id.startsWith(idPrefix));
+    if (!task) {
+      await ctx.answerCallbackQuery({ text: "이미 처리된 태스크입니다." });
+      await ctx.editMessageText(`(이미 처리됨)`);
+      return;
+    }
+    taskStore.cancelTask(task.id);
+    await ctx.answerCallbackQuery({ text: "✗ 거절됨" });
+    await ctx.editMessageText(`✗ 거절됨: ${task.title}`);
   });
 
   // --- Message handlers ---
@@ -751,29 +802,8 @@ export async function createBot(): Promise<Bot> {
     }
   });
 
-  // Register bot commands with Telegram (replaces any old commands)
-  await bot.api.setMyCommands([
-    { command: "reset", description: "세션 초기화 — 새 대화 시작" },
-    { command: "status", description: "봇 상태 확인" },
-    { command: "memory", description: "저장된 기억 보기" },
-    { command: "forget", description: "모든 기억 삭제" },
-    { command: "history", description: "최근 대화 내역" },
-    { command: "search", description: "메시지 검색" },
-    { command: "tasks", description: "자율 태스크 목록" },
-    { command: "cancel", description: "태스크 취소" },
-    { command: "pending", description: "승인 대기 태스크 보기" },
-    { command: "approve", description: "태스크 승인" },
-    { command: "goals", description: "프로젝트 목표 보기" },
-    { command: "monitors", description: "서비스 모니터 상태" },
-    { command: "idle_on", description: "자율 탐색 활성화" },
-    { command: "idle_off", description: "자율 탐색 비활성화" },
-    { command: "chain_on", description: "작업 연쇄 활성화" },
-    { command: "chain_off", description: "작업 연쇄 비활성화" },
-    { command: "stop", description: "에이전트 긴급 중지" },
-    { command: "resume_agent", description: "에이전트 재개" },
-    { command: "forbidden", description: "금지 동작 목록" },
-  ]);
-  console.log("[bot] Telegram commands registered");
+  // Commands are already registered with Telegram — no need to call setMyCommands on every start.
+  // Run `bot.api.setMyCommands([...])` manually if commands change.
 
   return bot;
 }
