@@ -1,6 +1,9 @@
+import json
 import logging
+
 from korail2 import Korail, ReserveOption
 from korail2 import AdultPassenger, ChildPassenger, SeniorPassenger
+from korail2.korail2 import KORAIL_CANCEL
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,8 @@ class KorailService:
                 time=time_start_padded,
             )
         except Exception as e:
+            if "No Results" in str(e):
+                return None
             logger.error(f"Korail 검색 실패: {e}")
             raise
 
@@ -72,10 +77,10 @@ class KorailService:
 
             # 매진 체크
             if seat_type == "special":
-                if not hasattr(train, "special_seat_available") or train.special_seat_available == "0":
+                if not train.has_special_seat:
                     continue
             else:
-                if not hasattr(train, "general_seat_available") or train.general_seat_available == "0":
+                if not train.has_general_seat:
                     continue
 
             try:
@@ -99,6 +104,30 @@ class KorailService:
                 continue
 
         return None
+
+    def cancel_reservation(self, rsv_index: int = 0) -> bool:
+        """예약 취소. korail2 cancel()에 버그가 있어서 직접 구현 (get에 params= 사용)"""
+        self._ensure_logged_in()
+        reservations = self._client.reservations()
+        if rsv_index >= len(reservations):
+            raise ValueError(f"예약 #{rsv_index} 없음 (총 {len(reservations)}건)")
+
+        rsv = reservations[rsv_index]
+        params = {
+            "Device": self._client._device,
+            "Version": self._client._version,
+            "Key": self._client._key,
+            "txtPnrNo": rsv.rsv_id,
+            "txtJrnySqno": rsv.journey_no,
+            "txtJrnyCnt": rsv.journey_cnt,
+            "hidRsvChgNo": rsv.rsv_chg_no,
+        }
+        resp = self._client._session.get(KORAIL_CANCEL, params=params)
+        result = json.loads(resp.text)
+        if result.get("strResult") == "SUCC":
+            logger.info(f"Korail 예약 취소 성공: {rsv.rsv_id}")
+            return True
+        raise RuntimeError(f"Korail 취소 실패: {result.get('h_msg_txt', 'unknown')}")
 
     def get_reservations(self) -> list:
         self._ensure_logged_in()

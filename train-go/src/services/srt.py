@@ -59,6 +59,8 @@ class SRTService:
                 available_only=True,
             )
         except Exception as e:
+            if "열차가 없습니다" in str(e) or "결과가 없습니다" in str(e):
+                return None
             logger.error(f"SRT 검색 실패: {e}")
             raise
 

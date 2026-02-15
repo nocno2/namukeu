@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timedelta
 
 from src.core.crypto import CryptoManager
@@ -18,14 +19,18 @@ class ReservationScheduler:
         db: Database,
         crypto: CryptoManager,
         notifier: TelegramNotifier,
-        search_interval: int = 5,
+        search_interval_min: int = 3,
+        search_interval_max: int = 8,
         max_duration_hours: int = 24,
+        progress_report_minutes: int = 10,
     ):
         self.db = db
         self.crypto = crypto
         self.notifier = notifier
-        self.search_interval = search_interval
+        self.search_interval_min = search_interval_min
+        self.search_interval_max = search_interval_max
         self.max_duration_hours = max_duration_hours
+        self.progress_report_minutes = progress_report_minutes
         self._tasks: dict[int, asyncio.Task] = {}
 
     def start_search(self, reservation_id: int):
@@ -36,17 +41,31 @@ class ReservationScheduler:
         self._tasks[reservation_id] = task
         logger.info(f"매크로 #{reservation_id} 시작")
 
-    def stop_search(self, reservation_id: int):
+    def stop_search(self, reservation_id: int) -> asyncio.Task | None:
         task = self._tasks.pop(reservation_id, None)
         if task:
             task.cancel()
             logger.info(f"매크로 #{reservation_id} 중단")
+        return task
 
     def get_active_count(self) -> int:
         return len(self._tasks)
 
     def get_active_ids(self) -> list[int]:
         return list(self._tasks.keys())
+
+    def _random_interval(self) -> float:
+        """사람처럼 보이는 랜덤 간격 생성.
+        - 기본: 가우시안 분포 (중앙값 근처에 밀집)
+        - 10% 확률로 15~30초 긴 휴식 (사람이 잠깐 다른 거 하는 것처럼)
+        - 최솟값 보장
+        """
+        if random.random() < 0.1:
+            return random.uniform(15, 30)
+        mid = (self.search_interval_min + self.search_interval_max) / 2
+        std = (self.search_interval_max - self.search_interval_min) / 4
+        interval = random.gauss(mid, std)
+        return max(self.search_interval_min, min(self.search_interval_max, interval))
 
     async def restore_pending(self):
         """서버 재시작 시 pending/searching 상태 예약 복원"""
@@ -86,6 +105,8 @@ class ReservationScheduler:
                 service.login(login_id, login_pw)
 
             passengers = json.loads(reservation["passengers"])
+            search_count = 0
+            last_report = datetime.now()
 
             # 반복 검색
             while datetime.now() < deadline:
@@ -100,6 +121,8 @@ class ReservationScheduler:
                         seat_type=reservation["seat_type"],
                     )
 
+                    search_count += 1
+
                     if result:
                         self.db.update_reservation_status(
                             reservation_id, "reserved", train_info=result
@@ -109,21 +132,30 @@ class ReservationScheduler:
                         return
 
                     self.db.add_search_log(reservation_id, results_count=0)
+                    logger.info(f"매크로 #{reservation_id} 검색 {search_count}회 — 좌석 없음")
 
                 except Exception as e:
+                    search_count += 1
                     logger.error(f"매크로 #{reservation_id} 검색 에러: {e}")
                     self.db.add_search_log(reservation_id, error=str(e))
                     # 로그인 만료 시 재로그인 시도
                     if "로그인" in str(e) or "login" in str(e).lower():
                         try:
-                            if reservation["provider"] == "srt":
-                                service.login(login_id, login_pw)
-                            else:
-                                service.login(login_id, login_pw)
+                            service.login(login_id, login_pw)
                         except Exception:
                             pass
 
-                await asyncio.sleep(self.search_interval)
+                # 주기적 진행 알림
+                now = datetime.now()
+                if (now - last_report).total_seconds() >= self.progress_report_minutes * 60:
+                    elapsed = now - (deadline - timedelta(hours=self.max_duration_hours))
+                    elapsed_min = int(elapsed.total_seconds() // 60)
+                    await self.notifier.notify_progress(reservation, search_count, elapsed_min)
+                    last_report = now
+
+                # 랜덤 간격 대기 (가우시안 분포 + 가끔 긴 휴식)
+                interval = self._random_interval()
+                await asyncio.sleep(interval)
 
             # 시간 초과
             self.db.update_reservation_status(

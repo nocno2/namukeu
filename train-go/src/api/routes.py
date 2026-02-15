@@ -73,7 +73,7 @@ def delete_credential(
 
 
 @router.post("/reservations", response_model=ReservationResponse)
-def create_reservation(
+async def create_reservation(
     body: ReservationCreate,
     _=Depends(verify),
     db: Database = Depends(get_db),

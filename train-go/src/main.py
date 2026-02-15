@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import logging.handlers
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -14,9 +16,18 @@ from src.core.database import Database
 from src.services.notifier import TelegramNotifier
 from src.services.scheduler import ReservationScheduler
 
+LOG_DIR = Path("data/logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.handlers.RotatingFileHandler(
+            LOG_DIR / "train-go.log", maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+        ),
+    ],
 )
 logger = logging.getLogger(__name__)
 
@@ -32,8 +43,10 @@ async def lifespan(app: FastAPI):
         db=db,
         crypto=crypto,
         notifier=notifier,
-        search_interval=config.search_interval_seconds,
+        search_interval_min=config.search_interval_min,
+        search_interval_max=config.search_interval_max,
         max_duration_hours=config.max_search_duration_hours,
+        progress_report_minutes=config.progress_report_minutes,
     )
 
     # 의존성 오버라이드
@@ -48,9 +61,14 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # Shutdown — 태스크를 먼저 취소하고 완료될 때까지 대기한 뒤 DB 닫기
+    tasks = []
     for rid in list(scheduler.get_active_ids()):
-        scheduler.stop_search(rid)
+        task = scheduler.stop_search(rid)
+        if task:
+            tasks.append(task)
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
     db.close()
     logger.info("train-go 서버 종료")
 

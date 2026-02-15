@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.namukeu.train-go</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/namwook/Documents/namukeu/train-go/.venv/bin/python</string>
+        <string>-m</string>
+        <string>src.main</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/namwook/Documents/namukeu/train-go</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/namwook/.local/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>HOME</key>
+        <string>/Users/namwook</string>
+    </dict>
+
+    <!-- Start when loaded (= on login/boot) -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Auto-restart on crash -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Wait 10 seconds before restarting after crash -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- Log files -->
+    <key>StandardOutPath</key>
+    <string>/Users/namwook/Library/Logs/train-go.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/namwook/Library/Logs/train-go.error.log</string>
+</dict>
+</plist>

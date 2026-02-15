@@ -83,3 +83,13 @@ class TelegramNotifier:
             f"{reservation['date']} {reservation['time_range_start']}~{reservation['time_range_end']}"
         )
         await self.send_message(text)
+
+    async def notify_progress(self, reservation: dict, search_count: int, elapsed_min: int):
+        text = (
+            f"🔄 *매크로 진행 중*\n"
+            f"[{reservation['provider'].upper()}] "
+            f"{reservation['dep_station']} → {reservation['arr_station']}\n"
+            f"{search_count}회 검색 | {elapsed_min}분 경과\n"
+            f"아직 좌석 없음"
+        )
+        await self.send_message(text)
