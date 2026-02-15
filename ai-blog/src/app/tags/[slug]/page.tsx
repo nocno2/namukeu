@@ -13,15 +13,17 @@ interface Props {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const tag = await db.select().from(schema.tags).where(eq(schema.tags.slug, slug)).get();
+  const decoded = decodeURIComponent(slug);
+  const tag = await db.select().from(schema.tags).where(eq(schema.tags.slug, decoded)).get();
   if (!tag) return {};
   return { title: `#${tag.name}`, description: `#${tag.name} 태그가 달린 글 목록` };
 }
 
 export default async function TagPage({ params }: Props) {
   const { slug } = await params;
+  const decoded = decodeURIComponent(slug);
 
-  const tag = await db.select().from(schema.tags).where(eq(schema.tags.slug, slug)).get();
+  const tag = await db.select().from(schema.tags).where(eq(schema.tags.slug, decoded)).get();
   if (!tag) notFound();
 
   const posts = await db

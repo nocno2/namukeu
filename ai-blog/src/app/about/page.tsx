@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "About",
-  description: "AI Blog 소개 페이지",
+  description: "Namukeu Blog 소개 페이지",
 };
 
 export default function AboutPage() {
@@ -11,7 +11,7 @@ export default function AboutPage() {
       <h1 className="text-3xl font-bold text-[var(--text-secondary)] mb-8">About</h1>
       <div className="prose bg-[var(--bg-card)] rounded-xl border border-[var(--border)]/50 p-8">
         <p>
-          AI Blog는 인공지능, 머신러닝, 그리고 차세대 기술 트렌드를 다루는 기술 블로그입니다.
+          Namukeu Blog는 인공지능, 머신러닝, 그리고 차세대 기술 트렌드를 다루는 기술 블로그입니다.
         </p>
         <p>
           복잡한 기술 개념을 이해하기 쉽게 풀어내고, 실무에 바로 적용할 수 있는
@@ -23,7 +23,8 @@ export default function AboutPage() {
           <li><strong>Next Gen 기술</strong> — 웹3, 양자컴퓨팅, AR/VR 등 차세대 기술 트렌드</li>
         </ul>
         <h2>연락처</h2>
-        <p>블로그에 대한 문의사항이나 제안이 있으시면 이메일로 연락해주세요.</p>
+        <p>블로그에 대한 문의사항이나 제안이 있으시면 아래 이메일로 연락해주세요.</p>
+        <p><a href="mailto:cnw@kakao.com">cnw@kakao.com</a></p>
       </div>
     </div>
   );

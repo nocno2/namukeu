@@ -6,7 +6,7 @@ export default function Footer() {
       <div className="mx-auto max-w-4xl px-6 py-10">
         <div className="flex flex-col md:flex-row justify-between items-start gap-8">
           <div>
-            <p className="font-semibold text-[var(--text-secondary)] mb-2">AI Blog</p>
+            <p className="font-semibold text-[var(--text-secondary)] mb-2">Namukeu Blog</p>
             <p className="text-sm text-[var(--text-tertiary)] max-w-xs leading-relaxed">
               AI와 차세대 기술의 최신 트렌드를 쉽고 깊게 다룹니다.
             </p>
@@ -30,7 +30,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="mt-10 pt-6 border-t border-[var(--border-light)] text-center text-xs text-[var(--text-muted)]">
-          &copy; {new Date().getFullYear()} AI Blog. All rights reserved.
+          &copy; {new Date().getFullYear()} Namukeu Blog. All rights reserved.
         </div>
       </div>
     </footer>

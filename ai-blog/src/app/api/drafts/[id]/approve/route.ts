@@ -42,6 +42,10 @@ export async function POST(_request: NextRequest, ctx: Ctx) {
     );
   }
 
+  // 본문에서 첫 번째 이미지 URL 추출
+  const imageMatch = finalContent.match(/!\[.*?\]\(([^)]+)\)/);
+  const featuredImage = imageMatch ? imageMatch[1] : null;
+
   // posts 테이블에 삽입
   const [post] = await db
     .insert(schema.posts)
@@ -51,6 +55,7 @@ export async function POST(_request: NextRequest, ctx: Ctx) {
       content: finalContent,
       excerpt: draft.excerpt || null,
       categoryId: draft.categoryId || null,
+      featuredImage,
       status: "published",
       publishedAt: new Date().toISOString(),
     })

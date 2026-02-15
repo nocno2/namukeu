@@ -36,6 +36,7 @@ export default function DraftDetailPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isImageFile = useCallback((file: File) => {
     if (file.type.startsWith("image/")) return true;
@@ -113,6 +114,22 @@ export default function DraftDetailPage() {
       setEditContent(data.revisedContent || data.content || "");
     }
     setLoading(false);
+  }
+
+  async function handleSave() {
+    setActionLoading(true);
+    const res = await fetch(`/api/drafts/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revisedContent: editContent }),
+    });
+    if (res.ok) {
+      await fetchDraft();
+      alert("저장되었습니다.");
+    } else {
+      alert("저장 실패");
+    }
+    setActionLoading(false);
   }
 
   async function handleApprove() {
@@ -262,7 +279,36 @@ export default function DraftDetailPage() {
                 <span className="text-sm text-[var(--text-tertiary)]">이미지 업로드 중...</span>
               </div>
             )}
-            <p className="text-xs text-[var(--text-muted)] mt-1">이미지를 드래그하거나 붙여넣기(Ctrl+V)로 삽입할 수 있습니다. (HEIC/HEIF 포함, 자동 WebP 변환)</p>
+            <div className="flex items-center justify-between mt-2 gap-2">
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.heic,.heif"
+                  className="hidden"
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []).filter(isImageFile);
+                    for (const file of files) uploadImage(file);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="border border-[var(--border)] text-[var(--text-secondary)] px-3 py-1.5 rounded text-sm hover:bg-[var(--bg-subtle)] disabled:opacity-50 transition"
+                >
+                  {uploading ? "업로드 중..." : "이미지 추가"}
+                </button>
+                <p className="text-xs text-[var(--text-muted)] hidden sm:block">드래그/붙여넣기도 가능 (HEIC 포함, 자동 WebP 변환)</p>
+              </div>
+              <button
+                onClick={handleSave}
+                disabled={actionLoading}
+                className="bg-[var(--accent)] text-white px-4 py-1.5 rounded text-sm font-medium hover:opacity-90 disabled:opacity-50 transition whitespace-nowrap"
+              >
+                {actionLoading ? "저장 중..." : "저장"}
+              </button>
+            </div>
           </div>
         ) : (
           <div

@@ -26,7 +26,7 @@ export function generatePostMetadata(post: {
       siteName: SITE_NAME,
       authors: [SITE_NAME],
       ...(post.featuredImage && {
-        images: [{ url: post.featuredImage }],
+        images: [{ url: post.featuredImage.startsWith("http") ? post.featuredImage : `${SITE_URL}${post.featuredImage}` }],
       }),
       ...(post.publishedAt && {
         publishedTime: post.publishedAt,
@@ -36,6 +36,9 @@ export function generatePostMetadata(post: {
       card: "summary_large_image",
       title,
       description,
+      ...(post.featuredImage && {
+        images: [post.featuredImage.startsWith("http") ? post.featuredImage : `${SITE_URL}${post.featuredImage}`],
+      }),
     },
   };
 }
@@ -57,7 +60,7 @@ export function generateJsonLd(post: {
     datePublished: post.publishedAt,
     dateModified: post.updatedAt,
     ...(post.featuredImage && {
-      image: post.featuredImage,
+      image: post.featuredImage.startsWith("http") ? post.featuredImage : `${SITE_URL}${post.featuredImage}`,
     }),
     author: {
       "@type": "Person",

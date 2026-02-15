@@ -5,7 +5,7 @@ export default function Header() {
     <header className="sticky top-0 z-50 bg-[var(--bg)]/90 backdrop-blur-md border-b border-[var(--border-light)]">
       <nav className="mx-auto max-w-4xl px-6 py-4 flex items-center justify-between">
         <Link href="/" className="text-lg font-semibold tracking-tight text-[var(--text-secondary)]">
-          AI Blog
+          Namukeu Blog
         </Link>
         <ul className="flex items-center gap-1 text-sm">
           <li>

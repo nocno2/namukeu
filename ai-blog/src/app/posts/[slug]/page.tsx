@@ -102,16 +102,6 @@ export default async function PostPage({ params }: Props) {
           </address>
         </header>
 
-        {post.featuredImage && (
-          <figure className="mb-10">
-            <img
-              src={post.featuredImage}
-              alt={post.title}
-              className="w-full rounded-xl"
-            />
-          </figure>
-        )}
-
         <section className="article-body">
           <PostContent html={html} />
         </section>

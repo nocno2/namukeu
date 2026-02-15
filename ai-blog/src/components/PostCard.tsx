@@ -11,6 +11,21 @@ interface PostCardProps {
   tags?: { name: string; slug: string }[];
 }
 
+const GRADIENTS = [
+  "from-blue-500/20 to-purple-500/20",
+  "from-emerald-500/20 to-teal-500/20",
+  "from-orange-500/20 to-rose-500/20",
+  "from-violet-500/20 to-indigo-500/20",
+  "from-cyan-500/20 to-blue-500/20",
+  "from-pink-500/20 to-red-500/20",
+];
+
+function getGradient(str: string) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  return GRADIENTS[Math.abs(hash) % GRADIENTS.length];
+}
+
 export default function PostCard({
   title,
   slug,
@@ -23,15 +38,21 @@ export default function PostCard({
 }: PostCardProps) {
   return (
     <article className="card-hover bg-[var(--bg-card)] rounded-xl overflow-hidden border border-[var(--border)]/50">
-      {featuredImage && (
-        <Link href={`/posts/${slug}`} className="block overflow-hidden">
+      <Link href={`/posts/${slug}`} className="block overflow-hidden">
+        {featuredImage ? (
           <img
             src={featuredImage}
             alt={title}
             className="w-full h-44 object-cover hover:scale-105 transition duration-500"
           />
-        </Link>
-      )}
+        ) : (
+          <div className={`w-full h-44 bg-gradient-to-br ${getGradient(slug)} flex items-end p-5`}>
+            <span className="text-sm font-medium text-[var(--text-tertiary)] line-clamp-2 leading-relaxed">
+              {categoryName || "Blog"}
+            </span>
+          </div>
+        )}
+      </Link>
       <div className="p-5">
         <div className="flex items-center gap-2 mb-3">
           {categoryName && categorySlug && (

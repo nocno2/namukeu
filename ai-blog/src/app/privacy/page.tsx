@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "개인정보처리방침",
-  description: "AI Blog 개인정보처리방침",
+  description: "Namukeu Blog 개인정보처리방침",
 };
 
 export default function PrivacyPage() {
@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <h1 className="text-3xl font-bold text-[var(--text-secondary)] mb-8">개인정보처리방침</h1>
       <div className="prose bg-[var(--bg-card)] rounded-xl border border-[var(--border)]/50 p-8">
         <p>
-          본 개인정보처리방침은 AI Blog(이하 &ldquo;사이트&rdquo;)가 수집하는
+          본 개인정보처리방침은 Namukeu Blog(이하 &ldquo;사이트&rdquo;)가 수집하는
           정보와 그 활용 방법에 대해 설명합니다.
         </p>
         <h2>1. 수집하는 정보</h2>
@@ -32,7 +32,7 @@ export default function PrivacyPage() {
           <li><strong>Google AdSense</strong> — 광고 서비스</li>
         </ul>
         <h2>5. 문의</h2>
-        <p>개인정보 관련 문의사항은 이메일로 연락해 주시기 바랍니다.</p>
+        <p>개인정보 관련 문의사항은 <a href="mailto:cnw@kakao.com">cnw@kakao.com</a>으로 연락해 주시기 바랍니다.</p>
         <p className="text-sm text-[var(--text-muted)] mt-8">최종 수정일: 2026년 2월 14일</p>
       </div>
     </div>
