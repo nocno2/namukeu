@@ -43,6 +43,19 @@ class Database:
 
             CREATE INDEX IF NOT EXISTS idx_metrics_service_time
                 ON metrics (service_name, timestamp);
+
+            CREATE TABLE IF NOT EXISTS incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                service_name TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                resolved_at TEXT,
+                duration_sec INTEGER,
+                auto_recovered INTEGER NOT NULL DEFAULT 0,
+                recovery_attempt_count INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_incidents_service_time
+                ON incidents (service_name, started_at);
         """)
 
     def create_session(self, username: str, expire_hours: int = 24) -> str:
@@ -149,6 +162,40 @@ class Database:
                 (service_name,),
             ).fetchone()
         return dict(row) if row else None
+
+    def insert_incident(self, service_name: str) -> int:
+        with self._lock:
+            cursor = self.conn.execute(
+                "INSERT INTO incidents (service_name, started_at) VALUES (?, ?)",
+                (service_name, datetime.now().isoformat()),
+            )
+            self.conn.commit()
+            return cursor.lastrowid
+
+    def resolve_incident(self, incident_id: int, auto_recovered: bool = False, recovery_attempts: int = 0):
+        now = datetime.now()
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT started_at FROM incidents WHERE id = ?", (incident_id,)
+            ).fetchone()
+            if not row:
+                return
+            started_at = datetime.fromisoformat(row["started_at"])
+            duration_sec = int((now - started_at).total_seconds())
+            self.conn.execute(
+                "UPDATE incidents SET resolved_at = ?, duration_sec = ?, auto_recovered = ?, recovery_attempt_count = ? WHERE id = ?",
+                (now.isoformat(), duration_sec, int(auto_recovered), recovery_attempts, incident_id),
+            )
+            self.conn.commit()
+
+    def get_incidents(self, service_name: str, since: datetime) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT id, service_name, started_at, resolved_at, duration_sec, auto_recovered, recovery_attempt_count "
+                "FROM incidents WHERE service_name = ? AND started_at >= ? ORDER BY started_at DESC",
+                (service_name, since.isoformat()),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def cleanup_old_metrics(self, retention_days: int = 7):
         """Aggregate metrics older than retention_days into hourly summaries, then delete raw data."""

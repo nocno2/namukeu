@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type ServiceStatus, type UptimeBlock } from "../lib/api";
+import { api, type Incident, type ServiceStatus, type UptimeBlock } from "../lib/api";
 
 interface Props {
   service: ServiceStatus;
@@ -78,6 +78,46 @@ function UptimeBar({ blocks, uptimePercent }: { blocks: UptimeBlock[]; uptimePer
   );
 }
 
+function formatDuration(sec: number | null): string {
+  if (sec === null) return "진행 중";
+  if (sec < 60) return `${sec}초`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}분`;
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
+}
+
+function IncidentList({ incidents }: { incidents: Incident[] }) {
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <span className="text-[10px] text-text-muted mb-1.5 block">최근 인시던트</span>
+      <div className="space-y-1.5">
+        {incidents.map((inc) => (
+          <div key={inc.id} className="flex items-center justify-between text-[11px]">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${inc.resolved_at ? "bg-text-muted/30" : "bg-danger"}`} />
+              <span className="text-text-muted truncate">
+                {new Date(inc.started_at).toLocaleDateString("ko-KR", { month: "short", day: "numeric" })}{" "}
+                {new Date(inc.started_at).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="font-mono text-text-muted">{formatDuration(inc.duration_sec)}</span>
+              {inc.auto_recovered ? (
+                <span className="text-[9px] bg-success/15 text-success border border-success/20 px-1 py-0.5 rounded">자동복구</span>
+              ) : inc.resolved_at ? (
+                <span className="text-[9px] bg-text-muted/10 text-text-muted border border-border px-1 py-0.5 rounded">수동복구</span>
+              ) : (
+                <span className="text-[9px] bg-danger/15 text-danger border border-danger/20 px-1 py-0.5 rounded">진행중</span>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const secs = Math.floor(diff / 1000);
@@ -95,6 +135,7 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
   const [restarting, setRestarting] = useState(false);
   const [uptimeBlocks, setUptimeBlocks] = useState<UptimeBlock[]>([]);
   const [uptimePercent, setUptimePercent] = useState<number | null>(null);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +143,11 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
       if (!cancelled) {
         setUptimeBlocks(data.blocks);
         setUptimePercent(data.uptime_percent);
+      }
+    }).catch(() => {});
+    api.serviceIncidents(service.name, 30).then((data) => {
+      if (!cancelled) {
+        setIncidents(data.incidents.slice(0, 3));
       }
     }).catch(() => {});
     return () => { cancelled = true; };
@@ -214,6 +260,11 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
           {/* Uptime Bar */}
           {uptimeBlocks.length > 0 && (
             <UptimeBar blocks={uptimeBlocks} uptimePercent={uptimePercent} />
+          )}
+
+          {/* Recent Incidents */}
+          {incidents.length > 0 && (
+            <IncidentList incidents={incidents} />
           )}
 
           {/* Actions */}

@@ -193,6 +193,25 @@ def service_uptime(
     }
 
 
+@router.get("/services/{name}/incidents")
+def service_incidents(
+    name: str,
+    days: int = 30,
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+    db: Database = Depends(get_db),
+):
+    svc = next((s for s in config.services if s.name == name), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    days = min(days, 90)
+    since = datetime.now() - timedelta(days=days)
+    incidents = db.get_incidents(name, since)
+
+    return {"service": name, "days": days, "incidents": incidents}
+
+
 class CardPrefUpdate(BaseModel):
     card_id: str
     collapsed: bool | None = None

@@ -117,6 +117,12 @@ export const api = {
       `/api/services/${name}/uptime?hours=${hours}`,
     );
   },
+
+  serviceIncidents(name: string, days = 30) {
+    return request<{ service: string; days: number; incidents: Incident[] }>(
+      `/api/services/${name}/incidents?days=${days}`,
+    );
+  },
 };
 
 export interface ServiceStatus {
@@ -223,6 +229,16 @@ export interface ServiceUptime {
   hours: number;
   blocks: UptimeBlock[];
   uptime_percent: number | null;
+}
+
+export interface Incident {
+  id: number;
+  service_name: string;
+  started_at: string;
+  resolved_at: string | null;
+  duration_sec: number | null;
+  auto_recovered: number;
+  recovery_attempt_count: number;
 }
 
 export interface AgentGoal {
