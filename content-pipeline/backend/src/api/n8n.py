@@ -59,6 +59,8 @@ class EnrichContextResponse(BaseModel):
 class GenerateRequest(BaseModel):
     keyword: str = Field(..., min_length=1, max_length=200, description="블로그 키워드")
     direction: str | None = Field(None, max_length=2000, description="창작 방향 (선택)")
+    trend_data: dict | None = Field(None, description="트렌드 데이터 (선택)")
+    search_insights: list[str] | None = Field(None, description="웹검색 인사이트 (선택)")
 
 
 class GenerateResponse(BaseModel):
@@ -302,11 +304,28 @@ async def generate_content(body: GenerateRequest):
         keyword = body.keyword
         direction = body.direction or ""
 
+        # Build context from enrich data
+        context_parts = []
+        if direction:
+            context_parts.append(f"## 창작 방향\n{direction}")
+
+        if body.search_insights:
+            insights = "\n".join(f"- {insight}" for insight in body.search_insights)
+            context_parts.append(f"## 웹검색 인사이트\n{insights}")
+
+        if body.trend_data:
+            trend_info = f"검색량: {body.trend_data.get('search_volume', '보통')}"
+            if body.trend_data.get('related_keywords'):
+                trend_info += f"\n관련 키워드: {', '.join(body.trend_data['related_keywords'][:5])}"
+            context_parts.append(f"## 트렌드 정보\n{trend_info}")
+
+        context_block = "\n\n".join(context_parts) if context_parts else ""
+
         # Step 1: Generate outline
         logger.info(f"[n8n/generate] Generating outline for: {keyword}")
         outline_prompt = OUTLINE_PROMPT.format(keyword=keyword)
-        if direction:
-            outline_prompt += f"\n\n## 창작 방향\n{direction}"
+        if context_block:
+            outline_prompt += f"\n\n{context_block}"
         outline = await _run_claude_cli(outline_prompt)
 
         # Extract title from outline
@@ -322,7 +341,7 @@ async def generate_content(body: GenerateRequest):
 
         # Step 2: Generate full article
         logger.info(f"[n8n/generate] Generating article: {title}")
-        direction_block = f"## 창작 방향 (반드시 반영)\n{direction}" if direction else ""
+        direction_block = context_block if context_block else ""
         content = await _run_claude_cli(ARTICLE_PROMPT.format(
             keyword=keyword,
             title=title,

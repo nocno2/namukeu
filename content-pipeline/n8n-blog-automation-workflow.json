@@ -134,16 +134,26 @@
       "typeVersion": 3
     },
     {
+      "id": "prepare-generate-request",
+      "name": "Prepare Generate Request",
+      "type": "n8n-nodes-base.code",
+      "position": [-100, 400],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [\n  {\n    json: {\n      keyword: data.keyword,\n      direction: data.direction || '',\n      trend_data: data.trend_data || null,\n      search_insights: data.search_insights || null\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
       "id": "generate-draft",
       "name": "Generate Draft",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [0, 400],
+      "position": [100, 400],
       "parameters": {
         "url": "http://127.0.0.1:8003/api/n8n/generate",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"keyword\": \"{{ $json.keyword }}\",\n  \"direction\": \"{{ $json.direction }}\"\n}",
+        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
           "timeout": 300000
         }
@@ -151,16 +161,26 @@
       "typeVersion": 4.2
     },
     {
+      "id": "prepare-images-request",
+      "name": "Prepare Images Request",
+      "type": "n8n-nodes-base.code",
+      "position": [200, 400],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [\n  {\n    json: {\n      title: data.title,\n      content: data.content,\n      count: 3\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
       "id": "generate-images",
       "name": "Generate Images",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [200, 400],
+      "position": [350, 400],
       "parameters": {
         "url": "http://127.0.0.1:8003/api/n8n/generate-images",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $json.title }}\",\n  \"content\": \"{{ $json.content }}\",\n  \"count\": 3\n}",
+        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
           "timeout": 300000
         }
@@ -171,7 +191,7 @@
       "id": "split-image-prompts",
       "name": "Split Image Prompts",
       "type": "n8n-nodes-base.splitInBatches",
-      "position": [400, 400],
+      "position": [500, 400],
       "parameters": {
         "batchSize": 1,
         "options": {}
@@ -182,7 +202,7 @@
       "id": "generate-image-dalle",
       "name": "Generate Image (DALL-E)",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [600, 400],
+      "position": [700, 400],
       "parameters": {
         "url": "https://api.openai.com/v1/images/generations",
         "method": "POST",
@@ -201,7 +221,7 @@
       "id": "aggregate-image-urls",
       "name": "Aggregate Image URLs",
       "type": "n8n-nodes-base.code",
-      "position": [800, 400],
+      "position": [900, 400],
       "parameters": {
         "jsCode": "const urls = [];\nfor (const item of $input.all()) {\n  if (item.json.data && item.json.data[0]) {\n    urls.push(item.json.data[0].url);\n  }\n}\nreturn [{ json: { image_urls: urls } }];"
       },
@@ -211,7 +231,7 @@
       "id": "replace-image-urls",
       "name": "Replace Image URLs in Content",
       "type": "n8n-nodes-base.code",
-      "position": [1000, 400],
+      "position": [1100, 400],
       "parameters": {
         "jsCode": "const draft = $('Generate Draft').first().json;\nconst imageData = $('Generate Images').first().json;\nconst imageUrls = $input.first().json.image_urls;\n\nlet finalContent = imageData.content_with_images;\n\n// Replace placeholders\nimageUrls.forEach((url, i) => {\n  const placeholder = `image_${i + 1}.png`;\n  finalContent = finalContent.replace(placeholder, url);\n});\n\nreturn [\n  {\n    json: {\n      title: draft.title,\n      slug: draft.slug,\n      content: finalContent,\n      excerpt: draft.excerpt,\n      keyword: draft.keyword,\n      tags: draft.tags,\n      outline: draft.outline\n    }\n  }\n];"
       },
@@ -403,9 +423,15 @@
       "main": [[{ "node": "merge-keyword-paths", "type": "main", "index": 1 }]]
     },
     "merge-keyword-paths": {
+      "main": [[{ "node": "prepare-generate-request", "type": "main", "index": 0 }]]
+    },
+    "prepare-generate-request": {
       "main": [[{ "node": "generate-draft", "type": "main", "index": 0 }]]
     },
     "generate-draft": {
+      "main": [[{ "node": "prepare-images-request", "type": "main", "index": 0 }]]
+    },
+    "prepare-images-request": {
       "main": [[{ "node": "generate-images", "type": "main", "index": 0 }]]
     },
     "generate-images": {
