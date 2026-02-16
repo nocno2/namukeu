@@ -8,6 +8,60 @@ const PROGRESS_INTERVAL_MS = 30_000; // 30 seconds
 const INITIAL_FEEDBACK_MS = 15_000; // 15 seconds before first "processing" message
 const INACTIVITY_WARN_MS = 180_000; // 3 minutes without stdout data → warn user
 
+// Track active child process for cleanup on bot exit
+let activeChildPid: number | null = null;
+
+/**
+ * Kill orphaned Claude CLI processes that hold a session lock.
+ * Searches for `claude ... --session-id <id>` or `--resume <id>` processes.
+ */
+async function killOrphanedClaude(sessionId: string): Promise<void> {
+  try {
+    const proc = spawn(["pgrep", "-f", `claude.*${sessionId}`], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const stdout = await new Response(proc.stdout).text();
+    await proc.exited;
+
+    const myPid = process.pid;
+    const pids = stdout
+      .trim()
+      .split("\n")
+      .map((p) => parseInt(p, 10))
+      .filter((p) => !isNaN(p) && p !== myPid && p !== activeChildPid);
+
+    for (const pid of pids) {
+      try {
+        process.kill(pid, "SIGTERM");
+        console.log(`Killed orphaned Claude process: ${pid}`);
+      } catch {
+        // already dead
+      }
+    }
+
+    if (pids.length > 0) {
+      // Wait briefly for processes to terminate
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  } catch {
+    // pgrep not found or other error, ignore
+  }
+}
+
+/** Kill active child Claude process (called on bot shutdown). */
+export function killActiveChild(): void {
+  if (activeChildPid) {
+    try {
+      process.kill(activeChildPid, "SIGTERM");
+      console.log(`Killed active Claude child: ${activeChildPid}`);
+    } catch {
+      // already dead
+    }
+    activeChildPid = null;
+  }
+}
+
 export interface ClaudeOptions {
   sessionId: string;
   isNewSession: boolean;
@@ -71,11 +125,15 @@ export async function callClaude(
       },
     });
 
+    // Track child process for cleanup
+    activeChildPid = proc.pid;
+
     // Parse streaming output
     const result = await parseStream(proc.stdout, options.onProgress);
 
     const stderr = await new Response(proc.stderr).text();
     const exitCode = await proc.exited;
+    activeChildPid = null;
 
     if (exitCode !== 0 && !result.result) {
       console.error(
@@ -91,10 +149,17 @@ export async function callClaude(
       }
 
       if (isSessionInUse(stderr)) {
+        // Kill orphaned Claude processes using this session, then retry with a fresh ID
+        await killOrphanedClaude(options.sessionId);
+        const freshId = crypto.randomUUID();
         console.warn(
-          `Session ${options.sessionId} is already in use, retrying as new session.`
+          `Session ${options.sessionId} in use. Killed orphans, retrying with new session ${freshId.slice(0, 8)}...`
         );
-        return callClaude(prompt, { ...options, isNewSession: true });
+        return callClaude(prompt, {
+          ...options,
+          sessionId: freshId,
+          isNewSession: true,
+        });
       }
 
       return {
@@ -113,6 +178,7 @@ export async function callClaude(
       durationMs: result.durationMs,
     };
   } catch (err) {
+    activeChildPid = null;
     return {
       success: false,
       result: "",

@@ -2,6 +2,7 @@ import { mkdir } from "fs/promises";
 import { join } from "path";
 import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
+import { killActiveChild } from "./claude";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
 
   // Cleanup on exit
   const cleanup = async () => {
-    // Heartbeat now runs in content-pipeline, no need to stop here
+    killActiveChild(); // Kill any running Claude CLI child process
     await stopPlaywrightMCP();
     await releaseLock();
     process.exit(0);
