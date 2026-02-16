@@ -74,7 +74,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [-600, 500],
       "parameters": {
-        "url": "http://127.0.0.1:8003/api/n8n/enrich-context",
+        "url": "http://host.docker.internal:8003/api/n8n/enrich-context",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -101,7 +101,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [-600, 300],
       "parameters": {
-        "url": "http://127.0.0.1:8003/api/n8n/enrich-keyword",
+        "url": "http://host.docker.internal:8003/api/n8n/enrich-keyword",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -149,7 +149,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [100, 400],
       "parameters": {
-        "url": "http://127.0.0.1:8003/api/n8n/generate",
+        "url": "http://host.docker.internal:8003/api/n8n/generate",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -176,7 +176,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [350, 400],
       "parameters": {
-        "url": "http://127.0.0.1:8003/api/n8n/generate-images",
+        "url": "http://host.docker.internal:8003/api/n8n/generate-images",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -243,7 +243,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [1200, 400],
       "parameters": {
-        "url": "http://127.0.0.1:8003/api/n8n/review",
+        "url": "http://host.docker.internal:8003/api/n8n/review",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -295,7 +295,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [1600, 300],
       "parameters": {
-        "url": "http://127.0.0.1:8003/api/n8n/save-draft",
+        "url": "http://host.docker.internal:8003/api/n8n/save-draft",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -312,7 +312,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [1600, 500],
       "parameters": {
-        "url": "http://127.0.0.1:8003/api/n8n/revise",
+        "url": "http://host.docker.internal:8003/api/n8n/revise",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",

@@ -431,11 +431,11 @@ from pathlib import Path
 
 # crontab 주석 → 표시 이름/설명 매핑 (command 키워드로 매칭)
 CRON_META: dict[str, dict[str, str]] = {
-    "run-pipeline": {
+    "run-pipeline.sh": {
         "display_name": "블로그 자동 발행",
         "description": "AI 블로그 글 자동 생성·발행",
     },
-    "check_ip": {
+    "check_ip.sh": {
         "display_name": "IP 변경 감지",
         "description": "공인 IP 변경 시 텔레그램 알림",
     },
