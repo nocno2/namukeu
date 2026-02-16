@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { api, type ServiceStatus } from "../lib/api";
+import { useEffect, useState } from "react";
+import { api, type ServiceStatus, type UptimeBlock } from "../lib/api";
 
 interface Props {
   service: ServiceStatus;
@@ -44,6 +44,40 @@ function formatDetails(details: Record<string, unknown>): [string, string | numb
   return items.slice(0, 6);
 }
 
+const STATUS_COLORS: Record<string, string> = {
+  running: "bg-success",
+  down: "bg-danger",
+  no_data: "bg-text-muted/20",
+};
+
+function UptimeBar({ blocks, uptimePercent }: { blocks: UptimeBlock[]; uptimePercent: number | null }) {
+  return (
+    <div className="mt-3 border-t border-border pt-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] text-text-muted">24h 업타임</span>
+        {uptimePercent !== null && (
+          <span className={`text-[10px] font-mono ${uptimePercent >= 99 ? "text-success" : uptimePercent >= 90 ? "text-warning" : "text-danger"}`}>
+            {uptimePercent}%
+          </span>
+        )}
+      </div>
+      <div className="flex gap-[1px] h-2 rounded overflow-hidden">
+        {blocks.map((block, i) => (
+          <div
+            key={i}
+            className={`flex-1 ${STATUS_COLORS[block.status] || STATUS_COLORS.no_data}`}
+            title={`${new Date(block.start).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })} — ${block.status === "running" ? "정상" : block.status === "down" ? "다운" : "데이터 없음"}`}
+          />
+        ))}
+      </div>
+      <div className="flex justify-between mt-0.5">
+        <span className="text-[9px] text-text-muted/50">24h ago</span>
+        <span className="text-[9px] text-text-muted/50">now</span>
+      </div>
+    </div>
+  );
+}
+
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const secs = Math.floor(diff / 1000);
@@ -59,6 +93,19 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
   const isRunning = service.status === "running";
   const canRestart = service.type !== "self";
   const [restarting, setRestarting] = useState(false);
+  const [uptimeBlocks, setUptimeBlocks] = useState<UptimeBlock[]>([]);
+  const [uptimePercent, setUptimePercent] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.serviceUptime(service.name).then((data) => {
+      if (!cancelled) {
+        setUptimeBlocks(data.blocks);
+        setUptimePercent(data.uptime_percent);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [service.name, service.checked_at]);
 
   const handleRestart = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -162,6 +209,11 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
                 <DetailItem key={label} label={label} value={value} />
               ))}
             </div>
+          )}
+
+          {/* Uptime Bar */}
+          {uptimeBlocks.length > 0 && (
+            <UptimeBar blocks={uptimeBlocks} uptimePercent={uptimePercent} />
           )}
 
           {/* Actions */}

@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from src.api import auth, proxy, routes
 from src.core.config import Config
 from src.core.database import Database
+from src.services.metrics_collector import MetricsCollector
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,10 +35,15 @@ async def lifespan(app: FastAPI):
     app.dependency_overrides[proxy.get_config] = lambda: config
 
     db.cleanup_expired()
+
+    collector = MetricsCollector(config, db)
+    await collector.start()
+
     logger.info(f"Server started on http://{config.host}:{config.port}")
 
     yield
 
+    await collector.stop()
     db.close()
     logger.info("Server stopped")
 

@@ -111,6 +111,12 @@ export const api = {
       method: "DELETE",
     });
   },
+
+  serviceUptime(name: string, hours = 24) {
+    return request<ServiceUptime>(
+      `/api/services/${name}/uptime?hours=${hours}`,
+    );
+  },
 };
 
 export interface ServiceStatus {
@@ -205,6 +211,18 @@ export interface AgentStatus {
   monitors: { enabled: boolean; healthy: number; total: number };
   today: { taskCount: number; costUsd: number };
   tasks: { active: number; nextRun: string | null; nextTitle: string | null };
+}
+
+export interface UptimeBlock {
+  status: "running" | "down" | "no_data";
+  start: string;
+}
+
+export interface ServiceUptime {
+  service: string;
+  hours: number;
+  blocks: UptimeBlock[];
+  uptime_percent: number | null;
 }
 
 export interface AgentGoal {

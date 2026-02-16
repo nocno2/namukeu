@@ -135,6 +135,64 @@ def restart_service(
     return {"ok": True, "service": name}
 
 
+@router.get("/services/{name}/uptime")
+def service_uptime(
+    name: str,
+    hours: int = 24,
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+    db: Database = Depends(get_db),
+):
+    svc = next((s for s in config.services if s.name == name), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    hours = min(hours, 168)  # max 7 days
+    since = datetime.now() - timedelta(hours=hours)
+    metrics = db.get_metrics(name, since)
+
+    if not metrics:
+        return {"service": name, "hours": hours, "blocks": [], "uptime_percent": None}
+
+    # Divide the time range into blocks (1 block per 30 minutes for 24h = 48 blocks)
+    block_minutes = 30
+    total_blocks = (hours * 60) // block_minutes
+    blocks = []
+
+    for i in range(total_blocks):
+        block_start = since + timedelta(minutes=i * block_minutes)
+        block_end = block_start + timedelta(minutes=block_minutes)
+        block_start_iso = block_start.isoformat()
+        block_end_iso = block_end.isoformat()
+
+        block_metrics = [
+            m for m in metrics
+            if block_start_iso <= m["timestamp"] < block_end_iso
+        ]
+
+        if not block_metrics:
+            blocks.append({"status": "no_data", "start": block_start_iso})
+        else:
+            running = sum(1 for m in block_metrics if m["status"] == "running")
+            down = sum(1 for m in block_metrics if m["status"] == "down")
+            blocks.append({
+                "status": "running" if running >= down else "down",
+                "start": block_start_iso,
+            })
+
+    # Overall uptime percentage
+    total_with_data = sum(1 for b in blocks if b["status"] != "no_data")
+    running_blocks = sum(1 for b in blocks if b["status"] == "running")
+    uptime_percent = round((running_blocks / total_with_data) * 100, 1) if total_with_data > 0 else None
+
+    return {
+        "service": name,
+        "hours": hours,
+        "blocks": blocks,
+        "uptime_percent": uptime_percent,
+    }
+
+
 class CardPrefUpdate(BaseModel):
     card_id: str
     collapsed: bool | None = None

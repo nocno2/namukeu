@@ -32,6 +32,17 @@ class Database:
                 pin_order INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (username, card_id)
             );
+
+            CREATE TABLE IF NOT EXISTS metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                service_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                response_time_ms REAL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_metrics_service_time
+                ON metrics (service_name, timestamp);
         """)
 
     def create_session(self, username: str, expire_hours: int = 24) -> str:
@@ -112,6 +123,59 @@ class Database:
                 self.conn.execute(
                     "INSERT INTO card_preferences (username, card_id, collapsed, pinned, pin_order) VALUES (?, ?, ?, ?, ?)",
                     (username, card_id, int(collapsed or False), int(pinned or False), pin_order or 0),
+                )
+            self.conn.commit()
+
+    def insert_metric(self, service_name: str, status: str, response_time_ms: float | None):
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO metrics (timestamp, service_name, status, response_time_ms) VALUES (?, ?, ?, ?)",
+                (datetime.now().isoformat(), service_name, status, response_time_ms),
+            )
+            self.conn.commit()
+
+    def get_metrics(self, service_name: str, since: datetime) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT timestamp, status, response_time_ms FROM metrics WHERE service_name = ? AND timestamp >= ? ORDER BY timestamp",
+                (service_name, since.isoformat()),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_latest_metric(self, service_name: str) -> dict | None:
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT timestamp, status, response_time_ms FROM metrics WHERE service_name = ? ORDER BY timestamp DESC LIMIT 1",
+                (service_name,),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def cleanup_old_metrics(self, retention_days: int = 7):
+        """Aggregate metrics older than retention_days into hourly summaries, then delete raw data."""
+        cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
+        with self._lock:
+            # Get hourly aggregates for old data
+            rows = self.conn.execute("""
+                SELECT service_name,
+                       strftime('%Y-%m-%dT%H:00:00', timestamp) as hour_ts,
+                       -- Most common status in the hour (majority vote)
+                       CASE WHEN SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) >
+                            SUM(CASE WHEN status = 'down' THEN 1 ELSE 0 END)
+                       THEN 'running' ELSE 'down' END as status,
+                       AVG(response_time_ms) as response_time_ms
+                FROM metrics
+                WHERE timestamp < ?
+                GROUP BY service_name, strftime('%Y-%m-%dT%H:00:00', timestamp)
+            """, (cutoff,)).fetchall()
+
+            # Delete old raw data
+            self.conn.execute("DELETE FROM metrics WHERE timestamp < ?", (cutoff,))
+
+            # Insert hourly aggregates
+            for row in rows:
+                self.conn.execute(
+                    "INSERT INTO metrics (timestamp, service_name, status, response_time_ms) VALUES (?, ?, ?, ?)",
+                    (row["hour_ts"], row["service_name"], row["status"], row["response_time_ms"]),
                 )
             self.conn.commit()
 
