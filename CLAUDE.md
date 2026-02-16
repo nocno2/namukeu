@@ -10,6 +10,8 @@
 | `DCBOT` | `claude-discord/` | Discord 릴레이 봇 | Bun + discord.js |
 | `BLOG` | `ai-blog/` | 수익형 블로그 | Next.js + Bun :3100 |
 | `DASH` | `dashboard/` | 개인 대시보드 | React + FastAPI :8002 |
+| `GATE` | `api-gateway/` | API 게이트웨이 | Python FastAPI :8080 |
+| `PIPE` | `content-pipeline/` | 스케줄러 + 콘텐츠 파이프라인 | React + FastAPI :8003 |
 
 ## 커밋 컨벤션
 
@@ -20,7 +22,7 @@
 
 ### 규칙
 - **대괄호 필수**: 모든 커밋은 `[코드네임]` 또는 `[코드네임-123]` 으로 시작
-- **코드네임**: 위 표의 코드네임 사용 (COIN, TRAIN, TGBOT, DCBOT, BLOG, DASH)
+- **코드네임**: 위 표의 코드네임 사용 (COIN, TRAIN, TGBOT, DCBOT, BLOG, DASH, GATE, PIPE)
 - **이슈번호**: 관련 이슈가 있으면 `-` 뒤에 번호 추가 (없으면 생략)
 - **여러 프로젝트**: 여러 프로젝트에 걸친 변경은 `[MONO]` 사용
 - **메시지**: 한글 또는 영어, 명령형으로 작성
