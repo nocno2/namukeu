@@ -20,14 +20,16 @@ class GoalStore:
         projects: list[str],
         priority: str = "medium",
         deadline: str | None = None,
+        source: str = "user",
     ) -> dict:
         goal_id = str(uuid.uuid4())
         now = datetime.now().isoformat()
+        status = "proposed" if source == "evolution" else "active"
         with self.db._lock:
             self.db.conn.execute(
-                "INSERT INTO agent_goals (id,title,description,projects,status,priority,deadline,progress,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (goal_id, title, description, json.dumps(projects), "active", priority, deadline, None, now, now),
+                "INSERT INTO agent_goals (id,title,description,projects,status,priority,deadline,progress,source,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (goal_id, title, description, json.dumps(projects), status, priority, deadline, None, source, now, now),
             )
             self.db.conn.commit()
         return self.get_by_id(goal_id)  # type: ignore
@@ -86,6 +88,16 @@ class GoalStore:
             )
             self.db.conn.commit()
         return self.get_by_id(goal_id)
+
+    def get_proposed(self) -> list[dict]:
+        with self.db._lock:
+            rows = self.db.conn.execute(
+                "SELECT * FROM agent_goals WHERE status = 'proposed' ORDER BY created_at DESC"
+            ).fetchall()
+        return [_row_to_goal(r) for r in rows]
+
+    def approve_goal(self, goal_id: str) -> dict | None:
+        return self.update_goal(goal_id, {"status": "active"})
 
     def delete_goal(self, goal_id: str) -> bool:
         with self.db._lock:

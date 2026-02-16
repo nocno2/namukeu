@@ -70,7 +70,7 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
     return () => clearInterval(interval);
   }, [status?.runningTasks?.length]);
 
-  const toggle = async (feature: "idle" | "chain" | "monitors", enabled: boolean) => {
+  const toggle = async (feature: "idle" | "chain" | "monitors" | "evolution", enabled: boolean) => {
     try {
       await api.agentToggle(feature, enabled);
       fetchStatus();
@@ -166,6 +166,7 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
           </div>
 
           <div className="border-t border-border pt-3 space-y-3">
+            <Toggle label="서비스 진화" enabled={status.evolutionEnabled} onChange={(v) => toggle("evolution", v)} />
             <Toggle label="자율 탐색" enabled={status.idleEnabled} onChange={(v) => toggle("idle", v)} />
             <Toggle label="작업 연쇄" enabled={status.chainingEnabled} onChange={(v) => toggle("chain", v)} />
             <Toggle label="서비스 감시" enabled={status.monitorsEnabled} onChange={(v) => toggle("monitors", v)} />

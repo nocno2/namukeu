@@ -57,11 +57,21 @@ class Database:
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
                 projects TEXT NOT NULL,
-                status TEXT DEFAULT 'active' CHECK(status IN ('active','completed','paused')),
+                status TEXT DEFAULT 'active' CHECK(status IN ('active','completed','paused','proposed')),
                 priority TEXT DEFAULT 'medium' CHECK(priority IN ('high','medium','low')),
                 deadline TEXT,
                 progress TEXT,
+                source TEXT DEFAULT 'user',
                 created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS evolution_state (
+                project TEXT PRIMARY KEY,
+                last_cycle_at TEXT,
+                last_cycle_result TEXT,
+                cycle_count INTEGER DEFAULT 0,
+                rejected_proposals TEXT DEFAULT '[]',
                 updated_at TEXT NOT NULL
             );
 

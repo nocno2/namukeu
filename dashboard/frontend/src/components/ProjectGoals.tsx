@@ -64,6 +64,13 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
     } catch { /* ignore */ }
   };
 
+  const approveGoal = async (id: string) => {
+    try {
+      await api.agentApproveGoal(id);
+      fetchGoals();
+    } catch { /* ignore */ }
+  };
+
   const toggleProject = (p: string) => {
     setForm((f) => ({
       ...f,
@@ -71,7 +78,8 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
     }));
   };
 
-  // Group goals by project
+  // Separate proposed and active goals
+  const proposedGoals = goals.filter((g) => g.status === "proposed");
   const activeGoals = goals.filter((g) => g.status === "active");
   const grouped: Record<string, AgentGoal[]> = {};
   for (const g of activeGoals) {
@@ -88,7 +96,9 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
       <div className={`bg-surface border ${borderClass} rounded-xl p-3 flex items-center justify-between`}>
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">Goals</span>
-          <span className="text-xs text-text-muted">{activeGoals.length} active</span>
+          <span className="text-xs text-text-muted">
+            {activeGoals.length} active{proposedGoals.length > 0 && <span className="text-warning"> · {proposedGoals.length} proposed</span>}
+          </span>
         </div>
         <div className="flex items-center gap-1">
           <button onClick={onTogglePin} className="text-text-muted hover:text-text text-xs cursor-pointer">{pinned ? "\u{1F4CC}" : "\u{1F4CD}"}</button>
@@ -169,38 +179,68 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
 
       {error ? (
         <p className="text-sm text-danger">Agent API unavailable</p>
-      ) : activeGoals.length === 0 ? (
-        <p className="text-sm text-text-muted">No active goals</p>
       ) : (
         <div className="space-y-3">
-          {Object.entries(grouped).sort().map(([project, projectGoals]) => (
-            <div key={project}>
-              <div className="text-xs font-medium text-text-muted mb-1">{project}</div>
+          {proposedGoals.length > 0 && (
+            <div>
+              <div className="text-xs font-medium text-warning mb-1.5">Proposed by Evolution</div>
               <div className="space-y-1.5">
-                {projectGoals.map((g) => (
-                  <div key={`${project}-${g.id}`} className="bg-bg/50 border border-border rounded-lg px-3 py-2 group">
+                {proposedGoals.map((g) => (
+                  <div key={g.id} className="bg-warning/5 border border-warning/20 rounded-lg px-3 py-2">
                     <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-1.5 min-w-0">
-                        <span className={`${PRIORITY_COLOR[g.priority]} text-xs mt-0.5`}>{PRIORITY_ICON[g.priority]}</span>
-                        <div className="min-w-0">
-                          <div className="text-sm truncate">{g.title}</div>
-                          {g.projects.length > 1 && (
-                            <div className="text-[10px] text-text-muted">shared: {g.projects.join(", ")}</div>
-                          )}
-                          {g.progress && <div className="text-xs text-text-muted mt-0.5">{g.progress}</div>}
-                          {g.deadline && <div className="text-[10px] text-text-muted">by {g.deadline}</div>}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`${PRIORITY_COLOR[g.priority]} text-xs`}>{PRIORITY_ICON[g.priority]}</span>
+                          <span className="text-sm font-medium">{g.title}</span>
+                          <span className="text-[10px] text-text-muted">{g.projects.join(", ")}</span>
                         </div>
+                        {g.description && g.description !== g.title && (
+                          <div className="text-xs text-text-muted mt-1">{g.description}</div>
+                        )}
                       </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => completeGoal(g.id)} className="text-[10px] text-success hover:text-success/80 cursor-pointer">Done</button>
-                        <button onClick={() => deleteGoal(g.id)} className="text-[10px] text-danger hover:text-danger/80 cursor-pointer">Del</button>
+                      <div className="flex gap-1.5 ml-2 shrink-0">
+                        <button onClick={() => approveGoal(g.id)} className="text-[10px] bg-success/20 text-success hover:bg-success/30 rounded px-2 py-0.5 cursor-pointer">Approve</button>
+                        <button onClick={() => deleteGoal(g.id)} className="text-[10px] bg-danger/20 text-danger hover:bg-danger/30 rounded px-2 py-0.5 cursor-pointer">Reject</button>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-          ))}
+          )}
+
+          {activeGoals.length === 0 && proposedGoals.length === 0 ? (
+            <p className="text-sm text-text-muted">No active goals</p>
+          ) : (
+            Object.entries(grouped).sort().map(([project, projectGoals]) => (
+              <div key={project}>
+                <div className="text-xs font-medium text-text-muted mb-1">{project}</div>
+                <div className="space-y-1.5">
+                  {projectGoals.map((g) => (
+                    <div key={`${project}-${g.id}`} className="bg-bg/50 border border-border rounded-lg px-3 py-2 group">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-1.5 min-w-0">
+                          <span className={`${PRIORITY_COLOR[g.priority]} text-xs mt-0.5`}>{PRIORITY_ICON[g.priority]}</span>
+                          <div className="min-w-0">
+                            <div className="text-sm truncate">{g.title}</div>
+                            {g.projects.length > 1 && (
+                              <div className="text-[10px] text-text-muted">shared: {g.projects.join(", ")}</div>
+                            )}
+                            {g.progress && <div className="text-xs text-text-muted mt-0.5">{g.progress}</div>}
+                            {g.deadline && <div className="text-[10px] text-text-muted">by {g.deadline}</div>}
+                          </div>
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => completeGoal(g.id)} className="text-[10px] text-success hover:text-success/80 cursor-pointer">Done</button>
+                          <button onClick={() => deleteGoal(g.id)} className="text-[10px] text-danger hover:text-danger/80 cursor-pointer">Del</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
     </div>

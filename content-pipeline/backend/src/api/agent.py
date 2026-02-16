@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from src.agent.audit import AuditLog
 from src.agent.config import AgentConfigStore
+from src.agent.evolution import EvolutionEngine
 from src.agent.forbidden import ForbiddenActions
 from src.agent.goals import PROJECT_CODES, GoalStore
 from src.agent.heartbeat import Heartbeat
@@ -47,6 +48,10 @@ def get_forbidden() -> ForbiddenActions:
     raise NotImplementedError
 
 
+def get_evolution_engine() -> EvolutionEngine | None:
+    raise NotImplementedError
+
+
 def verify_agent_token(
     authorization: str | None = Header(None),
     config: Config = Depends(get_config),
@@ -71,6 +76,7 @@ async def agent_status(
         "idleEnabled": False,
         "chainingEnabled": False,
         "monitorsEnabled": False,
+        "evolutionEnabled": False,
         "todayTaskCount": 0,
         "todayCost": 0.0,
         "lastTaskExecutedAt": None,
@@ -92,7 +98,7 @@ def agent_toggle(
     cfg: AgentConfigStore = Depends(get_config_store),
     hb: Heartbeat | None = Depends(get_heartbeat),
 ):
-    key_map = {"idle": "idle_enabled", "chain": "chaining_enabled", "monitors": "monitors_enabled"}
+    key_map = {"idle": "idle_enabled", "chain": "chaining_enabled", "monitors": "monitors_enabled", "evolution": "evolution_enabled"}
     key = key_map.get(feature)
     if not key:
         raise HTTPException(status_code=400, detail="Invalid feature")
@@ -106,6 +112,8 @@ def agent_toggle(
             hb.set_chaining_enabled(body.enabled)
         elif feature == "monitors":
             hb.set_monitors_enabled(body.enabled)
+        elif feature == "evolution":
+            hb.set_evolution_enabled(body.enabled)
 
     return {"ok": True, feature: body.enabled}
 
@@ -342,8 +350,40 @@ def update_goal(goal_id: str, body: GoalUpdate, store: GoalStore = Depends(get_g
     return goal
 
 
+@router.post("/goals/{goal_id}/approve", dependencies=[Depends(verify_agent_token)])
+def approve_goal(goal_id: str, store: GoalStore = Depends(get_goal_store)):
+    goal = store.get_by_id(goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    if goal["status"] != "proposed":
+        raise HTTPException(status_code=400, detail="Goal is not in proposed state")
+    result = store.approve_goal(goal_id)
+    return result
+
+
 @router.delete("/goals/{goal_id}", dependencies=[Depends(verify_agent_token)])
-def delete_goal(goal_id: str, store: GoalStore = Depends(get_goal_store)):
+def delete_goal(
+    goal_id: str,
+    store: GoalStore = Depends(get_goal_store),
+    evo: EvolutionEngine | None = Depends(get_evolution_engine),
+):
+    goal = store.get_by_id(goal_id)
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    # Track rejected evolution proposals
+    if evo and goal.get("source") == "evolution":
+        for p in goal["projects"]:
+            evo.record_rejected(p, goal["title"])
     if not store.delete_goal(goal_id):
         raise HTTPException(status_code=404, detail="Goal not found")
     return {"ok": True}
+
+
+# ─── Evolution State ───
+
+
+@router.get("/evolution/state", dependencies=[Depends(verify_agent_token)])
+def evolution_state(evo: EvolutionEngine | None = Depends(get_evolution_engine)):
+    if not evo:
+        return {"states": []}
+    return {"states": evo.get_all_states()}

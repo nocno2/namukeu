@@ -85,7 +85,7 @@ export const api = {
   agentStatus() {
     return request<AgentStatus>("/api/agent/status");
   },
-  agentToggle(feature: "idle" | "chain" | "monitors", enabled: boolean) {
+  agentToggle(feature: "idle" | "chain" | "monitors" | "evolution", enabled: boolean) {
     return request<{ ok: boolean }>(`/api/agent/toggle/${feature}`, {
       method: "POST",
       body: JSON.stringify({ enabled }),
@@ -109,6 +109,11 @@ export const api = {
   agentDeleteGoal(id: string) {
     return request<{ ok: boolean }>(`/api/agent/goals/${id}`, {
       method: "DELETE",
+    });
+  },
+  agentApproveGoal(id: string) {
+    return request<AgentGoal>(`/api/agent/goals/${id}/approve`, {
+      method: "POST",
     });
   },
 
@@ -232,6 +237,7 @@ export interface AgentStatus {
   idleEnabled: boolean;
   chainingEnabled: boolean;
   monitorsEnabled: boolean;
+  evolutionEnabled: boolean;
   todayTaskCount: number;
   todayCost: number;
   lastTaskExecutedAt: number | null;
@@ -287,10 +293,11 @@ export interface AgentGoal {
   title: string;
   description: string;
   projects: string[];
-  status: "active" | "completed" | "paused";
+  status: "active" | "completed" | "paused" | "proposed";
   priority: "high" | "medium" | "low";
   deadline: string | null;
   progress: string | null;
+  source?: "user" | "evolution";
   created_at: string;
   updated_at: string;
 }

@@ -10,9 +10,11 @@ from fastapi.staticfiles import StaticFiles
 
 from src.agent.audit import AuditLog
 from src.agent.config import AgentConfigStore
+from src.agent.evolution import EvolutionEngine
 from src.agent.forbidden import ForbiddenActions
 from src.agent.goals import GoalStore
 from src.agent.heartbeat import Heartbeat
+from src.agent.seed import seed_evolution_task
 from src.agent.tasks import TaskStore
 from src.agent.telegram import TelegramNotifier
 from src.api import agent, auth, history, pipeline, tasks
@@ -49,6 +51,9 @@ async def lifespan(app: FastAPI):
     # Telegram notifier
     notifier = TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id)
 
+    # Evolution engine
+    evolution_engine = EvolutionEngine(db, goal_store)
+
     # Heartbeat
     heartbeat: Heartbeat | None = None
     if config.agent_enabled:
@@ -59,12 +64,17 @@ async def lifespan(app: FastAPI):
             goal_store=goal_store,
             forbidden=forbidden,
             notifier=notifier,
+            evolution_engine=evolution_engine,
         )
 
         # Sync feature toggles from DB
         heartbeat.set_idle_enabled(config_store.get_bool("idle_enabled"))
         heartbeat.set_chaining_enabled(config_store.get_bool("chaining_enabled"))
         heartbeat.set_monitors_enabled(config_store.get_bool("monitors_enabled"))
+        heartbeat.set_evolution_enabled(config_store.get_bool("evolution_enabled"))
+
+        # Seed evolution task if missing
+        seed_evolution_task(task_store)
 
     # Dependency overrides
     app.dependency_overrides[auth.get_db] = lambda: db
@@ -77,6 +87,7 @@ async def lifespan(app: FastAPI):
     app.dependency_overrides[agent.get_task_store] = lambda: task_store
     app.dependency_overrides[agent.get_audit_log] = lambda: audit_log
     app.dependency_overrides[agent.get_forbidden] = lambda: forbidden
+    app.dependency_overrides[agent.get_evolution_engine] = lambda: evolution_engine
 
     db.cleanup_expired()
     await scheduler.start()

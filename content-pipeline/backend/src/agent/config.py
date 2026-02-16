@@ -8,6 +8,7 @@ DEFAULTS = {
     "idle_enabled": "false",
     "chaining_enabled": "false",
     "monitors_enabled": "false",
+    "evolution_enabled": "true",
 }
 
 

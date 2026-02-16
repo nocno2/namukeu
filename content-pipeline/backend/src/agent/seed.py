@@ -90,3 +90,24 @@ def seed_initial_tasks(task_store: TaskStore):
     )
 
     logger.info("[agent] 4 initial tasks seeded.")
+
+
+def seed_evolution_task(task_store: TaskStore):
+    """Seed the evolution cycle task if not already present."""
+    active = task_store.get_active()
+    if any(t["title"] == "서비스 진화 루프" for t in active):
+        return
+
+    all_tasks = task_store.get_all()
+    if any(t["title"] == "서비스 진화 루프" for t in all_tasks):
+        return
+
+    task_store.create_task(
+        title="서비스 진화 루프",
+        prompt="__EVOLUTION_CYCLE__",
+        task_type="recurring",
+        project="GENERAL",
+        schedule_cron="0 */3 * * *",
+        notify_user=True,
+    )
+    logger.info("[agent] Evolution cycle task seeded (every 3 hours).")

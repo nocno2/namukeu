@@ -8,6 +8,7 @@ from datetime import datetime
 
 from src.agent.audit import AuditLog
 from src.agent.claude_cli import call_claude
+from src.agent.evolution import EvolutionEngine
 from src.agent.forbidden import ForbiddenActions
 from src.agent.goals import GoalStore
 from src.agent.idle import build_idle_prompt, select_idle_strategy
@@ -19,6 +20,8 @@ from src.agent.tasks import TaskStore
 from src.agent.telegram import TelegramNotifier
 from src.agent.types import AgentTask, MonitorDefinition
 from src.config import Config
+
+EVOLUTION_SENTINEL = "__EVOLUTION_CYCLE__"
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,7 @@ class Heartbeat:
         goal_store: GoalStore,
         forbidden: ForbiddenActions,
         notifier: TelegramNotifier,
+        evolution_engine: EvolutionEngine | None = None,
     ):
         self.config = config
         self.task_store = task_store
@@ -71,6 +75,7 @@ class Heartbeat:
         self.goal_store = goal_store
         self.forbidden = forbidden
         self.notifier = notifier
+        self.evolution_engine = evolution_engine
 
         self._stopped = True
         self._task: asyncio.Task | None = None
@@ -85,6 +90,7 @@ class Heartbeat:
         self._idle_enabled = False
         self._chaining_enabled = False
         self._monitors_enabled = False
+        self._evolution_enabled = False
 
         # Monitor system
         self._monitor_system: MonitorSystem | None = None
@@ -280,6 +286,20 @@ class Heartbeat:
             self._running_tasks.pop(project_key, None)
 
     async def _call_claude_for_task(self, task: AgentTask) -> dict:
+        prompt = task["prompt"]
+        evolution_project: str | None = None
+
+        # Evolution cycle: replace sentinel with dynamic prompt
+        if prompt == EVOLUTION_SENTINEL:
+            if not self._evolution_enabled or not self.evolution_engine:
+                return {"result": "Evolution disabled", "cost_usd": 0, "duration_ms": 0}
+            evolution_project = self.evolution_engine.get_next_project()
+            prompt = self.evolution_engine.build_evolution_prompt(evolution_project)
+            # Override task project for proper context
+            task = dict(task)  # type: ignore[assignment]
+            task["project"] = evolution_project
+            logger.info(f"[heartbeat] Evolution cycle: {evolution_project}")
+
         time_str = datetime.now().strftime("%A, %B %d, %Y %I:%M %p")
 
         goals_context = ""
@@ -314,7 +334,7 @@ class Heartbeat:
             ))
 
         result = await call_claude(
-            prompt=task["prompt"],
+            prompt=prompt,
             session_id=session_id,
             is_new_session=True,
             system_prompt=system_prompt,
@@ -324,12 +344,20 @@ class Heartbeat:
         )
 
         if result["success"]:
-            # Process tags
+            current_project = task.get("project", "GENERAL")
+            # Process tags (with goal_store for evolution tags)
             tag_result = process_tags(
                 result["result"],
                 self.task_store,
+                goal_store=self.goal_store,
+                current_project=current_project,
                 chain_depth=task.get("chain_depth", 0),
             )
+
+            # Record evolution cycle completion
+            if evolution_project and self.evolution_engine:
+                self.evolution_engine.record_cycle(evolution_project, tag_result.clean_text[:500])
+
             return {
                 "result": tag_result.clean_text,
                 "cost_usd": result.get("cost_usd"),
@@ -488,6 +516,10 @@ class Heartbeat:
             self._monitor_system = None
         logger.info(f"[heartbeat] Monitors {'enabled' if enabled else 'disabled'}")
 
+    def set_evolution_enabled(self, enabled: bool):
+        self._evolution_enabled = enabled
+        logger.info(f"[heartbeat] Evolution {'enabled' if enabled else 'disabled'}")
+
     # ─── Status ───
 
     async def get_status(self) -> dict:
@@ -507,6 +539,7 @@ class Heartbeat:
             "idleEnabled": self._idle_enabled,
             "chainingEnabled": self._chaining_enabled,
             "monitorsEnabled": self._monitors_enabled,
+            "evolutionEnabled": self._evolution_enabled,
             "todayTaskCount": stats["task_count"],
             "todayCost": stats["total_cost"],
             "lastTaskExecutedAt": last_at_ms,

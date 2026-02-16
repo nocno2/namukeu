@@ -594,7 +594,7 @@ async def agent_status(_=Depends(verify_session)):
 
 @router.post("/agent/toggle/{feature}")
 async def agent_toggle(feature: str, body: dict, _=Depends(verify_session)):
-    if feature not in ("idle", "chain", "monitors"):
+    if feature not in ("idle", "chain", "monitors", "evolution"):
         raise HTTPException(status_code=400, detail="Invalid feature")
     async with httpx.AsyncClient() as client:
         try:
@@ -653,6 +653,21 @@ async def agent_delete_goal(goal_id: str, _=Depends(verify_session)):
                 f"{AGENT_API_BASE}/api/goals/{goal_id}",
                 headers=_agent_headers(), timeout=5.0,
             )
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.post("/agent/goals/{goal_id}/approve")
+async def agent_approve_goal(goal_id: str, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/goals/{goal_id}/approve",
+                headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code == 404:
+                raise HTTPException(status_code=404, detail="Goal not found")
             return r.json()
         except httpx.ConnectError:
             raise HTTPException(status_code=502, detail="Agent API unavailable")
