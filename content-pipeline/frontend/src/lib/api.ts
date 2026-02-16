@@ -44,10 +44,10 @@ export const api = {
   // Pipeline
   getPipelineRuns: (limit = 20) =>
     request<{ runs: PipelineRun[] }>(`/api/pipeline/runs?limit=${limit}`),
-  triggerPipeline: (keyword?: string) =>
+  triggerPipeline: (keyword?: string, direction?: string) =>
     request<{ run_id: string; status: string }>("/api/pipeline/run", {
       method: "POST",
-      body: JSON.stringify({ keyword }),
+      body: JSON.stringify({ keyword, direction: direction || undefined }),
     }),
   getPipelineRun: (id: string) => request<PipelineRun>(`/api/pipeline/runs/${id}`),
   getKeywords: () => request<{ keywords: Keyword[] }>("/api/pipeline/keywords"),
@@ -62,7 +62,7 @@ export const api = {
       body: JSON.stringify(data),
     }),
   reviewDraft: (id: number) =>
-    request<{ seo: SeoScore; readability: ReadabilityScore }>(
+    request<{ seo: SeoScore; readability: ReadabilityScore; ai_review?: AiReview }>(
       `/api/pipeline/drafts/${id}/review`,
       { method: "POST" },
     ),
@@ -174,4 +174,17 @@ export interface ReadabilityScore {
   avg_sentence_length: number;
   paragraph_count: number;
   avg_paragraph_length: number;
+}
+
+export interface AiReview {
+  scores: {
+    analogy_appropriateness: number;
+    technical_depth: number;
+    target_consistency: number;
+    conclusion_effectiveness: number;
+  };
+  overall: number;
+  sharp_criticisms: string[];
+  technical_suggestions: string[];
+  one_liner: string;
 }

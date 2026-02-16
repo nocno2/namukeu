@@ -23,6 +23,7 @@ class TaskUpdate(BaseModel):
 
 class PipelineRunRequest(BaseModel):
     keyword: str | None = None
+    direction: str | None = None
 
 
 class LoginRequest(BaseModel):

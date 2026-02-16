@@ -28,19 +28,27 @@ ARTICLE_PROMPT = """당신은 전문 한국어 블로그 작가입니다.
 아웃라인:
 {outline}
 
+{direction_block}
+
 이 아웃라인을 바탕으로 완성된 블로그 글을 작성해주세요.
 
-요구사항:
-- 한국어, 자연스럽고 매력적인 톤
-- 마크다운 형식
-- H2 (##)와 H3 (###) 헤딩 사용
+## 필수 요구사항
+- 한국어, ~다/~거든/~인 거다 스타일의 반말체 (친근하되 허술하지 않게)
+- 마크다운 형식, H2 (##)와 H3 (###) 헤딩 사용
 - 각 단락 3-5문장
-- 매력적인 서론과 결론
 - 1500-2500단어 목표
 - 키워드를 자연스럽게 배치 (2-3% 밀도)
-- 실용적인 팁, 예시, 데이터 포함
+- 제목은 H1으로 넣지 말고, 서론부터 바로 시작
 
-제목은 H1으로 넣지 말고, 서론부터 바로 시작하세요."""
+## 전문성 가이드라인
+- 주장에는 구체적 수치, 벤치마크, 데이터를 근거로 제시할 것
+- 비유/소재를 사용할 경우 전체 분량의 30% 이하로 제한하고, 나머지는 기술적 설명에 할당
+- "~라고 한다", "~인 것 같다" 같은 애매한 표현 대신 단정적이고 자신감 있게 서술
+- 독자가 글을 읽고 바로 실행할 수 있는 액션 아이템을 결론에 포함
+- 개인 경험이나 실사용 후기가 있다면 `>` 인용블록으로 삽입
+
+## 타겟 독자
+- 기술에 관심 있는 일반인 ~ 입문 개발자 (난이도를 글 전체에서 일관되게 유지)"""
 
 META_PROMPT = """다음 블로그 글의 메타데이터를 생성해주세요.
 
@@ -73,11 +81,14 @@ async def _run_claude_cli(prompt: str) -> str:
     return stdout.decode().strip()
 
 
-async def generate_draft(keyword: str, config: Config) -> dict:
+async def generate_draft(keyword: str, config: Config, direction: str = "") -> dict:
     """Generate a blog post draft using claude CLI."""
     # Step 1: Generate outline
     logger.info(f"[generator] Generating outline for: {keyword}")
-    outline = await _run_claude_cli(OUTLINE_PROMPT.format(keyword=keyword))
+    outline_prompt = OUTLINE_PROMPT.format(keyword=keyword)
+    if direction:
+        outline_prompt += f"\n\n## 창작 방향\n{direction}"
+    outline = await _run_claude_cli(outline_prompt)
 
     # Extract title from outline
     title = keyword
@@ -92,10 +103,12 @@ async def generate_draft(keyword: str, config: Config) -> dict:
 
     # Step 2: Generate full article
     logger.info(f"[generator] Generating article: {title}")
+    direction_block = f"## 창작 방향 (반드시 반영)\n{direction}" if direction else ""
     content = await _run_claude_cli(ARTICLE_PROMPT.format(
         keyword=keyword,
         title=title,
         outline=outline,
+        direction_block=direction_block,
     ))
 
     # Step 3: Generate metadata

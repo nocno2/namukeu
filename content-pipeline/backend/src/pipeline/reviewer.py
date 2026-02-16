@@ -1,4 +1,96 @@
+import asyncio
+import json
+import logging
 import re
+
+logger = logging.getLogger(__name__)
+
+AI_REVIEW_PROMPT = """당신은 테크 콘텐츠 시니어 에디터입니다.
+아래 블로그 초안을 냉정하게 검수해주세요.
+
+## 검수 대상
+- 키워드: {keyword}
+- 제목: {title}
+
+## 본문
+{content}
+
+## 검수 원칙 (4가지)
+
+1. **비유/소재의 적정성**: 비유가 기술적 본질을 왜곡하지 않는가? 비유와 실제 기술 설명의 비율이 적절한가? (비유 3 : 기술 7 이하 권장). 비유를 사용했다면 해당 소재에 대한 이해가 정확한가?
+
+2. **기술적 깊이(Technical Edge)**: 누구나 아는 표면적 'How-to' 나열인가, 아니면 'Why'와 구체적 수치/데이터가 포함되어 있는가? 벤치마크, 아키텍처, 실제 경험 기반의 인사이트가 있는가?
+
+3. **타겟 독자 일관성**: 글의 난이도와 어조가 특정 독자층에게 일관되게 맞춰져 있는가? 입문자와 전문가 양다리를 걸치다 이도 저도 아닌 부분이 있는가?
+
+4. **결론의 실효성**: 독자가 읽고 즉시 실행할 수 있는 액션 아이템이나 사고를 전환하는 인사이트가 있는가? 감성적 마무리에 그치지 않았는가?
+
+## 출력 형식 (반드시 이 JSON만 출력)
+```json
+{{
+  "scores": {{
+    "analogy_appropriateness": 0,
+    "technical_depth": 0,
+    "target_consistency": 0,
+    "conclusion_effectiveness": 0
+  }},
+  "overall": 0,
+  "sharp_criticisms": [
+    "가장 힘이 빠지는 부분 또는 전문가답지 못한 부분 (최대 3개)"
+  ],
+  "technical_suggestions": [
+    "추가하면 좋을 구체적 데이터, 수치, 기술 키워드 (최대 3개)"
+  ],
+  "one_liner": "이 글은 콘텐츠인가, 일기인가? 한 줄 평"
+}}
+```
+
+점수는 모두 1~10 정수. overall은 4개 점수의 평균(반올림).
+JSON 외의 텍스트는 절대 출력하지 마세요."""
+
+
+async def ai_review(title: str, content: str, keyword: str) -> dict | None:
+    """Run AI-based content quality review using Claude CLI."""
+    prompt = AI_REVIEW_PROMPT.format(
+        keyword=keyword,
+        title=title,
+        content=content[:6000],  # Limit to avoid token overflow
+    )
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "claude", "--print", "--dangerously-skip-permissions", prompt,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env={
+                "PATH": "/Users/namwook/.local/bin:/usr/local/bin:/usr/bin:/bin",
+                "HOME": "/Users/namwook",
+            },
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            logger.error(f"[ai_review] Claude CLI failed: {stderr.decode().strip()}")
+            return None
+
+        raw = stdout.decode().strip()
+        # Extract JSON from response
+        json_match = re.search(r"\{[\s\S]*\}", raw)
+        if not json_match:
+            logger.warning(f"[ai_review] No JSON found in response")
+            return None
+
+        result = json.loads(json_match.group())
+        # Validate structure
+        if "scores" not in result or "overall" not in result:
+            logger.warning(f"[ai_review] Invalid structure: {list(result.keys())}")
+            return None
+
+        return result
+
+    except Exception as e:
+        logger.error(f"[ai_review] Failed: {e}")
+        return None
 
 
 def calculate_seo_score(title: str, content: str, keyword: str) -> dict:

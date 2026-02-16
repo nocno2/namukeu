@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
-import type { Draft, SeoScore, ReadabilityScore } from "../lib/api";
+import type { Draft, SeoScore, ReadabilityScore, AiReview } from "../lib/api";
 import { StatusBadge } from "../components/StatusBadge";
 
 const TABS = [
@@ -17,6 +17,7 @@ export function PipelinePage() {
   const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [triggerKeyword, setTriggerKeyword] = useState("");
+  const [triggerDirection, setTriggerDirection] = useState("");
 
   const load = useCallback(() => {
     api.getDrafts(tab || undefined).then((d) => setDrafts(d.drafts)).catch(() => {});
@@ -27,8 +28,9 @@ export function PipelinePage() {
   const handleTrigger = async () => {
     setTriggering(true);
     try {
-      await api.triggerPipeline(triggerKeyword || undefined);
+      await api.triggerPipeline(triggerKeyword || undefined, triggerDirection || undefined);
       setTriggerKeyword("");
+      setTriggerDirection("");
       setTimeout(load, 2000);
     } finally {
       setTriggering(false);
@@ -45,6 +47,12 @@ export function PipelinePage() {
             onChange={(e) => setTriggerKeyword(e.target.value)}
             placeholder="Keyword (optional)"
             className="bg-bg border border-border rounded-lg px-3 py-2 text-sm w-48 focus:outline-none focus:border-primary"
+          />
+          <input
+            value={triggerDirection}
+            onChange={(e) => setTriggerDirection(e.target.value)}
+            placeholder="Direction (optional)"
+            className="bg-bg border border-border rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:border-primary"
           />
           <button
             onClick={handleTrigger}
@@ -144,7 +152,7 @@ function DraftDetailModal({
   const [rejecting, setRejecting] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [showRejectForm, setShowRejectForm] = useState(false);
-  const [reviewResult, setReviewResult] = useState<{ seo: SeoScore; readability: ReadabilityScore } | null>(null);
+  const [reviewResult, setReviewResult] = useState<{ seo: SeoScore; readability: ReadabilityScore; ai_review?: AiReview } | null>(null);
 
   const handleReview = async () => {
     setReviewing(true);
@@ -180,12 +188,13 @@ function DraftDetailModal({
   };
 
   // Parse review feedback
-  let feedback: { seo?: SeoScore; readability?: ReadabilityScore } = {};
+  let feedback: { seo?: SeoScore; readability?: ReadabilityScore; ai_review?: AiReview } = {};
   if (draft.reviewFeedback) {
     try { feedback = JSON.parse(draft.reviewFeedback); } catch { /* ignore */ }
   }
   const seo = reviewResult?.seo || feedback.seo;
   const readability = reviewResult?.readability || feedback.readability;
+  const aiReview = reviewResult?.ai_review || feedback.ai_review;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -232,6 +241,50 @@ function DraftDetailModal({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* AI Content Review */}
+          {aiReview && (
+            <div className="bg-bg border border-border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">AI Content Review</p>
+                <span className={`text-lg font-bold ${aiReview.overall >= 7 ? "text-success" : aiReview.overall >= 5 ? "text-warning" : "text-danger"}`}>
+                  {aiReview.overall}/10
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                {Object.entries(aiReview.scores).map(([k, v]) => (
+                  <div key={k} className="flex items-center justify-between bg-surface rounded px-2 py-1">
+                    <span className="text-text-muted">
+                      {k === "analogy_appropriateness" ? "비유 적정성" :
+                       k === "technical_depth" ? "기술적 깊이" :
+                       k === "target_consistency" ? "타겟 일관성" :
+                       k === "conclusion_effectiveness" ? "결론 실효성" : k}
+                    </span>
+                    <span className={`font-medium ${v >= 7 ? "text-success" : v >= 5 ? "text-warning" : "text-danger"}`}>{v}</span>
+                  </div>
+                ))}
+              </div>
+              {aiReview.sharp_criticisms.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-danger mb-1">날카로운 비판</p>
+                  <ul className="text-xs text-text-muted space-y-1">
+                    {aiReview.sharp_criticisms.map((c, i) => <li key={i}>• {c}</li>)}
+                  </ul>
+                </div>
+              )}
+              {aiReview.technical_suggestions.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-primary mb-1">기술적 보강 제안</p>
+                  <ul className="text-xs text-text-muted space-y-1">
+                    {aiReview.technical_suggestions.map((s, i) => <li key={i}>• {s}</li>)}
+                  </ul>
+                </div>
+              )}
+              <p className="text-xs italic text-text-muted border-t border-border pt-2">
+                "{aiReview.one_liner}"
+              </p>
             </div>
           )}
 

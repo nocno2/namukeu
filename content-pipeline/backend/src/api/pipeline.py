@@ -17,7 +17,7 @@ from src.pipeline.publisher import (
     get_drafts_from_blog,
     update_draft_in_blog,
 )
-from src.pipeline.reviewer import calculate_readability, calculate_seo_score
+from src.pipeline.reviewer import ai_review, calculate_readability, calculate_seo_score
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/pipeline")
@@ -45,7 +45,7 @@ async def trigger_pipeline(
     run_id = str(uuid4())
     db.create_pipeline_run(run_id)
 
-    asyncio.create_task(_run_pipeline(run_id, body.keyword, db, config))
+    asyncio.create_task(_run_pipeline(run_id, body.keyword, db, config, body.direction))
     return {"run_id": run_id, "status": "started"}
 
 
@@ -119,12 +119,12 @@ def update_draft(
 
 
 @router.post("/drafts/{draft_id}/review")
-def review_draft(
+async def review_draft(
     draft_id: int,
     _=Depends(verify_session),
     config: Config = Depends(get_config),
 ):
-    """Run automated quality review on a draft."""
+    """Run automated quality review on a draft (rules + AI)."""
     draft = get_draft_from_blog(draft_id, config)
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found")
@@ -136,10 +136,14 @@ def review_draft(
     seo = calculate_seo_score(title, content, keyword)
     readability = calculate_readability(content)
 
-    review_feedback = json.dumps({
-        "seo": seo,
-        "readability": readability,
-    }, ensure_ascii=False)
+    # AI content review
+    ai_feedback = await ai_review(title, content, keyword)
+
+    review_data: dict = {"seo": seo, "readability": readability}
+    if ai_feedback:
+        review_data["ai_review"] = ai_feedback
+
+    review_feedback = json.dumps(review_data, ensure_ascii=False)
 
     update_draft_in_blog(draft_id, {
         "status": "reviewed",
@@ -147,7 +151,7 @@ def review_draft(
         "review_feedback": review_feedback,
     }, config)
 
-    return {"seo": seo, "readability": readability}
+    return review_data
 
 
 @router.post("/drafts/{draft_id}/approve")
@@ -191,8 +195,14 @@ def reject_draft(
 # --- Pipeline Orchestration ---
 
 
-async def _run_pipeline(run_id: str, keyword: str | None, db: Database, config: Config):
-    """Full pipeline: keyword → generate → review."""
+async def _run_pipeline(
+    run_id: str,
+    keyword: str | None,
+    db: Database,
+    config: Config,
+    direction: str | None = None,
+):
+    """Full pipeline: keyword → generate → review (rules + AI)."""
     try:
         # Step 1: Collect keywords (or use provided)
         if not keyword:
@@ -216,8 +226,8 @@ async def _run_pipeline(run_id: str, keyword: str | None, db: Database, config: 
             "selected_keyword": keyword,
         })
 
-        # Step 2: Generate draft
-        draft_data = await generate_draft(keyword, config)
+        # Step 2: Generate draft (with direction if provided)
+        draft_data = await generate_draft(keyword, config, direction=direction or "")
         draft_data["pipeline_id"] = run_id
 
         # Step 3: Save to blog DB
@@ -230,7 +240,7 @@ async def _run_pipeline(run_id: str, keyword: str | None, db: Database, config: 
             })
             return
 
-        # Step 4: Auto-review
+        # Step 4: Auto-review (rules-based)
         db.update_pipeline_run(run_id, {"status": "reviewing", "blog_draft_id": draft_id})
 
         content = draft_data.get("content", "")
@@ -238,7 +248,14 @@ async def _run_pipeline(run_id: str, keyword: str | None, db: Database, config: 
         seo = calculate_seo_score(title, content, keyword)
         readability = calculate_readability(content)
 
-        review_feedback = json.dumps({"seo": seo, "readability": readability}, ensure_ascii=False)
+        # Step 5: AI content review
+        ai_feedback = await ai_review(title, content, keyword)
+
+        review_data: dict = {"seo": seo, "readability": readability}
+        if ai_feedback:
+            review_data["ai_review"] = ai_feedback
+
+        review_feedback = json.dumps(review_data, ensure_ascii=False)
         update_draft_in_blog(draft_id, {
             "status": "reviewed",
             "review_score": seo["score"],
