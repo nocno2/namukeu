@@ -653,6 +653,12 @@ export async function createBot(): Promise<Bot> {
           durationMs: result.durationMs,
         });
 
+        // Fallback 세션 ID가 생성된 경우 SessionTracker에 반영
+        if (result.sessionId !== sessionId) {
+          console.log(`Session ID changed for chat ${chatId}: ${sessionId.slice(0, 8)} → ${result.sessionId.slice(0, 8)}`);
+          await sessions.updateSessionId(chatId, result.sessionId);
+        }
+
         await sessions.markActive(chatId);
         await sendResponse(ctx, cleanResponse);
 

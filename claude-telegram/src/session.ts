@@ -97,6 +97,21 @@ export class SessionTracker {
     await this.save();
   }
 
+  async updateSessionId(chatId: number, newSessionId: string): Promise<void> {
+    const existing = this.sessions.get(chatId);
+    const nextGen = (existing?.generation ?? 0) + 1;
+    this.sessions.set(chatId, {
+      chatId,
+      sessionId: newSessionId,
+      generation: nextGen,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+      messageCount: 0,
+    });
+    await this.save();
+    console.log(`Session updated for chat ${chatId}: ${newSessionId.slice(0, 8)}... (gen ${nextGen})`);
+  }
+
   async resetSession(chatId: number): Promise<void> {
     const existing = this.sessions.get(chatId);
     const nextGen = (existing?.generation ?? 0) + 1;
