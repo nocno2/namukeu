@@ -21,6 +21,16 @@ router = APIRouter(prefix="/api/n8n", tags=["n8n"])
 # --- Pydantic Models ---
 
 
+class ExtractKeywordsRequest(BaseModel):
+    context: str = Field(..., min_length=10, max_length=5000, description="아이디어/컨텍스트")
+    count: int = Field(3, ge=1, le=10, description="추출할 키워드 개수")
+
+
+class ExtractKeywordsResponse(BaseModel):
+    keywords: list[str]
+    reasoning: str
+
+
 class GenerateRequest(BaseModel):
     keyword: str = Field(..., min_length=1, max_length=200, description="블로그 키워드")
     direction: str | None = Field(None, max_length=2000, description="창작 방향 (선택)")
@@ -60,6 +70,18 @@ class ReviseResponse(BaseModel):
     changes_summary: str
 
 
+class GenerateImagesRequest(BaseModel):
+    content: str = Field(..., min_length=100, description="본문 마크다운")
+    title: str = Field(..., min_length=1, max_length=200, description="글 제목")
+    count: int = Field(3, ge=1, le=5, description="생성할 이미지 개수")
+
+
+class GenerateImagesResponse(BaseModel):
+    content_with_images: str
+    image_prompts: list[str]
+    image_count: int
+
+
 # --- Helper Functions ---
 
 
@@ -84,6 +106,60 @@ async def _run_claude_cli(prompt: str) -> str:
 
 
 # --- API Endpoints ---
+
+
+@router.post("/extract-keywords", response_model=ExtractKeywordsResponse)
+async def extract_keywords(body: ExtractKeywordsRequest):
+    """
+    아이디어/컨텍스트에서 블로그 키워드 추출.
+
+    - 사용자가 제공한 긴 문장/아이디어에서 SEO 친화적 키워드 추출
+    - 트렌드 및 검색 의도를 고려한 키워드 제안
+    """
+    try:
+        prompt = f"""당신은 SEO 전문가입니다.
+다음 아이디어/컨텍스트에서 블로그 글로 작성하기 좋은 키워드를 {body.count}개 추출해주세요.
+
+## 입력 컨텍스트
+{body.context}
+
+## 추출 기준
+- SEO 친화적 (검색량이 있을 법한)
+- 구체적이고 명확한 주제
+- 블로그 글 한 편으로 다룰 수 있는 범위
+- 타겟 독자가 명확한 키워드
+
+다음 JSON 형식으로만 응답하세요:
+{{
+  "keywords": ["키워드1", "키워드2", "키워드3"],
+  "reasoning": "이 키워드들을 선택한 이유 (1-2문장)"
+}}"""
+
+        logger.info(f"[n8n/extract-keywords] Extracting from context ({len(body.context)} chars)")
+        result_text = await _run_claude_cli(prompt)
+
+        # Parse JSON
+        json_match = re.search(r"\{[\s\S]*\}", result_text)
+        if not json_match:
+            raise ValueError("No JSON found in response")
+
+        result = json.loads(json_match.group())
+        keywords = result.get("keywords", [])
+        reasoning = result.get("reasoning", "")
+
+        if not keywords:
+            raise ValueError("No keywords extracted")
+
+        return ExtractKeywordsResponse(
+            keywords=keywords[:body.count],
+            reasoning=reasoning,
+        )
+
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"[n8n/extract-keywords] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Keyword extraction failed")
 
 
 @router.post("/generate", response_model=GenerateResponse)
@@ -254,6 +330,70 @@ async def revise_content(body: ReviseRequest):
     except Exception as e:
         logger.error(f"[n8n/revise] Failed: {e}")
         raise HTTPException(status_code=500, detail="Revision failed")
+
+
+@router.post("/generate-images", response_model=GenerateImagesResponse)
+async def generate_images(body: GenerateImagesRequest):
+    """
+    블로그 글에 이미지 삽입 위치 및 프롬프트 생성.
+
+    - 본문을 분석해 이미지가 들어갈 적절한 위치 선정
+    - 각 위치에 맞는 이미지 생성 프롬프트 작성
+    - 마크다운에 `![alt](placeholder)` 형태로 삽입
+    """
+    try:
+        prompt = f"""당신은 블로그 콘텐츠 에디터입니다.
+다음 블로그 글에 이미지를 {body.count}개 삽입하려고 합니다.
+
+제목: {body.title}
+
+본문:
+{body.content}
+
+## 작업
+1. 이미지가 들어가면 좋을 위치 {body.count}곳 선정 (각 섹션에 고르게 분산)
+2. 각 위치에 맞는 이미지 생성 프롬프트 작성 (영문, DALL-E/Midjourney용)
+3. 본문에 `![{{alt_text}}](image_{{n}}.png)` 형태로 삽입
+
+## 출력 형식 (JSON만)
+{{
+  "content_with_images": "이미지 마크다운이 삽입된 전체 본문",
+  "image_prompts": [
+    "A modern minimalist illustration of...",
+    "Photorealistic image of..."
+  ]
+}}
+
+- alt_text는 한국어로 작성
+- 이미지 프롬프트는 영문, 구체적이고 상세하게
+- content_with_images는 원본 본문에 이미지만 추가 (텍스트 수정 금지)"""
+
+        logger.info(f"[n8n/generate-images] Processing content ({len(body.content)} chars)")
+        result_text = await _run_claude_cli(prompt)
+
+        # Parse JSON
+        json_match = re.search(r"\{[\s\S]*\}", result_text)
+        if not json_match:
+            raise ValueError("No JSON found in response")
+
+        result = json.loads(json_match.group())
+        content_with_images = result.get("content_with_images", "")
+        image_prompts = result.get("image_prompts", [])
+
+        if not content_with_images or not image_prompts:
+            raise ValueError("Invalid response structure")
+
+        return GenerateImagesResponse(
+            content_with_images=content_with_images,
+            image_prompts=image_prompts,
+            image_count=len(image_prompts),
+        )
+
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"[n8n/generate-images] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Image generation failed")
 
 
 # --- Health Check ---

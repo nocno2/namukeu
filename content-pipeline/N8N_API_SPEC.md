@@ -16,7 +16,55 @@
 
 ## 엔드포인트
 
-### 1. 블로그 글 초안 생성
+### 1. 키워드 추출 (신규)
+
+**POST** `/api/n8n/extract-keywords`
+
+아이디어/컨텍스트에서 블로그 키워드를 추출합니다.
+
+#### Request Body
+
+```json
+{
+  "context": "요즘 두바이 쫀득 쿠키가 유행인데, 이게 마치 로컬 LLM이랑 비슷한 것 같아. 직접 만들어 먹는 것과 배달시켜 먹는 것의 차이랄까? 맥미니로 로컬 LLM 돌리는 것과 API 호출하는 거의 차이를 쿠키로 비유해서 재밌게 설명하면 좋을 것 같은데...",
+  "count": 3
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `context` | string | ✅ | 아이디어/컨텍스트 (10-5000자) |
+| `count` | integer | ❌ | 추출할 키워드 개수 (기본값 3, 1-10) |
+
+#### Response (200 OK)
+
+```json
+{
+  "keywords": [
+    "두바이 쫀득 쿠키 맥미니 로컬 LLM",
+    "로컬 LLM vs API 비교",
+    "맥미니 AI 모델 실행"
+  ],
+  "reasoning": "트렌드(두쫀쿠)와 기술(로컬LLM)을 결합한 키워드가 SEO 친화적이고 검색 의도가 명확합니다."
+}
+```
+
+#### n8n 설정 예시
+
+**HTTP Request Node**:
+- Method: `POST`
+- URL: `http://localhost:8003/api/n8n/extract-keywords`
+- Body:
+  ```json
+  {
+    "context": "{{ $json.idea }}",
+    "count": 3
+  }
+  ```
+
+---
+
+### 2. 블로그 글 초안 생성
 
 **POST** `/api/n8n/generate`
 
@@ -65,7 +113,7 @@
 
 ---
 
-### 2. 블로그 글 검토
+### 3. 블로그 글 검토
 
 **POST** `/api/n8n/review`
 
@@ -162,7 +210,7 @@
 
 ---
 
-### 3. 블로그 글 첨삭
+### 4. 블로그 글 첨삭
 
 **POST** `/api/n8n/revise`
 
@@ -212,7 +260,61 @@
 
 ---
 
-### 4. 헬스체크
+### 5. 이미지 생성 및 삽입 (신규)
+
+**POST** `/api/n8n/generate-images`
+
+블로그 본문에 이미지를 삽입할 위치를 선정하고 프롬프트를 생성합니다.
+
+#### Request Body
+
+```json
+{
+  "title": "두바이 쫀득 쿠키로 이해하는 로컬 LLM",
+  "content": "## 서론\n최근 유행하는...",
+  "count": 3
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `title` | string | ✅ | 글 제목 (1-200자) |
+| `content` | string | ✅ | 본문 마크다운 (최소 100자) |
+| `count` | integer | ❌ | 생성할 이미지 개수 (기본값 3, 1-5) |
+
+#### Response (200 OK)
+
+```json
+{
+  "content_with_images": "## 서론\n최근 유행하는...\n\n![두바이 쫀득 쿠키 단면](image_1.png)\n\n## 로컬 LLM이란?...",
+  "image_prompts": [
+    "A high-quality close-up photo of Dubai chocolate cookie with melted pistachio filling, dramatic lighting, food photography style",
+    "A clean minimalist diagram showing Mac Mini M2 with AI model icons, technical illustration, blue and white color scheme",
+    "Side-by-side comparison infographic: local LLM vs cloud API, with icons and arrows, modern flat design"
+  ],
+  "image_count": 3
+}
+```
+
+#### n8n 설정 예시
+
+**HTTP Request Node**:
+- Method: `POST`
+- URL: `http://localhost:8003/api/n8n/generate-images`
+- Body:
+  ```json
+  {
+    "title": "{{ $json.title }}",
+    "content": "{{ $json.content }}",
+    "count": 3
+  }
+  ```
+
+**이후 처리**: `image_prompts`를 DALL-E/Midjourney/Stable Diffusion API로 전달하여 실제 이미지 생성 후, `content_with_images`의 플레이스홀더를 실제 이미지 URL로 치환.
+
+---
+
+### 6. 헬스체크
 
 **GET** `/api/n8n/health`
 
@@ -231,16 +333,62 @@ API 서버 상태 확인.
 
 ## n8n 워크플로우 예시
 
-### 시나리오 1: 키워드 → 초안 → 검토 → 첨삭 → 승인
+### 시나리오 1: 아이디어 → 키워드 → 초안 → 이미지 → 검토 → 첨삭 (전체 자동화)
+
+```
+┌─────────────────┐
+│  Trigger        │ (Manual / Webhook)
+└────────┬────────┘
+         │
+         v
+┌─────────────────┐
+│  Set Data       │ idea: "두쫀쿠로 로컬LLM 설명하면..."
+└────────┬────────┘
+         │
+         v
+┌─────────────────┐
+│ Extract Keywords│ POST /api/n8n/extract-keywords
+└────────┬────────┘
+         │ keywords[0] 선택
+         v
+┌─────────────────┐
+│  Generate       │ POST /api/n8n/generate
+└────────┬────────┘
+         │
+         v
+┌─────────────────┐
+│ Generate Images │ POST /api/n8n/generate-images
+└────────┬────────┘
+         │
+         v
+┌─────────────────┐
+│ DALL-E API      │ image_prompts로 실제 이미지 생성
+└────────┬────────┘
+         │
+         v
+┌─────────────────┐
+│ Replace URLs    │ content에 이미지 URL 치환
+└────────┬────────┘
+         │
+         v
+┌─────────────────┐
+│  Review         │ POST /api/n8n/review
+└────────┬────────┘
+         │
+         v
+┌─────────────────┐
+│  IF Node        │ score >= 7?
+└───┬────────┬────┘
+    │ True   │ False
+    v        v
+ [Publish] [Revise] → Review 다시
+```
+
+### 시나리오 2: 키워드만 있을 때 (기존 방식)
 
 ```
 ┌─────────────┐
-│  Trigger    │ (Manual / Cron)
-└──────┬──────┘
-       │
-       v
-┌─────────────┐
-│  Set Data   │ keyword: "AI 로컬 LLM"
+│  Trigger    │ keyword 입력
 └──────┬──────┘
        │
        v
@@ -254,29 +402,14 @@ API 서버 상태 확인.
 └──────┬──────┘
        │
        v
-┌─────────────┐
-│  IF Node    │ score >= 7?
-└──┬──────┬───┘
-   │ True │ False
-   v      v
- [Done] [Revise]
-         │
-         v
-      ┌─────────────┐
-      │  Revise     │ POST /api/n8n/revise
-      └──────┬──────┘
-             │
-             v
-      ┌─────────────┐
-      │  Review     │ 다시 검토
-      └─────────────┘
+    [Done]
 ```
 
-### 시나리오 2: 기존 글 첨삭만
+### 시나리오 3: 기존 글 첨삭만
 
 ```
 ┌─────────────┐
-│  Webhook    │ 외부에서 content 수신
+│  Webhook    │ content 수신
 └──────┬──────┘
        │
        v
@@ -333,11 +466,21 @@ API 서버 상태 확인.
 
 | API | 평균 응답 시간 | Claude CLI 호출 횟수 |
 |-----|---------------|---------------------|
+| `/extract-keywords` | 10-15초 | 1회 |
 | `/generate` | 60-90초 | 3회 (아웃라인 + 본문 + 메타) |
 | `/review` | 20-30초 | 1회 (AI 리뷰) |
 | `/revise` | 40-60초 | 2회 (첨삭 + 변경 요약) |
+| `/generate-images` | 15-25초 | 1회 (이미지 위치 + 프롬프트) |
 
 **n8n 타임아웃 설정**: 각 HTTP Request Node의 타임아웃을 **120초** 이상 설정 권장.
+
+**전체 파이프라인 소요 시간** (아이디어 → 이미지 포함 완성본):
+- 키워드 추출: 15초
+- 초안 생성: 75초
+- 이미지 프롬프트: 20초
+- 실제 이미지 생성: 30-60초 (외부 API)
+- 검토: 25초
+- **총 약 3-4분**
 
 ---
 
