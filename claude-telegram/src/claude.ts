@@ -88,6 +88,13 @@ export async function callClaude(
         return callClaude(prompt, { ...options, isNewSession: true });
       }
 
+      if (isSessionInUse(stderr)) {
+        console.warn(
+          `Session ${options.sessionId} is already in use, retrying as new session.`
+        );
+        return callClaude(prompt, { ...options, isNewSession: true });
+      }
+
       return {
         success: false,
         result: "",
@@ -274,4 +281,8 @@ function isSessionNotFound(stderr: string): boolean {
     lower.includes("session not found") ||
     lower.includes("could not find session")
   );
+}
+
+function isSessionInUse(stderr: string): boolean {
+  return stderr.includes("is already in use");
 }
