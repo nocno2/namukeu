@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { desc, eq, and, like, count } from "drizzle-orm";
 import { getSession, requireAuth, AuthError } from "@/lib/auth";
@@ -124,6 +125,12 @@ export async function POST(request: NextRequest) {
 
   if (tagNames.length > 0) {
     await syncPostTags(post.id, tagNames);
+  }
+
+  if (status === "published") {
+    revalidatePath("/");
+    revalidatePath(`/posts/${slug}`);
+    revalidatePath("/tags");
   }
 
   return NextResponse.json(post, { status: 201 });

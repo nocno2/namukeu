@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { getSession, requireAuth, AuthError } from "@/lib/auth";
@@ -77,7 +78,15 @@ export async function PUT(request: NextRequest, ctx: Ctx) {
     await syncPostTags(parseInt(id), tagNames);
   }
 
-  return NextResponse.json(result[0]);
+  const updated = result[0];
+  revalidatePath("/");
+  revalidatePath(`/posts/${updated.slug}`);
+  revalidatePath("/tags");
+  if (existing.slug !== updated.slug) {
+    revalidatePath(`/posts/${existing.slug}`);
+  }
+
+  return NextResponse.json(updated);
 }
 
 // DELETE /api/posts/:id
@@ -95,6 +104,11 @@ export async function DELETE(_request: NextRequest, ctx: Ctx) {
   if (result.length === 0) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+
+  const deleted = result[0];
+  revalidatePath("/");
+  revalidatePath(`/posts/${deleted.slug}`);
+  revalidatePath("/tags");
 
   return NextResponse.json({ ok: true });
 }

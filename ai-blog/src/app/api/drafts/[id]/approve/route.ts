@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
 import { requireAuth, AuthError } from "@/lib/auth";
@@ -79,6 +80,10 @@ export async function POST(_request: NextRequest, ctx: Ctx) {
       updatedAt: new Date().toISOString(),
     })
     .where(eq(schema.drafts.id, parseInt(id)));
+
+  revalidatePath("/");
+  revalidatePath(`/posts/${post.slug}`);
+  revalidatePath("/tags");
 
   return NextResponse.json({ ok: true, postId: post.id, slug: post.slug });
 }
