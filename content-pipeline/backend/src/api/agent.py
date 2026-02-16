@@ -1,13 +1,22 @@
-"""Agent API router — dashboard integration for agent status & goals."""
+"""Agent API router — heartbeat control, tasks CRUD, goals, audit, forbidden."""
+
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from src.agent.audit import AuditLog
 from src.agent.config import AgentConfigStore
+from src.agent.forbidden import ForbiddenActions
 from src.agent.goals import PROJECT_CODES, GoalStore
+from src.agent.heartbeat import Heartbeat
+from src.agent.tasks import TaskStore
 from src.config import Config
 
 router = APIRouter(prefix="/api")
+
+
+# ─── Dependency stubs (overridden in main.py lifespan) ───
 
 
 def get_goal_store() -> GoalStore:
@@ -22,6 +31,22 @@ def get_config() -> Config:
     raise NotImplementedError
 
 
+def get_heartbeat() -> Heartbeat | None:
+    raise NotImplementedError
+
+
+def get_task_store() -> TaskStore:
+    raise NotImplementedError
+
+
+def get_audit_log() -> AuditLog:
+    raise NotImplementedError
+
+
+def get_forbidden() -> ForbiddenActions:
+    raise NotImplementedError
+
+
 def verify_agent_token(
     authorization: str | None = Header(None),
     config: Config = Depends(get_config),
@@ -31,17 +56,21 @@ def verify_agent_token(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
-# --- Status ---
+# ─── Status ───
 
 
 @router.get("/status", dependencies=[Depends(verify_agent_token)])
-def agent_status(cfg: AgentConfigStore = Depends(get_config_store)):
+async def agent_status(
+    hb: Heartbeat | None = Depends(get_heartbeat),
+):
+    if hb:
+        return await hb.get_status()
     return {
-        "running": True,
+        "running": False,
         "runningTasks": [],
-        "idleEnabled": cfg.get_bool("idle_enabled"),
-        "chainingEnabled": cfg.get_bool("chaining_enabled"),
-        "monitorsEnabled": cfg.get_bool("monitors_enabled"),
+        "idleEnabled": False,
+        "chainingEnabled": False,
+        "monitorsEnabled": False,
         "todayTaskCount": 0,
         "todayCost": 0.0,
         "lastTaskExecutedAt": None,
@@ -49,7 +78,7 @@ def agent_status(cfg: AgentConfigStore = Depends(get_config_store)):
     }
 
 
-# --- Toggles ---
+# ─── Toggles ───
 
 
 class ToggleBody(BaseModel):
@@ -61,16 +90,203 @@ def agent_toggle(
     feature: str,
     body: ToggleBody,
     cfg: AgentConfigStore = Depends(get_config_store),
+    hb: Heartbeat | None = Depends(get_heartbeat),
 ):
     key_map = {"idle": "idle_enabled", "chain": "chaining_enabled", "monitors": "monitors_enabled"}
     key = key_map.get(feature)
     if not key:
         raise HTTPException(status_code=400, detail="Invalid feature")
     cfg.set_bool(key, body.enabled)
+
+    # Sync to heartbeat
+    if hb:
+        if feature == "idle":
+            hb.set_idle_enabled(body.enabled)
+        elif feature == "chain":
+            hb.set_chaining_enabled(body.enabled)
+        elif feature == "monitors":
+            hb.set_monitors_enabled(body.enabled)
+
     return {"ok": True, feature: body.enabled}
 
 
-# --- Goals CRUD ---
+# ─── Agent Tasks CRUD ───
+
+
+class TaskCreate(BaseModel):
+    title: str
+    prompt: str
+    type: str = "one-time"
+    project: str = "GENERAL"
+    schedule_cron: str | None = None
+    schedule_at: str | None = None
+    event_trigger: str | None = None
+    notify_user: bool = True
+    requires_approval: bool = False
+    max_runs: int | None = None
+
+
+@router.get("/tasks", dependencies=[Depends(verify_agent_token)])
+def list_agent_tasks(
+    ts: TaskStore = Depends(get_task_store),
+    active_only: bool = True,
+):
+    return ts.get_active() if active_only else ts.get_all()
+
+
+@router.post("/tasks", status_code=201, dependencies=[Depends(verify_agent_token)])
+def create_agent_task(
+    body: TaskCreate,
+    ts: TaskStore = Depends(get_task_store),
+):
+    return ts.create_task(
+        title=body.title,
+        prompt=body.prompt,
+        task_type=body.type,
+        project=body.project,
+        schedule_cron=body.schedule_cron,
+        schedule_at=body.schedule_at,
+        event_trigger=body.event_trigger,
+        notify_user=body.notify_user,
+        requires_approval=body.requires_approval,
+        max_runs=body.max_runs,
+    )
+
+
+@router.get("/tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
+def get_agent_task(
+    task_id: str,
+    ts: TaskStore = Depends(get_task_store),
+):
+    task = ts.get_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+
+@router.delete("/tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
+def delete_agent_task(
+    task_id: str,
+    ts: TaskStore = Depends(get_task_store),
+):
+    ts.delete_task(task_id)
+    return {"ok": True}
+
+
+@router.post("/tasks/{task_id}/cancel", dependencies=[Depends(verify_agent_token)])
+def cancel_agent_task(
+    task_id: str,
+    ts: TaskStore = Depends(get_task_store),
+):
+    # Support both full ID and 8-char prefix
+    if len(task_id) < 36:
+        all_tasks = ts.get_active()
+        match = next((t for t in all_tasks if t["id"].startswith(task_id)), None)
+        if match:
+            task_id = match["id"]
+    if not ts.cancel_task(task_id):
+        raise HTTPException(status_code=404, detail="Task not found or already completed")
+    return {"ok": True}
+
+
+@router.post("/tasks/{task_id}/approve", dependencies=[Depends(verify_agent_token)])
+def approve_agent_task(
+    task_id: str,
+    ts: TaskStore = Depends(get_task_store),
+):
+    # Support 8-char prefix
+    if len(task_id) < 36:
+        all_tasks = ts.get_active()
+        match = next((t for t in all_tasks if t["id"].startswith(task_id) and t["requires_approval"]), None)
+        if not match:
+            raise HTTPException(status_code=404, detail="Approval-pending task not found")
+        task_id = match["id"]
+    ts.update_task(task_id, {
+        "requires_approval": False,
+        "schedule_next": datetime.now().isoformat(),
+    })
+    return {"ok": True}
+
+
+@router.post("/tasks/approve-all", dependencies=[Depends(verify_agent_token)])
+def approve_all_tasks(
+    ts: TaskStore = Depends(get_task_store),
+):
+    pending = [t for t in ts.get_active() if t["requires_approval"]]
+    now = datetime.now().isoformat()
+    for t in pending:
+        ts.update_task(t["id"], {"requires_approval": False, "schedule_next": now})
+    return {"ok": True, "count": len(pending)}
+
+
+# ─── Heartbeat Control ───
+
+
+@router.post("/heartbeat/stop", dependencies=[Depends(verify_agent_token)])
+def stop_heartbeat(hb: Heartbeat | None = Depends(get_heartbeat)):
+    if hb:
+        hb.stop()
+        return {"ok": True, "status": "stopped"}
+    raise HTTPException(status_code=500, detail="Heartbeat not initialized")
+
+
+@router.post("/heartbeat/resume", dependencies=[Depends(verify_agent_token)])
+async def resume_heartbeat(hb: Heartbeat | None = Depends(get_heartbeat)):
+    if hb:
+        await hb.resume()
+        return {"ok": True, "status": "running"}
+    raise HTTPException(status_code=500, detail="Heartbeat not initialized")
+
+
+# ─── Events ───
+
+
+class FireEventBody(BaseModel):
+    event: str
+    context: str | None = None
+
+
+@router.post("/fire-event", dependencies=[Depends(verify_agent_token)])
+async def fire_event(
+    body: FireEventBody,
+    hb: Heartbeat | None = Depends(get_heartbeat),
+):
+    if not hb:
+        raise HTTPException(status_code=500, detail="Heartbeat not initialized")
+    await hb.fire_event(body.event, body.context)
+    return {"ok": True}
+
+
+# ─── Audit ───
+
+
+@router.get("/audit", dependencies=[Depends(verify_agent_token)])
+def get_audit(
+    limit: int = 20,
+    audit: AuditLog = Depends(get_audit_log),
+):
+    return audit.get_recent(limit)
+
+
+# ─── Forbidden ───
+
+
+@router.get("/forbidden", dependencies=[Depends(verify_agent_token)])
+def get_forbidden_rules(fb: ForbiddenActions = Depends(get_forbidden)):
+    return fb.get_rules()
+
+
+# ─── Monitors ───
+
+
+@router.get("/monitors", dependencies=[Depends(verify_agent_token)])
+def get_monitors(hb: Heartbeat | None = Depends(get_heartbeat)):
+    if hb and hb._monitor_system:
+        return hb._monitor_system.get_status()
+    return {"monitors": []}
+
+
+# ─── Goals CRUD ───
 
 
 class GoalCreate(BaseModel):

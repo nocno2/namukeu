@@ -8,8 +8,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.agent.audit import AuditLog
 from src.agent.config import AgentConfigStore
+from src.agent.forbidden import ForbiddenActions
 from src.agent.goals import GoalStore
+from src.agent.heartbeat import Heartbeat
+from src.agent.tasks import TaskStore
+from src.agent.telegram import TelegramNotifier
 from src.api import agent, auth, history, pipeline, tasks
 from src.config import Config
 from src.db.connection import Database
@@ -33,6 +38,33 @@ async def lifespan(app: FastAPI):
     # Agent stores
     goal_store = GoalStore(db)
     config_store = AgentConfigStore(db)
+    task_store = TaskStore(db)
+    audit_log = AuditLog(db)
+
+    # Forbidden actions
+    forbidden = ForbiddenActions(config.forbidden_config_path)
+    if config.forbidden_config_path:
+        forbidden.load()
+
+    # Telegram notifier
+    notifier = TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id)
+
+    # Heartbeat
+    heartbeat: Heartbeat | None = None
+    if config.agent_enabled:
+        heartbeat = Heartbeat(
+            config=config,
+            task_store=task_store,
+            audit=audit_log,
+            goal_store=goal_store,
+            forbidden=forbidden,
+            notifier=notifier,
+        )
+
+        # Sync feature toggles from DB
+        heartbeat.set_idle_enabled(config_store.get_bool("idle_enabled"))
+        heartbeat.set_chaining_enabled(config_store.get_bool("chaining_enabled"))
+        heartbeat.set_monitors_enabled(config_store.get_bool("monitors_enabled"))
 
     # Dependency overrides
     app.dependency_overrides[auth.get_db] = lambda: db
@@ -41,14 +73,25 @@ async def lifespan(app: FastAPI):
     app.dependency_overrides[agent.get_goal_store] = lambda: goal_store
     app.dependency_overrides[agent.get_config_store] = lambda: config_store
     app.dependency_overrides[agent.get_config] = lambda: config
+    app.dependency_overrides[agent.get_heartbeat] = lambda: heartbeat
+    app.dependency_overrides[agent.get_task_store] = lambda: task_store
+    app.dependency_overrides[agent.get_audit_log] = lambda: audit_log
+    app.dependency_overrides[agent.get_forbidden] = lambda: forbidden
 
     db.cleanup_expired()
     await scheduler.start()
+
+    if heartbeat:
+        await heartbeat.start()
+        logger.info("[agent] Heartbeat started")
 
     logger.info(f"Server started on http://{config.host}:{config.port}")
 
     yield
 
+    if heartbeat:
+        heartbeat.stop()
+    await notifier.close()
     await scheduler.stop()
     db.close()
     logger.info("Server stopped")

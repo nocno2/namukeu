@@ -71,6 +71,46 @@ class Database:
                 updated_at TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS agent_tasks (
+                id TEXT PRIMARY KEY,
+                type TEXT NOT NULL CHECK(type IN ('one-time','recurring','event')),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK(status IN ('pending','running','completed','failed','paused')),
+                title TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                project TEXT NOT NULL DEFAULT 'GENERAL',
+                schedule_cron TEXT,
+                schedule_next TEXT,
+                event_trigger TEXT,
+                last_run_at TEXT,
+                last_result TEXT,
+                run_count INTEGER DEFAULT 0,
+                max_runs INTEGER,
+                notify_user INTEGER DEFAULT 1,
+                requires_approval INTEGER DEFAULT 0,
+                chain_depth INTEGER DEFAULT 0,
+                chain_parent_id TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_agent_tasks_next
+                ON agent_tasks(schedule_next) WHERE status IN ('pending','running');
+
+            CREATE TABLE IF NOT EXISTS agent_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                type TEXT NOT NULL,
+                task TEXT,
+                chat_id TEXT,
+                violations TEXT,
+                cost REAL,
+                duration INTEGER,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_agent_audit_ts ON agent_audit(ts);
+
             CREATE TABLE IF NOT EXISTS pipeline_runs (
                 id TEXT PRIMARY KEY,
                 status TEXT NOT NULL,
