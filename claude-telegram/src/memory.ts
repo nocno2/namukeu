@@ -1,16 +1,9 @@
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import { processTags, type MemoryStore } from "@namukeu/agent-core";
-import type { TaskStore, TagProcessContext } from "@namukeu/agent-core";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const MEMORY_FILE = join(DATA_DIR, "memory.json");
-
-let taskStoreRef: TaskStore | null = null;
-
-export function setTaskStore(ts: TaskStore): void {
-  taskStoreRef = ts;
-}
 
 export async function loadMemory(): Promise<MemoryStore> {
   try {
@@ -26,12 +19,14 @@ async function saveMemory(store: MemoryStore): Promise<void> {
 }
 
 /**
- * Parse all tags from Claude's response (memory + task tags),
- * store them, and return the cleaned response.
+ * Parse memory tags from Claude's response (REMEMBER, GOAL, DONE).
+ * Task tags (TASK, CHAIN, CANCEL_TASK) are now handled by content-pipeline's heartbeat,
+ * so we pass no taskStore here — they'll be stripped but not processed.
  */
-export async function processMemoryTags(response: string, context?: TagProcessContext): Promise<string> {
+export async function processMemoryTags(response: string): Promise<string> {
   const store = await loadMemory();
-  const result = processTags(response, store, taskStoreRef || undefined, context);
+  // No taskStore — task tags are processed by content-pipeline
+  const result = processTags(response, store, undefined, undefined);
 
   if (result.memoryChanged) {
     await saveMemory(store);

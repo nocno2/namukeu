@@ -9,7 +9,6 @@ import {
   getMemorySummary,
   getMemoryDetail,
   clearMemory,
-  setTaskStore,
 } from "./memory";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -22,19 +21,6 @@ import {
   getMessageCount,
   getConversationRecap,
 } from "./db";
-import {
-  TaskStore,
-  ForbiddenActions,
-  AuditLog,
-  Heartbeat,
-  GoalStore,
-  loadSoul,
-  buildAgentSystemPrompt,
-  type HeartbeatConfig,
-  type MonitorDefinition,
-} from "@namukeu/agent-core";
-import { createTelegramAdapter } from "./platform";
-import { seedInitialTasks } from "./seed-tasks";
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN!;
 const ALLOWED_USER_ID = parseInt(process.env.TELEGRAM_USER_ID!, 10);
@@ -42,17 +28,74 @@ const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
 
+// Content-pipeline API for agent commands
+const PIPELINE_API = process.env.PIPELINE_API_URL || "http://127.0.0.1:8003";
+const PIPELINE_TOKEN = process.env.AGENT_API_TOKEN || "agent-api-token";
+
 let profileContext = "";
-let soulContent = "";
 
 const startTime = Date.now();
 
-// Agent system exports
-export let heartbeat: Heartbeat | null = null;
-export let taskStore: TaskStore | null = null;
-export let goalStore: GoalStore | null = null;
-export let forbidden: ForbiddenActions | null = null;
-export let auditLog: AuditLog | null = null;
+// ─── Pipeline API helper ───
+
+async function pipelineApi(
+  path: string,
+  method: string = "GET",
+  body?: Record<string, any>
+): Promise<any> {
+  const opts: RequestInit = {
+    method,
+    headers: {
+      Authorization: `Bearer ${PIPELINE_TOKEN}`,
+      "Content-Type": "application/json",
+    },
+  };
+  if (body) opts.body = JSON.stringify(body);
+
+  try {
+    const resp = await fetch(`${PIPELINE_API}${path}`, opts);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`API ${resp.status}: ${text.slice(0, 200)}`);
+    }
+    return await resp.json();
+  } catch (err) {
+    console.error(`[pipeline-api] ${method} ${path} failed:`, err);
+    throw err;
+  }
+}
+
+// ─── Forbidden config (loaded from file for system prompt) ───
+
+let forbiddenBlock = "";
+async function loadForbidden(): Promise<void> {
+  try {
+    const raw = await readFile(
+      join(import.meta.dir, "..", "config", "forbidden.json"),
+      "utf-8"
+    );
+    const config = JSON.parse(raw);
+    if (!config.rules || config.rules.length === 0) return;
+    const lines = [
+      "════════════════════════════════════════",
+      "FORBIDDEN ACTIONS — IMMUTABLE SAFETY RULES",
+      "════════════════════════════════════════",
+    ];
+    for (const rule of config.rules) {
+      if (rule.type === "cost_limit") {
+        lines.push(`- NEVER exceed $${rule.max_cost_usd} per single execution`);
+      } else if (rule.type === "rate_limit") {
+        lines.push(`- NEVER send more than ${rule.max_per_hour} proactive messages per hour`);
+      } else {
+        lines.push(`- NEVER: ${rule.description}`);
+      }
+    }
+    lines.push("════════════════════════════════════════");
+    forbiddenBlock = lines.join("\n");
+  } catch {
+    // No forbidden config
+  }
+}
 
 async function loadProfile(): Promise<void> {
   try {
@@ -63,12 +106,6 @@ async function loadProfile(): Promise<void> {
   } catch {
     console.log("No profile.md found, running without profile context.");
   }
-}
-
-async function loadSoulFile(): Promise<void> {
-  soulContent = await loadSoul(
-    join(import.meta.dir, "..", "config", "SOUL.md")
-  );
 }
 
 function buildSystemPrompt(memoryContext: string, conversationRecap?: string): string {
@@ -97,11 +134,7 @@ function buildSystemPrompt(memoryContext: string, conversationRecap?: string): s
   });
   parts.push(`Current time: ${timeStr}`);
 
-  // Inject forbidden actions at the top
-  if (forbidden) {
-    const forbiddenBlock = forbidden.formatForPrompt();
-    if (forbiddenBlock) parts.push(`\n${forbiddenBlock}`);
-  }
+  if (forbiddenBlock) parts.push(`\n${forbiddenBlock}`);
 
   parts.push(
     `\nPROJECT CONTEXT:` +
@@ -197,137 +230,13 @@ function formatTimestamp(iso: string): string {
 
 export async function createBot(): Promise<Bot> {
   await loadProfile();
-  await loadSoulFile();
+  await loadForbidden();
   initDb();
 
   const bot = new Bot(BOT_TOKEN);
   const sessions = new SessionTracker();
   await sessions.load();
   const queue = new MessageQueue();
-
-  // --- Agent system initialization ---
-  const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
-  const CONFIG_DIR = join(import.meta.dir, "..", "config");
-  const AGENT_ENABLED = process.env.AGENT_ENABLED !== "false";
-
-  const db = getDb();
-  taskStore = new TaskStore(db);
-  setTaskStore(taskStore);
-
-  goalStore = new GoalStore(db);
-
-  forbidden = new ForbiddenActions(join(CONFIG_DIR, "forbidden.json"));
-  await forbidden.load();
-
-  auditLog = new AuditLog(join(DATA_DIR, "audit.log"));
-
-  const platform = createTelegramAdapter(bot);
-
-  const heartbeatConfig: HeartbeatConfig = {
-    intervalMs: parseInt(process.env.HEARTBEAT_INTERVAL_MS || "300000", 10),
-    dailyBudgetUsd: parseFloat(process.env.AGENT_DAILY_BUDGET_USD || "999"),
-    quietHoursStart: parseInt(process.env.QUIET_HOURS_START || "-1", 10),
-    quietHoursEnd: parseInt(process.env.QUIET_HOURS_END || "-1", 10),
-    maxProactivePerHour: 5,
-    timezone: USER_TIMEZONE,
-    idle: {
-      enabled: process.env.IDLE_TASKS_ENABLED !== "false",
-      idleThresholdMs: parseInt(process.env.IDLE_THRESHOLD_MS || "600000", 10),
-      maxIdleTasksPerDay: parseInt(process.env.IDLE_MAX_PER_DAY || "3", 10),
-    },
-    monitorsEnabled: process.env.MONITORS_ENABLED !== "false",
-    chainingEnabled: process.env.CHAINING_ENABLED !== "false",
-  };
-
-  const defaultMonitors: MonitorDefinition[] = [
-    {
-      id: "health-all",
-      name: "Service Health Check",
-      eventName: "server_down",
-      intervalMs: 60_000,
-      enabled: true,
-      config: {
-        type: "health_check",
-        endpoints: [
-          { name: "coin-auto-trade", url: "http://127.0.0.1:8001/health", project: "COIN" },
-          { name: "train-go", url: "http://127.0.0.1:8000/health", project: "TRAIN" },
-          { name: "dashboard", url: "http://127.0.0.1:8002/health", project: "DASH" },
-        ],
-        failureThreshold: 3,
-      },
-    },
-  ];
-
-  if (AGENT_ENABLED) {
-    heartbeat = new Heartbeat({
-      taskStore,
-      forbidden,
-      audit: auditLog,
-      platform,
-      config: heartbeatConfig,
-      notifyChatId: ALLOWED_USER_ID.toString(),
-      monitors: defaultMonitors,
-      goalStore,
-      executeTask: async (task) => {
-        const memoryContext = await getMemoryContext();
-        const activeTasks = taskStore!
-          .getActive()
-          .map((t) => `- ${t.title} (${t.type})`)
-          .join("\n");
-
-        const timeStr = new Date().toLocaleString("en-US", {
-          timeZone: USER_TIMEZONE,
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-
-        const goalsContext = goalStore ? goalStore.getByProject(task.project as any)
-          .map(g => {
-            const shared = g.projects.length > 1 ? ` (공유: ${g.projects.join(", ")})` : "";
-            return `- [${g.priority.toUpperCase()}] ${g.title}${shared}`;
-          }).join("\n") : "";
-
-        const systemPrompt = buildAgentSystemPrompt({
-          soul: soulContent,
-          forbiddenBlock: forbidden!.formatForPrompt(),
-          memoryContext,
-          activeTasksSummary: activeTasks,
-          userName: USER_NAME,
-          currentTime: timeStr,
-          goalsContext,
-          chainingEnabled: heartbeatConfig.chainingEnabled,
-        });
-
-        const agentSessionId = chatIdToSessionId(0xA6E47, parseInt(task.id.replace(/-/g, "").slice(0, 8), 16));
-        const result = await callClaude(task.prompt, {
-          sessionId: agentSessionId,
-          isNewSession: true,
-          systemPrompt,
-        });
-
-        // Process tags in agent response too
-        if (result.success) {
-          const cleaned = await processMemoryTags(result.result);
-          return {
-            result: cleaned,
-            costUsd: result.costUsd,
-            durationMs: result.durationMs,
-          };
-        }
-        return {
-          result: result.error || "Task failed",
-          costUsd: result.costUsd,
-          durationMs: result.durationMs,
-        };
-      },
-    });
-    seedInitialTasks(taskStore);
-    console.log("[agent] Autonomous agent system initialized");
-  }
 
   // --- Auth middleware ---
   bot.use(async (ctx, next) => {
@@ -376,12 +285,15 @@ export async function createBot(): Promise<Bot> {
     const msgCount = getMessageCount(chatId);
     const uptime = (Date.now() - startTime) / 1000;
 
-    const agentStatus = heartbeat
-      ? heartbeat.isStopped()
-        ? "stopped"
-        : "running"
-      : "disabled";
-    const activeTaskCount = taskStore ? taskStore.getActive().length : 0;
+    let agentStatus = "disconnected";
+    let activeTaskCount = 0;
+    try {
+      const status = await pipelineApi("/api/status");
+      agentStatus = status.running ? "running" : "stopped";
+      activeTaskCount = status.todayTaskCount || 0;
+    } catch {
+      agentStatus = "unreachable";
+    }
 
     const lines = [
       "Bot Status",
@@ -390,7 +302,7 @@ export async function createBot(): Promise<Bot> {
       `Total messages (DB): ${msgCount}`,
       `Generation: ${session?.generation || 0}`,
       `Memory: ${memorySummary}`,
-      `Agent: ${agentStatus} | Tasks: ${activeTaskCount}`,
+      `Agent: ${agentStatus} | Today tasks: ${activeTaskCount}`,
       `Uptime: ${formatUptime(uptime)}`,
     ];
 
@@ -418,7 +330,6 @@ export async function createBot(): Promise<Bot> {
       return;
     }
 
-    // Messages come in DESC order, reverse to show chronologically
     const lines = messages.reverse().map((m) => {
       const time = formatTimestamp(m.created_at);
       const role = m.role === "user" ? "You" : "Claude";
@@ -462,207 +373,233 @@ export async function createBot(): Promise<Bot> {
     );
   });
 
-  // --- Agent commands ---
+  // --- Agent commands (all proxied to content-pipeline API) ---
 
   bot.command("tasks", async (ctx) => {
-    if (!taskStore) {
-      await ctx.reply("Agent system is not enabled.");
-      return;
-    }
-    const active = taskStore.getActive();
-    if (active.length === 0) {
-      await ctx.reply("No active tasks.");
-      return;
-    }
+    try {
+      const tasks = await pipelineApi("/api/tasks?active_only=true");
+      if (!tasks || tasks.length === 0) {
+        await ctx.reply("No active tasks.");
+        return;
+      }
 
-    const lines = ["Active Tasks:"];
-    for (const t of active) {
-      const status = t.status === "running" ? "🔄" : "⏳";
-      const next = t.schedule_next
-        ? ` (next: ${new Date(t.schedule_next).toLocaleString("ko-KR", { timeZone: USER_TIMEZONE, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })})`
-        : "";
-      const cron = t.schedule_cron ? ` [${t.schedule_cron}]` : "";
-      lines.push(`${status} ${t.title}${cron}${next}\n   id: ${t.id.slice(0, 8)} | runs: ${t.run_count}`);
+      const lines = ["Active Tasks:"];
+      for (const t of tasks) {
+        const status = t.status === "running" ? "🔄" : "⏳";
+        const next = t.schedule_next
+          ? ` (next: ${new Date(t.schedule_next).toLocaleString("ko-KR", { timeZone: USER_TIMEZONE, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })})`
+          : "";
+        const cron = t.schedule_cron ? ` [${t.schedule_cron}]` : "";
+        lines.push(`${status} ${t.title}${cron}${next}\n   id: ${t.id.slice(0, 8)} | runs: ${t.run_count}`);
+      }
+      await sendResponse(ctx, lines.join("\n"));
+    } catch (err) {
+      await ctx.reply(`Failed to fetch tasks: ${err}`);
     }
-    await sendResponse(ctx, lines.join("\n"));
   });
 
   bot.command("cancel", async (ctx) => {
-    if (!taskStore) return;
     const search = ctx.match?.trim();
     if (!search) {
       await ctx.reply("Usage: /cancel <task-id or title>");
       return;
     }
 
-    // Try by ID prefix first
-    const all = taskStore.getActive();
-    const byId = all.find((t) => t.id.startsWith(search));
-    if (byId && taskStore.cancelTask(byId.id)) {
-      await ctx.reply(`Task cancelled: ${byId.title}`);
-      return;
+    try {
+      await pipelineApi(`/api/tasks/${search}/cancel`, "POST");
+      await ctx.reply(`Task cancelled: ${search}`);
+    } catch (err) {
+      await ctx.reply(`Failed to cancel: ${err}`);
     }
-
-    // Try by title
-    const byTitle = taskStore.findByTitle(search);
-    if (byTitle && taskStore.cancelTask(byTitle.id)) {
-      await ctx.reply(`Task cancelled: ${byTitle.title}`);
-      return;
-    }
-
-    await ctx.reply("Task not found.");
   });
 
   bot.command("forbidden", async (ctx) => {
-    if (!forbidden) return;
-    await sendResponse(ctx, forbidden.formatForDisplay());
+    try {
+      const rules = await pipelineApi("/api/forbidden");
+      if (!rules || rules.length === 0) {
+        await ctx.reply("No forbidden actions configured.");
+        return;
+      }
+      const lines = ["Forbidden Actions:"];
+      for (const rule of rules) {
+        const severity = rule.severity === "critical" ? "🔴" : "🟡";
+        lines.push(`${severity} [${rule.id}] ${rule.description}`);
+      }
+      await sendResponse(ctx, lines.join("\n"));
+    } catch (err) {
+      await ctx.reply(`Failed to fetch forbidden rules: ${err}`);
+    }
   });
 
   bot.command("stop", async (ctx) => {
-    if (heartbeat) {
-      heartbeat.stop();
+    try {
+      await pipelineApi("/api/heartbeat/stop", "POST");
       await ctx.reply("Agent stopped. Use /resume_agent to restart.");
-    } else {
-      await ctx.reply("Agent system is not running.");
+    } catch (err) {
+      await ctx.reply(`Failed to stop agent: ${err}`);
     }
   });
 
   bot.command("resume_agent", async (ctx) => {
-    if (heartbeat) {
-      heartbeat.resume();
+    try {
+      await pipelineApi("/api/heartbeat/resume", "POST");
       await ctx.reply("Agent resumed.");
-    } else {
-      await ctx.reply("Agent system is not initialized.");
+    } catch (err) {
+      await ctx.reply(`Failed to resume agent: ${err}`);
     }
   });
 
   bot.command("goals", async (ctx) => {
-    if (!goalStore) { await ctx.reply("Goal system not initialized."); return; }
-    const goals = goalStore.getActive();
-    if (goals.length === 0) { await ctx.reply("활성 목표가 없습니다."); return; }
-    const lines = ["Active Goals:"];
-    for (const g of goals) {
-      const prio = g.priority === "high" ? "★" : g.priority === "medium" ? "●" : "○";
-      const shared = g.projects.length > 1 ? ` [${g.projects.join(",")}]` : ` [${g.projects[0]}]`;
-      const deadline = g.deadline ? ` (by ${g.deadline})` : "";
-      lines.push(`${prio} ${g.title}${shared}${deadline}`);
-      if (g.progress) lines.push(`   → ${g.progress}`);
+    try {
+      const goals = await pipelineApi("/api/goals");
+      const active = Array.isArray(goals)
+        ? goals.filter((g: any) => g.status === "active")
+        : [];
+      if (active.length === 0) {
+        await ctx.reply("활성 목표가 없습니다.");
+        return;
+      }
+      const lines = ["Active Goals:"];
+      for (const g of active) {
+        const prio = g.priority === "high" ? "★" : g.priority === "medium" ? "●" : "○";
+        const shared = g.projects.length > 1 ? ` [${g.projects.join(",")}]` : ` [${g.projects[0]}]`;
+        const deadline = g.deadline ? ` (by ${g.deadline})` : "";
+        lines.push(`${prio} ${g.title}${shared}${deadline}`);
+        if (g.progress) lines.push(`   → ${g.progress}`);
+      }
+      await sendResponse(ctx, lines.join("\n"));
+    } catch (err) {
+      await ctx.reply(`Failed to fetch goals: ${err}`);
     }
-    await sendResponse(ctx, lines.join("\n"));
   });
 
   bot.command("idle_on", async (ctx) => {
-    if (heartbeat) { heartbeat.setIdleEnabled(true); await ctx.reply("Idle exploration enabled."); }
+    try {
+      await pipelineApi("/api/toggle/idle", "POST", { enabled: true });
+      await ctx.reply("Idle exploration enabled.");
+    } catch (err) {
+      await ctx.reply(`Failed: ${err}`);
+    }
   });
   bot.command("idle_off", async (ctx) => {
-    if (heartbeat) { heartbeat.setIdleEnabled(false); await ctx.reply("Idle exploration disabled."); }
+    try {
+      await pipelineApi("/api/toggle/idle", "POST", { enabled: false });
+      await ctx.reply("Idle exploration disabled.");
+    } catch (err) {
+      await ctx.reply(`Failed: ${err}`);
+    }
   });
   bot.command("chain_on", async (ctx) => {
-    if (heartbeat) { heartbeat.setChainingEnabled(true); await ctx.reply("Task chaining enabled."); }
+    try {
+      await pipelineApi("/api/toggle/chain", "POST", { enabled: true });
+      await ctx.reply("Task chaining enabled.");
+    } catch (err) {
+      await ctx.reply(`Failed: ${err}`);
+    }
   });
   bot.command("chain_off", async (ctx) => {
-    if (heartbeat) { heartbeat.setChainingEnabled(false); await ctx.reply("Task chaining disabled."); }
-  });
-  bot.command("monitors", async (ctx) => {
-    if (!heartbeat) { await ctx.reply("Agent not active."); return; }
-    const ms = heartbeat.getMonitorSystem();
-    if (!ms) { await ctx.reply("Monitors not configured."); return; }
-    const status = ms.getStatus();
-    const { healthy, total } = ms.getHealthyCount();
-    const lines = [`Monitor Status: ${healthy}/${total} healthy`];
-    for (const m of status.monitors) {
-      const indicator = m.enabled ? "●" : "○";
-      const failEntries = Object.entries(m.failures);
-      const failStr = failEntries.length > 0 ? ` — ${failEntries.map(([k, v]) => `${k}: ${v}`).join(", ")}` : "";
-      lines.push(`${indicator} ${m.name}${failStr}`);
+    try {
+      await pipelineApi("/api/toggle/chain", "POST", { enabled: false });
+      await ctx.reply("Task chaining disabled.");
+    } catch (err) {
+      await ctx.reply(`Failed: ${err}`);
     }
-    await sendResponse(ctx, lines.join("\n"));
+  });
+
+  bot.command("monitors", async (ctx) => {
+    try {
+      const data = await pipelineApi("/api/monitors");
+      const monitors = data.monitors || [];
+      if (monitors.length === 0) {
+        await ctx.reply("Monitors not configured.");
+        return;
+      }
+      let healthy = 0;
+      let total = 0;
+      const lines: string[] = [];
+      for (const m of monitors) {
+        const indicator = m.enabled ? "●" : "○";
+        const failEntries = Object.entries(m.failures || {});
+        const failStr = failEntries.length > 0
+          ? ` — ${failEntries.map(([k, v]) => `${k}: ${v}`).join(", ")}`
+          : "";
+        lines.push(`${indicator} ${m.name}${failStr}`);
+        // Count healthy endpoints (simplified)
+        total++;
+        if (failEntries.length === 0) healthy++;
+      }
+      await sendResponse(ctx, [`Monitor Status: ${healthy}/${total} healthy`, ...lines].join("\n"));
+    } catch (err) {
+      await ctx.reply(`Failed to fetch monitors: ${err}`);
+    }
   });
 
   bot.command("approve", async (ctx) => {
-    if (!taskStore) { await ctx.reply("Task store not initialized."); return; }
     const searchText = ctx.match?.toString().trim();
-    if (!searchText) { await ctx.reply("사용법: /approve <태스크 ID 앞 8자리>"); return; }
-
-    const allTasks = taskStore.getActive();
-    const task = allTasks.find(t => t.id.startsWith(searchText) && t.requires_approval);
-    if (!task) {
-      await ctx.reply(`승인 대기 중인 태스크를 찾을 수 없습니다: ${searchText}`);
+    if (!searchText) {
+      await ctx.reply("사용법: /approve <태스크 ID 앞 8자리>");
       return;
     }
 
-    // Remove approval requirement and set schedule to now
-    taskStore.updateTask(task.id, {
-      requires_approval: false,
-      schedule_next: new Date().toISOString(),
-    });
-
-    await ctx.reply(`승인 완료: "${task.title}"\n다음 heartbeat tick에서 실행됩니다.`);
+    try {
+      await pipelineApi(`/api/tasks/${searchText}/approve`, "POST");
+      await ctx.reply(`승인 완료. 다음 heartbeat tick에서 실행됩니다.`);
+    } catch (err) {
+      await ctx.reply(`승인 실패: ${err}`);
+    }
   });
 
   bot.command("approve_all", async (ctx) => {
-    if (!taskStore) { await ctx.reply("Task store not initialized."); return; }
-    const pending = taskStore.getActive().filter(t => t.requires_approval);
-    if (pending.length === 0) {
-      await ctx.reply("승인 대기 중인 태스크가 없습니다.");
-      return;
+    try {
+      const result = await pipelineApi("/api/tasks/approve-all", "POST");
+      await ctx.reply(`✓ ${result.count || 0}건 전체 승인 완료.`);
+    } catch (err) {
+      await ctx.reply(`전체 승인 실패: ${err}`);
     }
-    const now = new Date().toISOString();
-    for (const t of pending) {
-      taskStore.updateTask(t.id, { requires_approval: false, schedule_next: now });
-    }
-    const titles = pending.map(t => `• ${t.title}`).join("\n");
-    await ctx.reply(`✓ ${pending.length}건 전체 승인 완료:\n${titles}`);
   });
 
   bot.command("pending", async (ctx) => {
-    if (!taskStore) { await ctx.reply("Task store not initialized."); return; }
-    const allTasks = taskStore.getActive();
-    const pending = allTasks.filter(t => t.requires_approval);
-    if (pending.length === 0) {
-      await ctx.reply("승인 대기 중인 태스크가 없습니다.");
-      return;
-    }
-    for (const t of pending) {
-      const keyboard = new InlineKeyboard()
-        .text("✓ 승인", `app_${t.id.slice(0, 8)}`)
-        .text("✗ 거절", `rej_${t.id.slice(0, 8)}`);
-      const project = t.project ? ` [${t.project}]` : "";
-      await ctx.reply(`⏳ ${t.title}${project}`, { reply_markup: keyboard });
+    try {
+      const tasks = await pipelineApi("/api/tasks?active_only=true");
+      const pending = (tasks || []).filter((t: any) => t.requires_approval);
+      if (pending.length === 0) {
+        await ctx.reply("승인 대기 중인 태스크가 없습니다.");
+        return;
+      }
+      for (const t of pending) {
+        const keyboard = new InlineKeyboard()
+          .text("✓ 승인", `app_${t.id.slice(0, 8)}`)
+          .text("✗ 거절", `rej_${t.id.slice(0, 8)}`);
+        const project = t.project ? ` [${t.project}]` : "";
+        await ctx.reply(`⏳ ${t.title}${project}`, { reply_markup: keyboard });
+      }
+    } catch (err) {
+      await ctx.reply(`Failed: ${err}`);
     }
   });
 
   // --- Callback query handlers (inline buttons) ---
 
   bot.callbackQuery(/^app_(.+)$/, async (ctx) => {
-    if (!taskStore) return;
     const idPrefix = ctx.match[1];
-    const task = taskStore.getActive().find(t => t.id.startsWith(idPrefix) && t.requires_approval);
-    if (!task) {
-      await ctx.answerCallbackQuery({ text: "이미 처리된 태스크입니다." });
-      await ctx.editMessageText(`(이미 처리됨)`);
-      return;
+    try {
+      await pipelineApi(`/api/tasks/${idPrefix}/approve`, "POST");
+      await ctx.answerCallbackQuery({ text: "✓ 승인 완료!" });
+      await ctx.editMessageText(`✓ 승인됨`);
+    } catch {
+      await ctx.answerCallbackQuery({ text: "처리 실패" });
     }
-    taskStore.updateTask(task.id, {
-      requires_approval: false,
-      schedule_next: new Date().toISOString(),
-    });
-    await ctx.answerCallbackQuery({ text: "✓ 승인 완료!" });
-    await ctx.editMessageText(`✓ 승인됨: ${task.title}`);
   });
 
   bot.callbackQuery(/^rej_(.+)$/, async (ctx) => {
-    if (!taskStore) return;
     const idPrefix = ctx.match[1];
-    const task = taskStore.getActive().find(t => t.id.startsWith(idPrefix));
-    if (!task) {
-      await ctx.answerCallbackQuery({ text: "이미 처리된 태스크입니다." });
-      await ctx.editMessageText(`(이미 처리됨)`);
-      return;
+    try {
+      await pipelineApi(`/api/tasks/${idPrefix}/cancel`, "POST");
+      await ctx.answerCallbackQuery({ text: "✗ 거절됨" });
+      await ctx.editMessageText(`✗ 거절됨`);
+    } catch {
+      await ctx.answerCallbackQuery({ text: "처리 실패" });
     }
-    taskStore.cancelTask(task.id);
-    await ctx.answerCallbackQuery({ text: "✗ 거절됨" });
-    await ctx.editMessageText(`✗ 거절됨: ${task.title}`);
   });
 
   // --- Message handlers ---
@@ -677,7 +614,6 @@ export async function createBot(): Promise<Bot> {
       const stopTyping = startTypingIndicator(ctx);
 
       try {
-        // Save user message to DB
         saveMessage(chatId, "user", prompt);
 
         const isNew = sessions.isNewSession(chatId);
@@ -710,10 +646,8 @@ export async function createBot(): Promise<Bot> {
           return;
         }
 
-        // Process memory tags and strip them from response
         const cleanResponse = await processMemoryTags(result.result);
 
-        // Save assistant response to DB
         saveMessage(chatId, "assistant", cleanResponse, {
           costUsd: result.costUsd,
           durationMs: result.durationMs,
@@ -801,9 +735,6 @@ export async function createBot(): Promise<Bot> {
       await ctx.reply("Could not process document.");
     }
   });
-
-  // Commands are already registered with Telegram — no need to call setMyCommands on every start.
-  // Run `bot.api.setMyCommands([...])` manually if commands change.
 
   return bot;
 }

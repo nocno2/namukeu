@@ -1,10 +1,8 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
 import { acquireLock, releaseLock } from "./session";
-import { createBot, heartbeat, taskStore, goalStore, auditLog, forbidden } from "./bot";
+import { createBot } from "./bot";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
-// HTTP API moved to content-pipeline (port 8003)
-// import { startHttpApi } from "./http-api";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -44,7 +42,7 @@ async function main(): Promise<void> {
 
   // Cleanup on exit
   const cleanup = async () => {
-    if (heartbeat) heartbeat.stop();
+    // Heartbeat now runs in content-pipeline, no need to stop here
     await stopPlaywrightMCP();
     await releaseLock();
     process.exit(0);
@@ -55,16 +53,11 @@ async function main(): Promise<void> {
   const bot = await createBot();
 
   console.log("Claude Telegram Relay v2 starting...");
+  console.log("Agent system delegated to content-pipeline (port 8003)");
   bot.start({
     onStart: () => {
       console.log("Bot is running. Waiting for messages...");
-
-      // Start heartbeat after bot is ready
-      if (heartbeat) {
-        heartbeat.start();
-      }
-
-      // Agent HTTP API moved to content-pipeline (port 8003)
+      // Heartbeat is now managed by content-pipeline
     },
   });
 }
