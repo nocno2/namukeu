@@ -33,6 +33,33 @@
       "typeVersion": 1.2
     },
     {
+      "id": "discover-keywords",
+      "name": "Discover Trending Keywords",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [-1000, 500],
+      "parameters": {
+        "url": "http://host.docker.internal:8003/api/n8n/discover-keywords",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "set-discovered-keyword",
+      "name": "Set Discovered Keyword",
+      "type": "n8n-nodes-base.code",
+      "position": [-800, 500],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [\n  {\n    json: {\n      keyword: data.keyword\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
       "id": "merge-triggers",
       "name": "Merge Triggers",
       "type": "n8n-nodes-base.merge",
@@ -340,8 +367,8 @@
       "position": [-1280, 180],
       "parameters": {
         "width": 360,
-        "height": 140,
-        "content": "## Input Options\n**Webhook**: POST /webhook/blog-automation\n- `{\"keyword\": \"...\"}`\n- `{\"idea\": \"...\"}`\n\n**Cron**: Daily 9 AM (needs default idea)"
+        "height": 180,
+        "content": "## Input Options\n**Webhook**: POST /webhook/blog-automation\n- `{\"keyword\": \"...\"}`\n- `{\"idea\": \"...\"}`\n\n**Cron**: Daily 9 AM\n- Auto-discovers trending keywords\n- Filters out published topics\n- Web search + trend analysis"
       },
       "typeVersion": 1
     },
@@ -352,8 +379,8 @@
       "position": [-880, 180],
       "parameters": {
         "width": 320,
-        "height": 140,
-        "content": "## Branching Logic\n- Has `keyword`? → Direct to Generate\n- Has `idea`/`context`? → Extract Keywords first\n- Both paths merge at Generate Draft"
+        "height": 180,
+        "content": "## Branching Logic\n**Webhook**:\n- Has `keyword`? → Enrich Keyword\n- Has `idea`/`context`? → Enrich Context\n\n**Cron**:\n- Discover Keywords → Enrich Keyword\n\nAll paths merge at Generate Draft"
       },
       "typeVersion": 1
     },
@@ -399,7 +426,13 @@
       "main": [[{ "node": "merge-triggers", "type": "main", "index": 0 }]]
     },
     "schedule-trigger": {
-      "main": [[{ "node": "merge-triggers", "type": "main", "index": 1 }]]
+      "main": [[{ "node": "discover-keywords", "type": "main", "index": 0 }]]
+    },
+    "discover-keywords": {
+      "main": [[{ "node": "set-discovered-keyword", "type": "main", "index": 0 }]]
+    },
+    "set-discovered-keyword": {
+      "main": [[{ "node": "enrich-keyword", "type": "main", "index": 0 }]]
     },
     "merge-triggers": {
       "main": [[{ "node": "check-input-type", "type": "main", "index": 0 }]]

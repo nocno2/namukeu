@@ -31,6 +31,13 @@ def get_config() -> Config:
 # --- Pydantic Models ---
 
 
+class DiscoverKeywordsResponse(BaseModel):
+    keyword: str
+    reason: str
+    search_volume: str
+    competition: str
+
+
 class EnrichKeywordRequest(BaseModel):
     keyword: str = Field(..., min_length=1, max_length=200, description="블로그 키워드")
 
@@ -157,6 +164,78 @@ async def _run_claude_cli(prompt: str) -> str:
 
 
 # --- API Endpoints ---
+
+
+@router.post("/discover-keywords", response_model=DiscoverKeywordsResponse)
+async def discover_keywords(config: Config = Depends(get_config)):
+    """
+    트렌드 분석을 통해 블로그에 적합한 키워드를 자동으로 발굴.
+
+    - 크론잡 트리거에서 사용
+    - 웹검색으로 현재 급상승 트렌드 수집
+    - 블로그 주제와 관련성, 검색량, 경쟁도 분석
+    - 가장 유망한 키워드 1개 추천
+    """
+    try:
+        # Check if ai-blog DB exists to filter out already published keywords
+        blog_db_path = config.blog_db_path if hasattr(config, 'blog_db_path') else None
+        published_keywords = []
+
+        if blog_db_path:
+            try:
+                import sqlite3
+                conn = sqlite3.connect(blog_db_path)
+                cursor = conn.execute("SELECT keyword FROM posts WHERE status != 'draft'")
+                published_keywords = [row[0] for row in cursor.fetchall()]
+                conn.close()
+            except Exception as e:
+                logger.warning(f"Could not load published keywords: {e}")
+
+        published_str = ""
+        if published_keywords:
+            published_str = f"\n\n## 이미 작성한 키워드 (제외)\n{', '.join(published_keywords[:20])}"
+
+        prompt = f"""당신은 블로그 콘텐츠 기획 전문가입니다.
+웹검색을 통해 현재 급상승 중인 트렌드를 분석하고, 블로그 글로 작성하기 좋은 키워드 1개를 추천해주세요.
+
+## 분석 기준
+1. 최근 1주일 내 검색량이 급상승한 키워드
+2. 블로그 글 형식으로 작성 가능한 주제 (뉴스, 이슈, 가이드, 리뷰 등)
+3. 너무 전문적이거나 일시적 이슈가 아닌, 지속 관심을 받을 주제
+4. 검색량 대비 경쟁이 낮은 롱테일 키워드 우선{published_str}
+
+## 출력 형식 (JSON만)
+{{
+  "keyword": "추천 키워드 (2-5단어)",
+  "reason": "이 키워드를 추천하는 이유 (1-2문장)",
+  "search_volume": "높음/보통/낮음 중 하나",
+  "competition": "높음/보통/낮음 중 하나"
+}}
+
+웹검색 기능을 적극 활용하여 실시간 트렌드를 반영하세요."""
+
+        logger.info("[n8n/discover-keywords] Discovering trending keywords")
+        result_text = await _run_claude_cli(prompt)
+
+        # Parse JSON
+        json_match = re.search(r"\{[\s\S]*\}", result_text)
+        if not json_match:
+            raise ValueError("No JSON found in response")
+
+        result = json.loads(json_match.group())
+
+        return DiscoverKeywordsResponse(
+            keyword=result.get("keyword", ""),
+            reason=result.get("reason", ""),
+            search_volume=result.get("search_volume", "보통"),
+            competition=result.get("competition", "보통"),
+        )
+
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"[n8n/discover-keywords] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Keyword discovery failed")
 
 
 @router.post("/enrich-keyword", response_model=EnrichKeywordResponse)
