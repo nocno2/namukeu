@@ -51,6 +51,8 @@ JSON 외의 텍스트는 절대 출력하지 마세요."""
 
 async def ai_review(title: str, content: str, keyword: str) -> dict | None:
     """Run AI-based content quality review using Claude CLI."""
+    import os
+
     prompt = AI_REVIEW_PROMPT.format(
         keyword=keyword,
         title=title,
@@ -58,19 +60,24 @@ async def ai_review(title: str, content: str, keyword: str) -> dict | None:
     )
 
     try:
+        # Copy environment and remove CLAUDECODE to avoid nested session error
+        env = os.environ.copy()
+        env.pop("CLAUDECODE", None)
+
         proc = await asyncio.create_subprocess_exec(
             "claude", "--print", "--dangerously-skip-permissions", prompt,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={
-                "PATH": "/Users/namwook/.local/bin:/usr/local/bin:/usr/bin:/bin",
-                "HOME": "/Users/namwook",
-            },
+            env=env,
         )
         stdout, stderr = await proc.communicate()
 
         if proc.returncode != 0:
-            logger.error(f"[ai_review] Claude CLI failed: {stderr.decode().strip()}")
+            stderr_text = stderr.decode().strip()
+            stdout_text = stdout.decode().strip()
+            logger.error(f"[ai_review] Claude CLI failed (code {proc.returncode})")
+            logger.error(f"[ai_review] stdout: {stdout_text[:200]}")
+            logger.error(f"[ai_review] stderr: {stderr_text[:200]}")
             return None
 
         raw = stdout.decode().strip()
