@@ -54,6 +54,7 @@
 | 1472220621340676217 | 수익형블로그 | ai-blog | BLOG | `ai-blog/` |
 | 1472220670497788147 | 개인용대시보드 | dashboard | DASH | `dashboard/` |
 | 1472819862123446345 | API게이트웨이 | api-gateway | GATE | `api-gateway/` |
+| 1472820038607306804 | 콘텐츠파이프라인 | content-pipeline | PIPE | `content-pipeline/` |
 
 - 매핑된 채널에서 대화하면 해당 프로젝트에 집중한다
 - DM이나 일반 채널에서는 모노레포 전체를 대상으로 한다
