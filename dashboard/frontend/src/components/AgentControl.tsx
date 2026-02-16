@@ -1,32 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, type AgentStatus } from "../lib/api";
 
 interface Props {
   collapsed: boolean;
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
-}
-
-interface RunningTask {
-  title: string;
-  project: string;
-  startedAt: number;
-}
-
-// Actual API response shape
-interface AgentStatusResponse {
-  running: boolean;
-  runningTasks: RunningTask[];
-  idleEnabled: boolean;
-  chainingEnabled: boolean;
-  monitorsEnabled: boolean;
-  todayTaskCount: number;
-  todayCost: number;
-  lastTaskExecutedAt: number | null;
-  monitorStatus?: {
-    monitors: { id: string; name: string; enabled: boolean; lastCheck: string | null; failures: Record<string, number> }[];
-  };
 }
 
 function Toggle({ label, enabled, onChange }: { label: string; enabled: boolean; onChange: (v: boolean) => void }) {
@@ -64,13 +43,13 @@ function elapsed(ts: number): string {
 }
 
 export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
-  const [status, setStatus] = useState<AgentStatusResponse | null>(null);
+  const [status, setStatus] = useState<AgentStatus | null>(null);
   const [error, setError] = useState(false);
   const [, setTick] = useState(0);
 
   const fetchStatus = useCallback(async () => {
     try {
-      const data = await api.agentStatus() as unknown as AgentStatusResponse;
+      const data = await api.agentStatus();
       setStatus(data);
       setError(false);
     } catch {

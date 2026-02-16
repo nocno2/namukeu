@@ -209,13 +209,16 @@ export interface ScheduledTask {
 
 export interface AgentStatus {
   running: boolean;
-  uptime: number;
-  startedAt: string;
-  idle: { enabled: boolean; todayCount: number; maxPerDay: number; lastRun: string | null; thresholdMs: number };
-  chain: { enabled: boolean };
-  monitors: { enabled: boolean; healthy: number; total: number };
-  today: { taskCount: number; costUsd: number };
-  tasks: { active: number; nextRun: string | null; nextTitle: string | null };
+  runningTasks: { title: string; project: string; startedAt: number }[];
+  idleEnabled: boolean;
+  chainingEnabled: boolean;
+  monitorsEnabled: boolean;
+  todayTaskCount: number;
+  todayCost: number;
+  lastTaskExecutedAt: number | null;
+  monitorStatus: {
+    monitors: { id: string; name: string; enabled: boolean; lastCheck: string | null; failures: Record<string, number> }[];
+  } | null;
 }
 
 export interface UptimeBlock {
