@@ -78,8 +78,8 @@ export const api = {
     return request<TrainSummary>("/api/train/summary");
   },
 
-  launchAgents() {
-    return request<{ agents: LaunchAgent[] }>("/api/system/launchagents");
+  scheduledTasks() {
+    return request<{ tasks: ScheduledTask[] }>("/api/system/launchagents");
   },
 
   agentStatus() {
@@ -200,14 +200,10 @@ export interface TrainReservation {
   [key: string]: unknown;
 }
 
-export interface LaunchAgent {
-  label: string;
+export interface ScheduledTask {
   display_name: string;
   description: string;
-  schedule: string | null;
-  status: string;
-  pid: number | null;
-  last_exit: number | null;
+  schedule: string;
   last_run: string | null;
 }
 

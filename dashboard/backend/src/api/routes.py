@@ -423,117 +423,151 @@ async def train_summary(
     }
 
 
-# --- Scheduled Tasks (주기적 예약 작업만) ---
+# --- Scheduled Tasks (crontab 기반) ---
 
-import plistlib
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
-SCHEDULED_TASKS = [
-    {
-        "label": "com.namukeu.check-ip",
-        "display_name": "IP 변경 감지",
-        "description": "공인 IP 변경 시 텔레그램 알림",
-        "plist": Path.home() / "Library/LaunchAgents/com.namukeu.check-ip.plist",
-    },
-    {
-        "label": "com.namukeu.blog-pipeline",
+# crontab 주석 → 표시 이름/설명 매핑 (command 키워드로 매칭)
+CRON_META: dict[str, dict[str, str]] = {
+    "run-pipeline": {
         "display_name": "블로그 자동 발행",
         "description": "AI 블로그 글 자동 생성·발행",
-        "plist": Path.home() / "Library/LaunchAgents/com.namukeu.blog-pipeline.plist",
     },
-]
+    "check_ip": {
+        "display_name": "IP 변경 감지",
+        "description": "공인 IP 변경 시 텔레그램 알림",
+    },
+}
 
 
-def _parse_schedule(plist_path: Path) -> str | None:
-    """plist에서 스케줄 정보를 사람이 읽기 쉬운 형태로 변환"""
-    try:
-        with open(plist_path, "rb") as f:
-            data = plistlib.load(f)
-    except Exception:
-        return None
+def _parse_cron_schedule(minute: str, hour: str, dom: str, month: str, dow: str) -> str:
+    """크론 필드 5개를 사람이 읽기 쉬운 한글로 변환"""
+    # */N 분마다
+    m = re.match(r"^\*/(\d+)$", minute)
+    if m and hour == "*" and dom == "*" and month == "*" and dow == "*":
+        return f"{m.group(1)}분마다"
 
-    # StartInterval (초 단위 반복)
-    interval = data.get("StartInterval")
-    if interval:
-        if interval < 60:
-            return f"{interval}초마다"
-        elif interval < 3600:
-            return f"{interval // 60}분마다"
-        else:
-            return f"{interval // 3600}시간마다"
-
-    # StartCalendarInterval (크론 스타일)
-    cal = data.get("StartCalendarInterval")
-    if cal:
-        entries = cal if isinstance(cal, list) else [cal]
+    # 특정 시각
+    if dom == "*" and month == "*" and dow == "*":
+        hours = hour.split(",") if "," in hour else [hour]
+        minutes = minute.split(",") if "," in minute else [minute]
+        if len(hours) == 1 and hours[0] == "*":
+            return f"매시 {minute}분"
         times = []
-        for entry in entries:
-            hour = entry.get("Hour", "*")
-            minute = entry.get("Minute", "0")
-            times.append(f"{hour:>2}:{int(minute):02d}")
+        for h in hours:
+            for mn in minutes:
+                times.append(f"{int(h)}:{int(mn):02d}")
         if len(times) == 1:
             return f"매일 {times[0]}"
         return f"매일 {', '.join(times)}"
 
-    return None
+    return f"{minute} {hour} {dom} {month} {dow}"
 
 
-def _get_last_run(plist_path: Path) -> str | None:
-    """로그 파일의 마지막 수정 시간으로 최근 실행 시각 추정"""
+def _get_log_mtime(log_path: str) -> str | None:
+    """로그 파일의 마지막 수정 시간을 ISO 형식으로 반환"""
     try:
-        with open(plist_path, "rb") as f:
-            data = plistlib.load(f)
-        log_path = data.get("StandardOutPath") or data.get("StandardErrorPath")
-        if log_path:
-            log_file = Path(log_path)
-            if log_file.exists():
-                mtime = log_file.stat().st_mtime
-                from datetime import datetime, timezone
-                return datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+        p = Path(log_path)
+        if p.exists():
+            mtime = p.stat().st_mtime
+            return datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
     except Exception:
         pass
     return None
 
 
+def _extract_log_path(command: str) -> str | None:
+    """크론 명령어에서 >> 리다이렉트 로그 경로 추출"""
+    m = re.search(r">>\s*(\S+)", command)
+    return m.group(1) if m else None
+
+
+def _parse_crontab() -> list[dict]:
+    """crontab -l 결과를 파싱해서 태스크 목록 반환. 같은 명령은 스케줄 병합."""
+    try:
+        proc = subprocess.run(
+            ["crontab", "-l"], capture_output=True, text=True, timeout=5,
+        )
+        if proc.returncode != 0:
+            return []
+    except Exception:
+        return []
+
+    # 명령어 기준으로 그룹핑 (같은 스크립트 여러 시각 → 하나로 병합)
+    grouped: dict[str, dict] = {}  # key: 정규화된 명령어
+
+    for line in proc.stdout.strip().split("\n"):
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+
+        parts = line.split(None, 5)
+        if len(parts) < 6:
+            continue
+
+        minute, hour, dom, month, dow = parts[:5]
+        command = parts[5]
+
+        # 로그 리다이렉트 제거 후 명령어 정규화 (같은 스크립트 판별용)
+        cmd_normalized = re.sub(r"\s*>>.*$", "", command).strip()
+
+        if cmd_normalized not in grouped:
+            # 메타 정보 매칭
+            meta = {"display_name": cmd_normalized[:30], "description": ""}
+            for keyword, m in CRON_META.items():
+                if keyword in command:
+                    meta = m
+                    break
+
+            log_path = _extract_log_path(command)
+            grouped[cmd_normalized] = {
+                "command": cmd_normalized,
+                "display_name": meta["display_name"],
+                "description": meta["description"],
+                "schedules": [],
+                "log_path": log_path,
+            }
+
+        grouped[cmd_normalized]["schedules"].append((minute, hour, dom, month, dow))
+
+    # 결과 조립
+    tasks = []
+    for entry in grouped.values():
+        # 스케줄 병합: 같은 분 패턴이면 시간만 합침
+        schedules = entry["schedules"]
+        if len(schedules) > 1:
+            # 모든 엔트리가 같은 minute/dom/month/dow면 시간만 합침
+            minutes = set(s[0] for s in schedules)
+            doms = set(s[2] for s in schedules)
+            months = set(s[3] for s in schedules)
+            dows = set(s[4] for s in schedules)
+            if len(minutes) == 1 and len(doms) == 1 and len(months) == 1 and len(dows) == 1:
+                merged_hours = ",".join(s[1] for s in schedules)
+                schedule_str = _parse_cron_schedule(
+                    schedules[0][0], merged_hours, schedules[0][2], schedules[0][3], schedules[0][4],
+                )
+            else:
+                schedule_str = " / ".join(
+                    _parse_cron_schedule(*s) for s in schedules
+                )
+        else:
+            schedule_str = _parse_cron_schedule(*schedules[0])
+
+        tasks.append({
+            "display_name": entry["display_name"],
+            "description": entry["description"],
+            "schedule": schedule_str,
+            "last_run": _get_log_mtime(entry["log_path"]) if entry["log_path"] else None,
+        })
+
+    return tasks
+
+
 @router.get("/system/launchagents")
 def scheduled_tasks_status(_=Depends(verify_session)):
-    tasks = []
-    for task_def in SCHEDULED_TASKS:
-        label = task_def["label"]
-        info = {
-            "label": label,
-            "display_name": task_def["display_name"],
-            "description": task_def["description"],
-            "schedule": _parse_schedule(task_def["plist"]),
-            "status": "unknown",
-            "pid": None,
-            "last_exit": None,
-            "last_run": _get_last_run(task_def["plist"]),
-        }
-        try:
-            proc = subprocess.run(
-                ["launchctl", "list", label],
-                capture_output=True, text=True, timeout=5,
-            )
-            if proc.returncode == 0:
-                info["status"] = "loaded"
-                for line in proc.stdout.strip().split("\n"):
-                    if '"PID"' in line:
-                        try:
-                            info["pid"] = int(line.split("=")[-1].strip().rstrip(";"))
-                        except ValueError:
-                            pass
-                    if '"LastExitStatus"' in line:
-                        try:
-                            info["last_exit"] = int(line.split("=")[-1].strip().rstrip(";"))
-                        except ValueError:
-                            pass
-            else:
-                info["status"] = "not_loaded"
-        except Exception:
-            info["status"] = "error"
-        tasks.append(info)
-    return {"agents": tasks}
+    return {"tasks": _parse_crontab()}
 
 
 # --- Agent Control Proxy ---
