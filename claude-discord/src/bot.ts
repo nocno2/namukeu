@@ -33,8 +33,9 @@ import {
 const ALLOWED_USER_ID = process.env.DISCORD_USER_ID!;
 const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
-const COIN_API_URL = process.env.COIN_API_URL || "http://127.0.0.1:8001";
-const COIN_API_TOKEN = process.env.COIN_API_TOKEN || "";
+const GATE_URL = process.env.GATE_URL || "http://127.0.0.1:8080";
+const GATE_USERNAME = process.env.GATE_USERNAME || "";
+const GATE_PASSWORD = process.env.GATE_PASSWORD || "";
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
 const DEDICATED_CHANNELS = new Set(
   (process.env.DEDICATED_CHANNELS || "")
@@ -489,14 +490,43 @@ export async function createBot(): Promise<Client> {
   return client;
 }
 
-// --- coin-auto-trade API ---
+// --- Gateway API ---
 
-async function coinApi(path: string): Promise<any> {
-  const resp = await fetch(`${COIN_API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${COIN_API_TOKEN}` },
+let gateToken: string | null = null;
+
+async function gateLogin(): Promise<string> {
+  const resp = await fetch(`${GATE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: GATE_USERNAME, password: GATE_PASSWORD }),
   });
+  if (!resp.ok) throw new Error(`Gate login failed: ${resp.status}`);
+  const data = await resp.json() as { access_token: string };
+  gateToken = data.access_token;
+  return gateToken;
+}
+
+async function gateApi(path: string): Promise<any> {
+  if (!gateToken) await gateLogin();
+
+  let resp = await fetch(`${GATE_URL}${path}`, {
+    headers: { Authorization: `Bearer ${gateToken}` },
+  });
+
+  // Token expired — re-login once
+  if (resp.status === 401) {
+    await gateLogin();
+    resp = await fetch(`${GATE_URL}${path}`, {
+      headers: { Authorization: `Bearer ${gateToken}` },
+    });
+  }
+
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
   return resp.json();
+}
+
+async function coinApi(path: string): Promise<any> {
+  return gateApi(`/api/coin${path}`);
 }
 
 function krw(n: number): string {

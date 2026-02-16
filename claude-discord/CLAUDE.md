@@ -39,10 +39,11 @@
 - `/search <query>` — Search past messages
 - `/coin` — coin-auto-trade 서버 요약 정보 조회 (상태, 포트폴리오, 포지션, 거래, 전략)
 
-## coin-auto-trade Integration
+## API Gateway 연동
 
-- `COIN_API_URL` (기본: `http://127.0.0.1:8001`) + `COIN_API_TOKEN` 설정 필요
-- `/coin` 커맨드: `/status`, `/trading/positions`, `/trading/orders`, `/strategies/configs`, `/portfolio/summary` API를 병렬 호출하여 Discord 메시지로 포맷팅
+- `GATE_URL` (기본: `http://127.0.0.1:8080`) + `GATE_USERNAME`/`GATE_PASSWORD` 설정 필요
+- GATE JWT 인증으로 모든 서비스 접근 (자동 로그인 + 토큰 갱신)
+- `/coin` 커맨드: GATE 경유(`/api/coin/*`)로 COIN 서버 API 호출
 
 ## 채널별 프로젝트 컨텍스트
 
