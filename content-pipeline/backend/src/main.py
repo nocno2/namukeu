@@ -17,7 +17,7 @@ from src.agent.heartbeat import Heartbeat
 from src.agent.seed import seed_evolution_task
 from src.agent.tasks import TaskStore
 from src.agent.telegram import TelegramNotifier
-from src.api import agent, auth, history, pipeline, tasks
+from src.api import agent, auth, history, n8n, pipeline, tasks
 from src.config import Config
 from src.db.connection import Database
 from src.scheduler.engine import SchedulerEngine
@@ -122,6 +122,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(history.router)
     app.include_router(pipeline.router)
     app.include_router(agent.router)
+    app.include_router(n8n.router)  # n8n integration (no auth required)
 
     # Health check (no auth)
     @app.get("/health")
