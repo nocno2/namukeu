@@ -442,6 +442,11 @@ CRON_META: dict[str, dict[str, str]] = {
 }
 
 
+def _normalize_command(command: str) -> str:
+    """크론탭 명령어에서 리다이렉트 제거 후 정규화 (고유 ID로 사용)"""
+    return re.sub(r"\s*>>.*$", "", command).strip()
+
+
 def _parse_cron_schedule(minute: str, hour: str, dom: str, month: str, dow: str) -> str:
     """크론 필드 5개를 사람이 읽기 쉬운 한글로 변환"""
     # */N 분마다
@@ -499,8 +504,18 @@ def _parse_crontab() -> list[dict]:
     grouped: dict[str, dict] = {}  # key: 정규화된 명령어
 
     for line in proc.stdout.strip().split("\n"):
+        original_line = line
         line = line.strip()
-        if not line or line.startswith("#"):
+        if not line:
+            continue
+
+        # 주석 처리된 크론 라인도 파싱 (비활성화된 태스크)
+        is_disabled = line.startswith("#")
+        if is_disabled:
+            line = line[1:].strip()
+
+        # 빈 주석이거나 설명 주석은 건너뜀
+        if not line or not any(c.isdigit() or c == "*" for c in line[:20]):
             continue
 
         parts = line.split(None, 5)
@@ -511,7 +526,7 @@ def _parse_crontab() -> list[dict]:
         command = parts[5]
 
         # 로그 리다이렉트 제거 후 명령어 정규화 (같은 스크립트 판별용)
-        cmd_normalized = re.sub(r"\s*>>.*$", "", command).strip()
+        cmd_normalized = _normalize_command(command)
 
         if cmd_normalized not in grouped:
             # 메타 정보 매칭
@@ -523,12 +538,18 @@ def _parse_crontab() -> list[dict]:
 
             log_path = _extract_log_path(command)
             grouped[cmd_normalized] = {
+                "id": cmd_normalized,  # 토글 API에서 사용할 고유 ID
                 "command": cmd_normalized,
                 "display_name": meta["display_name"],
                 "description": meta["description"],
                 "schedules": [],
                 "log_path": log_path,
+                "enabled": not is_disabled,
             }
+        else:
+            # 같은 명령어의 다른 스케줄이 하나라도 활성화되어 있으면 enabled=True
+            if not is_disabled:
+                grouped[cmd_normalized]["enabled"] = True
 
         grouped[cmd_normalized]["schedules"].append((minute, hour, dom, month, dow))
 
@@ -556,10 +577,12 @@ def _parse_crontab() -> list[dict]:
             schedule_str = _parse_cron_schedule(*schedules[0])
 
         tasks.append({
+            "id": entry["id"],
             "display_name": entry["display_name"],
             "description": entry["description"],
             "schedule": schedule_str,
             "last_run": _get_log_mtime(entry["log_path"]) if entry["log_path"] else None,
+            "enabled": entry["enabled"],
         })
 
     return tasks
@@ -568,6 +591,87 @@ def _parse_crontab() -> list[dict]:
 @router.get("/system/launchagents")
 def scheduled_tasks_status(_=Depends(verify_session)):
     return {"tasks": _parse_crontab()}
+
+
+class CronToggleRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/system/launchagents/{task_id}/toggle")
+def toggle_scheduled_task(
+    task_id: str,
+    body: CronToggleRequest,
+    _=Depends(verify_session),
+):
+    """크론탭 태스크를 활성화/비활성화 (주석 처리)"""
+    try:
+        # 현재 crontab 읽기
+        proc = subprocess.run(
+            ["crontab", "-l"], capture_output=True, text=True, timeout=5,
+        )
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail="Failed to read crontab")
+
+        lines = proc.stdout.strip().split("\n")
+        modified = False
+        new_lines = []
+
+        for line in lines:
+            original = line
+            stripped = line.strip()
+
+            # 빈 줄이나 설명 주석은 그대로 유지
+            if not stripped or (stripped.startswith("#") and not any(c.isdigit() or c == "*" for c in stripped[:25])):
+                new_lines.append(original)
+                continue
+
+            # 크론 라인인지 확인
+            is_disabled = stripped.startswith("#")
+            cron_line = stripped[1:].strip() if is_disabled else stripped
+
+            parts = cron_line.split(None, 5)
+            if len(parts) < 6:
+                new_lines.append(original)
+                continue
+
+            command = parts[5]
+            cmd_normalized = _normalize_command(command)
+
+            # task_id와 매칭되면 토글
+            if cmd_normalized == task_id:
+                modified = True
+                if body.enabled and is_disabled:
+                    # 활성화: # 제거
+                    new_lines.append(cron_line)
+                elif not body.enabled and not is_disabled:
+                    # 비활성화: # 추가
+                    new_lines.append(f"# {cron_line}")
+                else:
+                    new_lines.append(original)
+            else:
+                new_lines.append(original)
+
+        if not modified:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        # 새 crontab 적용
+        new_crontab = "\n".join(new_lines) + "\n"
+        proc = subprocess.run(
+            ["crontab", "-"],
+            input=new_crontab,
+            capture_output=True, text=True, timeout=5,
+        )
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Failed to update crontab: {proc.stderr}")
+
+        logger.info(f"Toggled cron task {task_id} -> enabled={body.enabled}")
+        return {"ok": True, "enabled": body.enabled}
+
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="crontab command timed out")
+    except Exception as e:
+        logger.error(f"Error toggling cron task: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # --- Agent Control Proxy ---

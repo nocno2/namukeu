@@ -22,6 +22,7 @@ function formatRelativeTime(isoString: string): string {
 export function LaunchAgents({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
   const [tasks, setTasks] = useState<ScheduledTask[]>([]);
   const [error, setError] = useState(false);
+  const [toggling, setToggling] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -38,6 +39,18 @@ export function LaunchAgents({ collapsed, pinned, onToggleCollapse, onTogglePin 
     const interval = setInterval(fetchData, 30_000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleToggle = async (taskId: string, enabled: boolean) => {
+    setToggling(taskId);
+    try {
+      await api.toggleScheduledTask(taskId, enabled);
+      await fetchData();
+    } catch (err) {
+      console.error("Failed to toggle task:", err);
+    } finally {
+      setToggling(null);
+    }
+  };
 
   if (error || tasks.length === 0) return null;
 
@@ -71,21 +84,39 @@ export function LaunchAgents({ collapsed, pinned, onToggleCollapse, onTogglePin 
         </div>
       ) : (
         <div className="mt-4 space-y-2.5">
-          {tasks.map((t, i) => (
-            <div key={i} className="rounded-lg bg-background/50 border border-border/50 p-3">
+          {tasks.map((t) => (
+            <div key={t.id} className="rounded-lg bg-background/50 border border-border/50 p-3">
               <div className="flex items-center justify-between mb-1">
-                <span className="font-medium text-sm">{t.display_name}</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleToggle(t.id, !t.enabled)}
+                    disabled={toggling === t.id}
+                    className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                      t.enabled ? "bg-primary" : "bg-border"
+                    } ${toggling === t.id ? "opacity-50" : ""}`}
+                    title={t.enabled ? "비활성화" : "활성화"}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                        t.enabled ? "translate-x-3.5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                  <span className={`font-medium text-sm ${!t.enabled ? "text-text-muted" : ""}`}>
+                    {t.display_name}
+                  </span>
+                </div>
                 <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">
                   {t.schedule}
                 </span>
               </div>
 
               {t.description && (
-                <p className="text-[11px] text-text-muted mb-2">{t.description}</p>
+                <p className="text-[11px] text-text-muted mb-2 ml-9">{t.description}</p>
               )}
 
               {t.last_run && (
-                <div className="flex items-center gap-1 text-[10px] text-text-muted">
+                <div className="flex items-center gap-1 text-[10px] text-text-muted ml-9">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                     <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
                   </svg>

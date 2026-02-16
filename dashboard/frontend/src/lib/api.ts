@@ -82,6 +82,16 @@ export const api = {
     return request<{ tasks: ScheduledTask[] }>("/api/system/launchagents");
   },
 
+  toggleScheduledTask(taskId: string, enabled: boolean) {
+    return request<{ ok: boolean; enabled: boolean }>(
+      `/api/system/launchagents/${encodeURIComponent(taskId)}/toggle`,
+      {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      },
+    );
+  },
+
   agentStatus() {
     return request<AgentStatus>("/api/agent/status");
   },
@@ -231,10 +241,12 @@ export interface TrainReservation {
 }
 
 export interface ScheduledTask {
+  id: string;
   display_name: string;
   description: string;
   schedule: string;
   last_run: string | null;
+  enabled: boolean;
 }
 
 export interface AgentStatus {
