@@ -46,10 +46,10 @@ def calculate_seo_score(title: str, content: str, keyword: str) -> dict:
     # Has intro and conclusion pattern
     checks["has_structure"] = "##" in content
 
-    score = sum(checks.values()) / len(checks) * 100
+    score = sum(checks.values()) / len(checks) * 10
 
     return {
-        "score": round(score),
+        "score": round(score, 1),
         "checks": checks,
         "word_count": word_count,
         "heading_count": len(headings),
@@ -74,19 +74,19 @@ def calculate_readability(content: str) -> dict:
     avg_sentence_length = len(words) / max(len(sentences), 1)
     avg_paragraph_length = len(words) / max(len(paragraphs), 1)
 
-    # Simple readability score (higher = more readable)
-    score = 100
+    # Simple readability score (higher = more readable, 0-10 scale)
+    score = 10.0
     if avg_sentence_length > 30:
-        score -= 20
+        score -= 2.0
     if avg_sentence_length > 20:
-        score -= 10
+        score -= 1.0
     if avg_paragraph_length > 100:
-        score -= 15
+        score -= 1.5
     if len(paragraphs) < 5:
-        score -= 10
+        score -= 1.0
 
     return {
-        "score": max(score, 0),
+        "score": round(max(score, 0), 1),
         "sentence_count": len(sentences),
         "avg_sentence_length": round(avg_sentence_length, 1),
         "paragraph_count": len(paragraphs),

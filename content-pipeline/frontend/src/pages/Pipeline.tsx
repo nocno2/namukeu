@@ -207,8 +207,8 @@ function DraftDetailModal({
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-bg border border-border rounded-lg p-3">
                 <p className="text-xs text-text-muted mb-1">SEO Score</p>
-                <p className={`text-2xl font-bold ${seo.score >= 70 ? "text-success" : seo.score >= 50 ? "text-warning" : "text-danger"}`}>
-                  {seo.score}
+                <p className={`text-2xl font-bold ${seo.score >= 7 ? "text-success" : seo.score >= 5 ? "text-warning" : "text-danger"}`}>
+                  {seo.score}/10
                 </p>
                 <div className="mt-2 space-y-1">
                   {Object.entries(seo.checks).map(([k, v]) => (
@@ -222,8 +222,8 @@ function DraftDetailModal({
               {readability && (
                 <div className="bg-bg border border-border rounded-lg p-3">
                   <p className="text-xs text-text-muted mb-1">Readability</p>
-                  <p className={`text-2xl font-bold ${readability.score >= 70 ? "text-success" : "text-warning"}`}>
-                    {readability.score}
+                  <p className={`text-2xl font-bold ${readability.score >= 7 ? "text-success" : "text-warning"}`}>
+                    {readability.score}/10
                   </p>
                   <div className="mt-2 space-y-1 text-xs text-text-muted">
                     <p>Sentences: {readability.sentence_count}</p>
