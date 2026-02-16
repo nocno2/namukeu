@@ -38,7 +38,7 @@
       "type": "n8n-nodes-base.merge",
       "position": [-1000, 400],
       "parameters": {
-        "mode": "mergeByIndex",
+        "mode": "append",
         "options": {}
       },
       "typeVersion": 3
@@ -128,7 +128,7 @@
       "type": "n8n-nodes-base.merge",
       "position": [-200, 400],
       "parameters": {
-        "mode": "mergeByIndex",
+        "mode": "append",
         "options": {}
       },
       "typeVersion": 3
