@@ -221,6 +221,31 @@ class BinanceFuturesExchange:
             logger.error(f"[BinanceFutures] get_balances 실패: {e}")
             return []
 
+    async def get_margin_info(self) -> dict | None:
+        """Get account-level margin information.
+
+        Returns dict with:
+          - total_equity: total wallet balance + unrealized PnL
+          - total_maint_margin: total maintenance margin required
+          - margin_ratio: maint_margin / equity (0~1, Binance 1.0 = liquidation)
+          - available_balance: withdrawable balance
+        """
+        try:
+            await self._rate_limit()
+            account = await asyncio.to_thread(self._client.futures_account)
+            total_equity = float(account.get("totalMarginBalance", 0))
+            total_maint_margin = float(account.get("totalMaintMargin", 0))
+            margin_ratio = (total_maint_margin / total_equity) if total_equity > 0 else 0
+            return {
+                "total_equity": total_equity,
+                "total_maint_margin": total_maint_margin,
+                "margin_ratio": margin_ratio,
+                "available_balance": float(account.get("availableBalance", 0)),
+            }
+        except Exception as e:
+            logger.error(f"[BinanceFutures] get_margin_info 실패: {e}")
+            return None
+
     async def get_futures_position(self, ticker: str) -> dict | None:
         """Get current futures position for a ticker."""
         await self._rate_limit()

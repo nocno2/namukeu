@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class TradingScheduler:
+    # Margin safety threshold: emergency close when equity <= maintenance margin * this ratio
+    MARGIN_SAFETY_RATIO = 1.2  # 120%
+
     def __init__(
         self,
         db: Database,
@@ -166,6 +169,8 @@ class TradingScheduler:
                     # 6. 스탑로스 체크
                     if self._is_futures:
                         await self._check_futures_stop_losses(params)
+                        # 6.1 유지증거금 안전장치
+                        await self._check_margin_safety(params)
                     else:
                         await self._check_stop_losses()
 
@@ -462,3 +467,79 @@ class TradingScheduler:
                     f"진입: {entry_price:,.2f} -> 현재: {current_price:,.2f}\n"
                     f"손실: {effective_loss:.1f}%"
                 )
+
+    async def _check_margin_safety(self, params: dict):
+        """유지증거금 안전장치: equity가 유지증거금의 MARGIN_SAFETY_RATIO 이하이면 모든 포지션 긴급 종료."""
+        get_margin = getattr(self.exchange, "get_margin_info", None)
+        if not get_margin:
+            return
+
+        margin_info = await get_margin()
+        if margin_info is None:
+            return
+
+        equity = margin_info["total_equity"]
+        maint_margin = margin_info["total_maint_margin"]
+
+        # 포지션이 없으면 (유지증거금 0) 체크 불필요
+        if maint_margin <= 0:
+            return
+
+        threshold = maint_margin * self.MARGIN_SAFETY_RATIO
+        if equity > threshold:
+            return
+
+        margin_ratio_pct = margin_info["margin_ratio"] * 100
+        logger.critical(
+            f"⚠️ 유지증거금 안전장치 발동! equity={equity:,.2f}, "
+            f"maint_margin={maint_margin:,.2f}, ratio={margin_ratio_pct:.1f}%"
+        )
+
+        # 모든 선물 포지션 긴급 종료
+        positions = self.db.get_positions()
+        futures_positions = [p for p in positions if p.get("exchange") == self.exchange.name]
+        if not futures_positions:
+            return
+
+        from src.strategies.base import TradeSignal, Signal as Sig
+
+        fee_rate = self.exchange.info.fee_rate
+        min_order = self.exchange.info.min_order_value
+        quote = self.exchange.info.quote_currency
+        closed_tickers = []
+
+        for p in futures_positions:
+            side = p.get("side", "long")
+            ticker = p["ticker"]
+            leverage = p.get("leverage", 1)
+            entry_price = p.get("avg_entry_price", 0)
+
+            close_signal = Sig.SELL if side == "long" else Sig.BUY
+            signal = TradeSignal(
+                signal=close_signal, ticker=ticker, confidence=1.0,
+                reason=f"유지증거금 안전장치: equity {equity:,.2f} <= maint*{self.MARGIN_SAFETY_RATIO} ({threshold:,.2f})",
+                indicators={"equity": equity, "maint_margin": maint_margin,
+                            "margin_ratio": margin_ratio_pct, "side": side, "leverage": leverage},
+            )
+
+            try:
+                if side == "long":
+                    await self._execute_futures_sell(ticker, signal, p.get("strategy_id"),
+                                                     fee_rate, min_order, quote, params)
+                else:
+                    await self._execute_futures_buy(ticker, signal, p.get("strategy_id"),
+                                                    fee_rate, min_order, quote, params)
+                closed_tickers.append(f"{ticker} ({side} {leverage}x)")
+            except Exception as e:
+                logger.error(f"긴급 종료 실패 {ticker}: {e}")
+
+        if closed_tickers:
+            tickers_str = "\n".join(f"• {t}" for t in closed_tickers)
+            await self.notifier.send_message(
+                f"🚨 *유지증거금 안전장치 발동*\n"
+                f"Equity: {equity:,.2f} USDT\n"
+                f"유지증거금: {maint_margin:,.2f} USDT\n"
+                f"마진비율: {margin_ratio_pct:.1f}%\n"
+                f"임계값: {self.MARGIN_SAFETY_RATIO * 100:.0f}%\n\n"
+                f"긴급 종료:\n{tickers_str}"
+            )
