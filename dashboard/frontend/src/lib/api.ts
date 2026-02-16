@@ -120,6 +120,12 @@ export const api = {
   agentTasks(activeOnly = true) {
     return request<AgentTask[]>(`/api/agent/tasks?active_only=${activeOnly}`);
   },
+  agentUpdateTask(taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) {
+    return request<AgentTask>(`/api/agent/tasks/${taskId}`, {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+  },
   agentApproveTask(taskId: string) {
     return request<{ ok: boolean }>(`/api/agent/tasks/${taskId}/approve`, {
       method: "POST",

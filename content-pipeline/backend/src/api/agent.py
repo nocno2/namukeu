@@ -161,6 +161,13 @@ def create_agent_task(
     )
 
 
+class TaskUpdate(BaseModel):
+    title: str | None = None
+    prompt: str | None = None
+    project: str | None = None
+    schedule_cron: str | None = None
+
+
 @router.get("/agent-tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
 def get_agent_task(
     task_id: str,
@@ -170,6 +177,26 @@ def get_agent_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@router.put("/agent-tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
+def update_agent_task(
+    task_id: str,
+    body: TaskUpdate,
+    ts: TaskStore = Depends(get_task_store),
+):
+    task = ts.get_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        return task
+    # Recalculate schedule_next if cron changed
+    if "schedule_cron" in updates and updates["schedule_cron"]:
+        from src.agent.cron import get_next_cron_time
+        updates["schedule_next"] = get_next_cron_time(updates["schedule_cron"]).isoformat()
+    ts.update_task(task_id, updates)
+    return ts.get_by_id(task_id)
 
 
 @router.delete("/agent-tasks/{task_id}", dependencies=[Depends(verify_agent_token)])

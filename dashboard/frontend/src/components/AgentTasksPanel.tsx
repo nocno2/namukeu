@@ -27,6 +27,16 @@ const TYPE_LABELS: Record<string, string> = {
   event: "이벤트",
 };
 
+// Internal sentinel prompts → user-friendly descriptions
+const SENTINEL_DESCRIPTIONS: Record<string, string> = {
+  __EVOLUTION_CYCLE__:
+    "서비스 진화 루프 — 실행 시 EvolutionEngine이 대상 서비스와 목표 상태에 따라 동적으로 프롬프트를 생성합니다. 라운드 로빈으로 서비스를 순환하며, 목표가 없는 서비스에는 목표를 제안하고, 목표가 있는 서비스에는 진행 상황을 분석하고 개선안을 제안합니다.",
+};
+
+function isSentinel(prompt: string): boolean {
+  return prompt.startsWith("__") && prompt.endsWith("__");
+}
+
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "없음";
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -45,14 +55,48 @@ function TaskDetail({
   onBack,
   onApprove,
   onCancel,
+  onUpdate,
   actionLoading,
 }: {
   task: AgentTask;
   onBack: () => void;
   onApprove: (id: string) => void;
   onCancel: (id: string) => void;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string }) => Promise<void>;
   actionLoading: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const [editPrompt, setEditPrompt] = useState(task.prompt);
+  const [editProject, setEditProject] = useState(task.project);
+  const [saving, setSaving] = useState(false);
+
+  const sentinel = isSentinel(task.prompt);
+  const sentinelDesc = SENTINEL_DESCRIPTIONS[task.prompt];
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updates: { title?: string; prompt?: string; project?: string } = {};
+      if (editTitle !== task.title) updates.title = editTitle;
+      if (editPrompt !== task.prompt) updates.prompt = editPrompt;
+      if (editProject !== task.project) updates.project = editProject;
+      if (Object.keys(updates).length > 0) {
+        await onUpdate(task.id, updates);
+      }
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditTitle(task.title);
+    setEditPrompt(task.prompt);
+    setEditProject(task.project);
+    setEditing(false);
+  };
+
   return (
     <>
       <div className="flex items-center justify-between px-5 py-4 border-b border-border">
@@ -66,12 +110,22 @@ function TaskDetail({
           <span className="text-text-muted/30">|</span>
           <h2 className="font-semibold text-sm truncate">{task.title}</h2>
         </div>
-        <button
-          onClick={onBack}
-          className="text-text-muted hover:text-text text-lg leading-none cursor-pointer shrink-0"
-        >
-          ×
-        </button>
+        <div className="flex items-center gap-2">
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="text-[11px] text-primary hover:text-primary/80 cursor-pointer"
+            >
+              편집
+            </button>
+          )}
+          <button
+            onClick={onBack}
+            className="text-text-muted hover:text-text text-lg leading-none cursor-pointer shrink-0"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       <div className="overflow-y-auto px-5 py-4 flex-1 space-y-4">
@@ -93,22 +147,92 @@ function TaskDetail({
           )}
         </div>
 
-        {/* Prompt */}
-        <div>
-          <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
-          <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
-            <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.prompt}</pre>
-          </div>
-        </div>
-
-        {/* Last Result */}
-        {task.last_result && (
-          <div>
-            <span className="text-xs text-text-muted block mb-1.5">마지막 결과</span>
-            <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
-              <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.last_result}</pre>
+        {/* Edit form */}
+        {editing ? (
+          <div className="space-y-3">
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">제목</span>
+              <input
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">프로젝트</span>
+              <input
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none font-mono"
+                value={editProject}
+                onChange={(e) => setEditProject(e.target.value)}
+              />
+            </div>
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
+              {sentinel && (
+                <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 mb-2 text-xs text-primary">
+                  이 프롬프트는 내부 센티넬입니다. 실행 시 동적으로 생성되는 프롬프트로 대체됩니다. 수정하면 센티넬 기능이 해제됩니다.
+                </div>
+              )}
+              <textarea
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-xs font-mono leading-relaxed focus:border-primary outline-none resize-y min-h-[120px]"
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                rows={8}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="text-sm text-white bg-primary hover:bg-primary/80 disabled:opacity-50 rounded-lg px-4 py-1.5 cursor-pointer"
+              >
+                {saving ? "저장 중..." : "저장"}
+              </button>
+              <button
+                onClick={handleCancelEdit}
+                className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-4 py-1.5 cursor-pointer"
+              >
+                취소
+              </button>
             </div>
           </div>
+        ) : (
+          <>
+            {/* Prompt */}
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
+              {sentinel ? (
+                <div className="space-y-2">
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded font-mono">동적 프롬프트</span>
+                    </div>
+                    <p className="text-xs leading-relaxed">
+                      {sentinelDesc || `내부 센티넬: ${task.prompt}`}
+                    </p>
+                  </div>
+                  <div className="bg-bg border border-border rounded-lg px-3 py-2">
+                    <span className="text-[10px] text-text-muted">원본 값: </span>
+                    <code className="text-[10px] font-mono text-text-muted">{task.prompt}</code>
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.prompt}</pre>
+                </div>
+              )}
+            </div>
+
+            {/* Last Result */}
+            {task.last_result && (
+              <div>
+                <span className="text-xs text-text-muted block mb-1.5">마지막 결과</span>
+                <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.last_result}</pre>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Meta */}
@@ -210,6 +334,12 @@ export function AgentTasksPanel({ onClose }: Props) {
     finally { setActionLoading(false); }
   };
 
+  const handleUpdate = async (taskId: string, updates: { title?: string; prompt?: string; project?: string }) => {
+    const updated = await api.agentUpdateTask(taskId, updates);
+    setSelectedTask(updated);
+    fetchTasks();
+  };
+
   const handleApproveAll = async () => {
     setActionLoading(true);
     try {
@@ -230,6 +360,7 @@ export function AgentTasksPanel({ onClose }: Props) {
             onBack={() => setSelectedTask(null)}
             onApprove={handleApprove}
             onCancel={handleCancel}
+            onUpdate={handleUpdate}
             actionLoading={actionLoading}
           />
         ) : (
@@ -297,6 +428,9 @@ export function AgentTasksPanel({ onClose }: Props) {
                           {task.project}
                         </span>
                         <span className="text-sm truncate">{task.title}</span>
+                        {isSentinel(task.prompt) && (
+                          <span className="text-[10px] bg-primary/10 text-primary px-1 py-0.5 rounded shrink-0">동적</span>
+                        )}
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0 ml-2">
                         {task.requires_approval && (

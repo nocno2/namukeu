@@ -718,6 +718,21 @@ async def agent_task_detail(task_id: str, _=Depends(verify_session)):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
+@router.put("/agent/tasks/{task_id}")
+async def agent_update_task(task_id: str, body: dict, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.put(
+                f"{AGENT_API_BASE}/api/agent-tasks/{task_id}",
+                json=body, headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code == 404:
+                raise HTTPException(status_code=404, detail="Task not found")
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
 @router.post("/agent/tasks/{task_id}/approve")
 async def agent_approve_task(task_id: str, _=Depends(verify_session)):
     async with httpx.AsyncClient() as client:

@@ -177,6 +177,18 @@ class TaskStore:
         if "status" in updates:
             sets.append("status = ?")
             values.append(updates["status"])
+        if "title" in updates:
+            sets.append("title = ?")
+            values.append(updates["title"])
+        if "prompt" in updates:
+            sets.append("prompt = ?")
+            values.append(updates["prompt"])
+        if "project" in updates:
+            sets.append("project = ?")
+            values.append(updates["project"])
+        if "schedule_cron" in updates:
+            sets.append("schedule_cron = ?")
+            values.append(updates["schedule_cron"])
 
         if not sets:
             return
