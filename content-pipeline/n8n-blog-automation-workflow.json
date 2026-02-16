@@ -74,7 +74,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [-600, 500],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/enrich-context",
+        "url": "http://127.0.0.1:8003/api/n8n/enrich-context",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -101,7 +101,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [-600, 300],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/enrich-keyword",
+        "url": "http://127.0.0.1:8003/api/n8n/enrich-keyword",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -139,7 +139,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [0, 400],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/generate",
+        "url": "http://127.0.0.1:8003/api/n8n/generate",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -156,7 +156,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [200, 400],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/generate-images",
+        "url": "http://127.0.0.1:8003/api/n8n/generate-images",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -223,7 +223,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [1200, 400],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/review",
+        "url": "http://127.0.0.1:8003/api/n8n/review",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -275,7 +275,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [1600, 300],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/save-draft",
+        "url": "http://127.0.0.1:8003/api/n8n/save-draft",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
@@ -292,7 +292,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "position": [1600, 500],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/revise",
+        "url": "http://127.0.0.1:8003/api/n8n/revise",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",

@@ -128,22 +128,30 @@ class SaveDraftResponse(BaseModel):
 
 async def _run_claude_cli(prompt: str) -> str:
     """Run claude CLI with --print mode."""
+    import os
+
+    # Copy current environment and remove CLAUDECODE to avoid nested session error
+    env = os.environ.copy()
+    env.pop("CLAUDECODE", None)
+
     proc = await asyncio.create_subprocess_exec(
         "claude", "--print", "--dangerously-skip-permissions", prompt,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
-        env={
-            "PATH": "/Users/namwook/.local/bin:/usr/local/bin:/usr/bin:/bin",
-            "HOME": "/Users/namwook",
-        },
+        env=env,
     )
     stdout, stderr = await proc.communicate()
 
-    if proc.returncode != 0:
-        err_msg = stderr.decode().strip()
-        raise RuntimeError(f"claude CLI failed (code {proc.returncode}): {err_msg}")
+    stdout_text = stdout.decode().strip()
+    stderr_text = stderr.decode().strip()
 
-    return stdout.decode().strip()
+    if proc.returncode != 0:
+        logger.error(f"claude CLI failed (code {proc.returncode})")
+        logger.error(f"stdout: {stdout_text}")
+        logger.error(f"stderr: {stderr_text}")
+        raise RuntimeError(f"claude CLI failed (code {proc.returncode}): stdout={stdout_text[:200]}, stderr={stderr_text[:200]}")
+
+    return stdout_text
 
 
 # --- API Endpoints ---
