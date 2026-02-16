@@ -271,7 +271,17 @@ class Heartbeat:
 
         except Exception as e:
             logger.error(f'[heartbeat] Task "{task["title"]}" failed: {e}')
-            self.task_store.update_status(task["id"], "failed")
+
+            # Recurring tasks should stay pending with next schedule, not stuck as failed
+            if task["type"] == "recurring" and task["schedule_cron"]:
+                from src.agent.cron import get_next_cron_time
+                next_time = get_next_cron_time(task["schedule_cron"]).isoformat()
+                self.task_store.update_task(task["id"], {
+                    "status": "pending",
+                    "schedule_next": next_time,
+                })
+            else:
+                self.task_store.update_status(task["id"], "failed")
 
             await self.notifier.send_message(
                 f'[AUTO/{task["project"]}] 태스크 실패: "{task["title"]}"\n{str(e)[:200]}'
