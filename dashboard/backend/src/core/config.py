@@ -121,6 +121,18 @@ class Config:
                 git_codename="GATE",
                 error_log_path=f"{log_base}/api-gateway.error.log",
             ),
+            ServiceDef(
+                name="content-pipeline",
+                display_name="Content Pipeline",
+                description="스케줄러 + 콘텐츠 파이프라인",
+                type="http",
+                port=8003,
+                health_url="http://127.0.0.1:8003/health",
+                launchd_label="com.namukeu.content-pipeline",
+                git_dir=project_root,
+                git_codename="PIPE",
+                error_log_path=f"{log_base}/content-pipeline.error.log",
+            ),
         ]
 
         return cls(
