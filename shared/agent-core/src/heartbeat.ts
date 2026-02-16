@@ -55,6 +55,10 @@ export class Heartbeat {
 
   start(): void {
     this.stopped = false;
+
+    // Recover zombie tasks: running tasks in DB but not in memory (e.g. after restart)
+    this.recoverZombieTasks();
+
     console.log(
       `[heartbeat] Started (interval: ${this.deps.config.intervalMs / 1000}s)`
     );
@@ -100,10 +104,28 @@ export class Heartbeat {
     }
   }
 
+  /** Recover tasks stuck in 'running' state (e.g. after bot restart or crash) */
+  private recoverZombieTasks(): void {
+    const active = this.deps.taskStore.getActive();
+    const zombies = active.filter(
+      t => t.status === "running" && !this.runningTasks.has(t.project || "GENERAL")
+    );
+    for (const z of zombies) {
+      console.log(`[heartbeat] Recovering zombie task: "${z.title}" → pending`);
+      this.deps.taskStore.updateTask(z.id, { status: "pending" });
+    }
+    if (zombies.length > 0) {
+      console.log(`[heartbeat] Recovered ${zombies.length} zombie task(s)`);
+    }
+  }
+
   private async tick(): Promise<void> {
     if (this.stopped) return;
 
     try {
+      // Periodically recover zombie tasks (in case executeTask crashes without finally)
+      this.recoverZombieTasks();
+
       // Check quiet hours
       if (this.isQuietHours()) return;
 
