@@ -21,6 +21,7 @@ import {
 } from "./memory";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
+import { decrypt } from "./crypto";
 import {
   initDb,
   saveMessage,
@@ -35,7 +36,10 @@ const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
 const GATE_URL = process.env.GATE_URL || "http://127.0.0.1:8080";
 const GATE_USERNAME = process.env.GATE_USERNAME || "";
-const GATE_PASSWORD = process.env.GATE_PASSWORD || "";
+const GATE_ENCRYPTION_KEY = process.env.GATE_ENCRYPTION_KEY || "";
+const GATE_PASSWORD = GATE_ENCRYPTION_KEY && process.env.GATE_PASSWORD
+  ? decrypt(process.env.GATE_PASSWORD, GATE_ENCRYPTION_KEY)
+  : process.env.GATE_PASSWORD || "";
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
 const DEDICATED_CHANNELS = new Set(
   (process.env.DEDICATED_CHANNELS || "")
