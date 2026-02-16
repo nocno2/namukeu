@@ -31,13 +31,28 @@ def get_config() -> Config:
 # --- Pydantic Models ---
 
 
-class ExtractKeywordsRequest(BaseModel):
+class EnrichKeywordRequest(BaseModel):
+    keyword: str = Field(..., min_length=1, max_length=200, description="블로그 키워드")
+
+
+class EnrichKeywordResponse(BaseModel):
+    keyword: str
+    context: str
+    trend_data: dict
+    search_insights: list[str]
+    reasoning: str
+
+
+class EnrichContextRequest(BaseModel):
     context: str = Field(..., min_length=10, max_length=5000, description="아이디어/컨텍스트")
-    count: int = Field(3, ge=1, le=10, description="추출할 키워드 개수")
 
 
-class ExtractKeywordsResponse(BaseModel):
+class EnrichContextResponse(BaseModel):
     keywords: list[str]
+    selected_keyword: str
+    context: str
+    trend_data: dict
+    search_insights: list[str]
     reasoning: str
 
 
@@ -134,34 +149,47 @@ async def _run_claude_cli(prompt: str) -> str:
 # --- API Endpoints ---
 
 
-@router.post("/extract-keywords", response_model=ExtractKeywordsResponse)
-async def extract_keywords(body: ExtractKeywordsRequest):
+@router.post("/enrich-keyword", response_model=EnrichKeywordResponse)
+async def enrich_keyword(body: EnrichKeywordRequest):
     """
-    아이디어/컨텍스트에서 블로그 키워드 추출.
+    키워드를 웹검색 + 트렌드 분석으로 풍부한 컨텍스트로 확장.
 
-    - 사용자가 제공한 긴 문장/아이디어에서 SEO 친화적 키워드 추출
-    - 트렌드 및 검색 의도를 고려한 키워드 제안
+    - 키워드만 있을 때 사용
+    - 웹검색으로 최신 정보 수집
+    - 트렌드 분석으로 검색량/관련 키워드 확인
+    - 창작 방향을 구체적으로 제시
     """
     try:
-        prompt = f"""당신은 SEO 전문가입니다.
-다음 아이디어/컨텍스트에서 블로그 글로 작성하기 좋은 키워드를 {body.count}개 추출해주세요.
+        prompt = f"""당신은 블로그 기획 전문가입니다.
+다음 키워드를 웹검색과 트렌드 분석을 통해 풍부한 블로그 창작 방향으로 확장해주세요.
 
-## 입력 컨텍스트
-{body.context}
+키워드: {body.keyword}
 
-## 추출 기준
-- SEO 친화적 (검색량이 있을 법한)
-- 구체적이고 명확한 주제
-- 블로그 글 한 편으로 다룰 수 있는 범위
-- 타겟 독자가 명확한 키워드
+## 작업
+1. 이 키워드와 관련된 최신 정보를 웹에서 검색
+2. 현재 검색 트렌드, 관련 검색어 분석
+3. 블로그 글로 어떻게 풀어낼지 구체적인 창작 방향 제시
+4. 독자가 흥미를 느낄 만한 앵글, 비유, 스토리텔링 방향 제안
 
-다음 JSON 형식으로만 응답하세요:
+## 출력 형식 (JSON만)
 {{
-  "keywords": ["키워드1", "키워드2", "키워드3"],
-  "reasoning": "이 키워드들을 선택한 이유 (1-2문장)"
-}}"""
+  "context": "확장된 창작 방향 (100-300자). 웹검색 결과와 트렌드를 반영한 구체적인 아이디어",
+  "trend_data": {{
+    "search_volume": "급상승/보통/낮음 중 하나",
+    "related_keywords": ["관련 검색어1", "관련 검색어2", "관련 검색어3"],
+    "trending": true/false
+  }},
+  "search_insights": [
+    "웹검색에서 발견한 핵심 인사이트 1",
+    "웹검색에서 발견한 핵심 인사이트 2",
+    "웹검색에서 발견한 핵심 인사이트 3"
+  ],
+  "reasoning": "이 창작 방향을 제안한 이유 (1-2문장)"
+}}
 
-        logger.info(f"[n8n/extract-keywords] Extracting from context ({len(body.context)} chars)")
+웹검색 기능을 적극 활용하여 최신 정보를 반영하세요."""
+
+        logger.info(f"[n8n/enrich-keyword] Enriching keyword: {body.keyword}")
         result_text = await _run_claude_cli(prompt)
 
         # Parse JSON
@@ -170,22 +198,88 @@ async def extract_keywords(body: ExtractKeywordsRequest):
             raise ValueError("No JSON found in response")
 
         result = json.loads(json_match.group())
-        keywords = result.get("keywords", [])
-        reasoning = result.get("reasoning", "")
 
-        if not keywords:
-            raise ValueError("No keywords extracted")
-
-        return ExtractKeywordsResponse(
-            keywords=keywords[:body.count],
-            reasoning=reasoning,
+        return EnrichKeywordResponse(
+            keyword=body.keyword,
+            context=result.get("context", ""),
+            trend_data=result.get("trend_data", {}),
+            search_insights=result.get("search_insights", []),
+            reasoning=result.get("reasoning", ""),
         )
 
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        logger.error(f"[n8n/extract-keywords] Failed: {e}")
-        raise HTTPException(status_code=500, detail="Keyword extraction failed")
+        logger.error(f"[n8n/enrich-keyword] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Keyword enrichment failed")
+
+
+@router.post("/enrich-context", response_model=EnrichContextResponse)
+async def enrich_context(body: EnrichContextRequest):
+    """
+    아이디어 컨텍스트에서 키워드 추출 + 웹검색 + 트렌드 분석.
+
+    - 아이디어/컨텍스트가 있을 때 사용
+    - 키워드 추출하되 원본 컨텍스트 유지
+    - 웹검색과 트렌드로 컨텍스트 보강
+    """
+    try:
+        prompt = f"""당신은 블로그 기획 전문가입니다.
+다음 아이디어/컨텍스트를 분석하여 SEO 친화적 키워드를 추출하고, 웹검색과 트렌드 분석으로 컨텍스트를 풍부하게 만들어주세요.
+
+## 입력 컨텍스트
+{body.context}
+
+## 작업
+1. 이 컨텍스트에서 블로그 글로 작성하기 좋은 키워드 3개 추출
+2. 키워드와 관련된 최신 정보를 웹에서 검색
+3. 현재 검색 트렌드, 관련 검색어 분석
+4. 원본 아이디어를 유지하면서 웹검색 결과와 트렌드를 결합한 창작 방향 제시
+
+## 출력 형식 (JSON만)
+{{
+  "keywords": ["키워드1", "키워드2", "키워드3"],
+  "selected_keyword": "가장 적합한 키워드 1개",
+  "context": "원본 아이디어 + 웹검색 결과 + 트렌드 분석을 결합한 풍부한 창작 방향 (200-400자)",
+  "trend_data": {{
+    "search_volume": "급상승/보통/낮음 중 하나",
+    "related_keywords": ["관련 검색어1", "관련 검색어2", "관련 검색어3"],
+    "trending": true/false
+  }},
+  "search_insights": [
+    "웹검색에서 발견한 핵심 인사이트 1",
+    "웹검색에서 발견한 핵심 인사이트 2",
+    "웹검색에서 발견한 핵심 인사이트 3"
+  ],
+  "reasoning": "이 키워드와 창작 방향을 제안한 이유 (1-2문장)"
+}}
+
+웹검색 기능을 적극 활용하여 최신 정보를 반영하세요."""
+
+        logger.info(f"[n8n/enrich-context] Enriching context ({len(body.context)} chars)")
+        result_text = await _run_claude_cli(prompt)
+
+        # Parse JSON
+        json_match = re.search(r"\{[\s\S]*\}", result_text)
+        if not json_match:
+            raise ValueError("No JSON found in response")
+
+        result = json.loads(json_match.group())
+
+        return EnrichContextResponse(
+            keywords=result.get("keywords", []),
+            selected_keyword=result.get("selected_keyword", ""),
+            context=result.get("context", ""),
+            trend_data=result.get("trend_data", {}),
+            search_insights=result.get("search_insights", []),
+            reasoning=result.get("reasoning", ""),
+        )
+
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as e:
+        logger.error(f"[n8n/enrich-context] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Context enrichment failed")
 
 
 @router.post("/generate", response_model=GenerateResponse)

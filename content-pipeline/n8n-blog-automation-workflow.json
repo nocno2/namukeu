@@ -69,39 +69,56 @@
       "typeVersion": 2.2
     },
     {
-      "id": "extract-keywords",
-      "name": "Extract Keywords (from Idea)",
+      "id": "enrich-context",
+      "name": "Enrich Context (from Idea)",
       "type": "n8n-nodes-base.httpRequest",
       "position": [-600, 500],
       "parameters": {
-        "url": "http://localhost:8003/api/n8n/extract-keywords",
+        "url": "http://localhost:8003/api/n8n/enrich-context",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"context\": \"{{ $json.idea || $json.context }}\",\n  \"count\": 3\n}",
+        "jsonBody": "={\n  \"context\": \"{{ $json.idea || $json.context }}\"\n}",
         "options": {
-          "timeout": 30000
+          "timeout": 300000
         }
       },
       "typeVersion": 4.2
     },
     {
-      "id": "set-keyword-from-extraction",
-      "name": "Set Keyword (from extraction)",
+      "id": "set-keyword-from-context",
+      "name": "Set Keyword (from context enrichment)",
       "type": "n8n-nodes-base.code",
       "position": [-400, 500],
       "parameters": {
-        "jsCode": "const keywords = $input.first().json.keywords;\nreturn [\n  {\n    json: {\n      keyword: keywords[0],\n      all_keywords: keywords,\n      reasoning: $input.first().json.reasoning,\n      direction: $('Merge Triggers').first().json.idea || $('Merge Triggers').first().json.context || \"\"\n    }\n  }\n];"
+        "jsCode": "const data = $input.first().json;\nreturn [\n  {\n    json: {\n      keyword: data.selected_keyword,\n      direction: data.context,\n      all_keywords: data.keywords,\n      trend_data: data.trend_data,\n      search_insights: data.search_insights\n    }\n  }\n];"
       },
       "typeVersion": 2
     },
     {
-      "id": "set-keyword-direct",
-      "name": "Set Keyword (direct input)",
+      "id": "enrich-keyword",
+      "name": "Enrich Keyword",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [-600, 300],
+      "parameters": {
+        "url": "http://localhost:8003/api/n8n/enrich-keyword",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"keyword\": \"{{ $json.keyword }}\"\n}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "set-keyword-from-enrichment",
+      "name": "Set Keyword (from keyword enrichment)",
       "type": "n8n-nodes-base.code",
       "position": [-400, 300],
       "parameters": {
-        "jsCode": "return [\n  {\n    json: {\n      keyword: $input.first().json.keyword,\n      direction: $input.first().json.direction || \"\"\n    }\n  }\n];"
+        "jsCode": "const data = $input.first().json;\nreturn [\n  {\n    json: {\n      keyword: data.keyword,\n      direction: data.context,\n      trend_data: data.trend_data,\n      search_insights: data.search_insights\n    }\n  }\n];"
       },
       "typeVersion": 2
     },
@@ -128,7 +145,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"keyword\": \"{{ $json.keyword }}\",\n  \"direction\": \"{{ $json.direction }}\"\n}",
         "options": {
-          "timeout": 120000
+          "timeout": 300000
         }
       },
       "typeVersion": 4.2
@@ -145,7 +162,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"title\": \"{{ $json.title }}\",\n  \"content\": \"{{ $json.content }}\",\n  \"count\": 3\n}",
         "options": {
-          "timeout": 60000
+          "timeout": 300000
         }
       },
       "typeVersion": 4.2
@@ -175,7 +192,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"model\": \"dall-e-3\",\n  \"prompt\": \"{{ $json.image_prompts[$itemIndex] }}\",\n  \"n\": 1,\n  \"size\": \"1024x1024\"\n}",
         "options": {
-          "timeout": 90000
+          "timeout": 300000
         }
       },
       "typeVersion": 4.2
@@ -212,7 +229,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"title\": \"{{ $json.title }}\",\n  \"content\": \"{{ $json.content }}\",\n  \"keyword\": \"{{ $json.keyword }}\"\n}",
         "options": {
-          "timeout": 60000
+          "timeout": 300000
         }
       },
       "typeVersion": 4.2
@@ -264,7 +281,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"title\": \"{{ $('Replace Image URLs in Content').first().json.title }}\",\n  \"slug\": \"{{ $('Replace Image URLs in Content').first().json.slug }}\",\n  \"content\": \"{{ $('Replace Image URLs in Content').first().json.content }}\",\n  \"excerpt\": \"{{ $('Replace Image URLs in Content').first().json.excerpt }}\",\n  \"keyword\": \"{{ $('Replace Image URLs in Content').first().json.keyword }}\",\n  \"tags\": {{ $('Replace Image URLs in Content').first().json.tags }},\n  \"outline\": \"{{ $('Replace Image URLs in Content').first().json.outline }}\"\n}",
         "options": {
-          "timeout": 10000
+          "timeout": 300000
         }
       },
       "typeVersion": 4.2
@@ -281,7 +298,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"title\": \"{{ $('Replace Image URLs in Content').first().json.title }}\",\n  \"content\": \"{{ $('Replace Image URLs in Content').first().json.content }}\",\n  \"keyword\": \"{{ $('Replace Image URLs in Content').first().json.keyword }}\",\n  \"feedback\": \"{{ $('Review Draft').first().json.ai_review.technical_suggestions.join(', ') }}\"\n}",
         "options": {
-          "timeout": 90000
+          "timeout": 300000
         }
       },
       "typeVersion": 4.2
@@ -369,18 +386,21 @@
     },
     "check-input-type": {
       "main": [
-        [{ "node": "set-keyword-direct", "type": "main", "index": 0 }],
-        [{ "node": "extract-keywords", "type": "main", "index": 0 }]
+        [{ "node": "enrich-keyword", "type": "main", "index": 0 }],
+        [{ "node": "enrich-context", "type": "main", "index": 0 }]
       ]
     },
-    "extract-keywords": {
-      "main": [[{ "node": "set-keyword-from-extraction", "type": "main", "index": 0 }]]
+    "enrich-keyword": {
+      "main": [[{ "node": "set-keyword-from-enrichment", "type": "main", "index": 0 }]]
     },
-    "set-keyword-from-extraction": {
-      "main": [[{ "node": "merge-keyword-paths", "type": "main", "index": 1 }]]
+    "enrich-context": {
+      "main": [[{ "node": "set-keyword-from-context", "type": "main", "index": 0 }]]
     },
-    "set-keyword-direct": {
+    "set-keyword-from-enrichment": {
       "main": [[{ "node": "merge-keyword-paths", "type": "main", "index": 0 }]]
+    },
+    "set-keyword-from-context": {
+      "main": [[{ "node": "merge-keyword-paths", "type": "main", "index": 1 }]]
     },
     "merge-keyword-paths": {
       "main": [[{ "node": "generate-draft", "type": "main", "index": 0 }]]
