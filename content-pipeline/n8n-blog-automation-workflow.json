@@ -1,0 +1,435 @@
+{
+  "name": "Blog Automation (Keyword or Idea → Draft)",
+  "nodes": [
+    {
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger (Manual)",
+      "type": "n8n-nodes-base.webhook",
+      "position": [-1200, 300],
+      "parameters": {
+        "path": "blog-automation",
+        "httpMethod": "POST",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "blog-automation-webhook",
+      "typeVersion": 2
+    },
+    {
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger (Cron)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [-1200, 500],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "typeVersion": 1.2
+    },
+    {
+      "id": "merge-triggers",
+      "name": "Merge Triggers",
+      "type": "n8n-nodes-base.merge",
+      "position": [-1000, 400],
+      "parameters": {
+        "mode": "mergeByIndex",
+        "options": {}
+      },
+      "typeVersion": 3
+    },
+    {
+      "id": "check-input-type",
+      "name": "Check Input Type (Keyword or Idea?)",
+      "type": "n8n-nodes-base.if",
+      "position": [-800, 400],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "has-keyword",
+              "operator": {
+                "type": "string",
+                "operation": "exists"
+              },
+              "leftValue": "={{ $json.keyword }}"
+            }
+          ]
+        }
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "extract-keywords",
+      "name": "Extract Keywords (from Idea)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [-600, 500],
+      "parameters": {
+        "url": "http://localhost:8003/api/n8n/extract-keywords",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"context\": \"{{ $json.idea || $json.context }}\",\n  \"count\": 3\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "set-keyword-from-extraction",
+      "name": "Set Keyword (from extraction)",
+      "type": "n8n-nodes-base.code",
+      "position": [-400, 500],
+      "parameters": {
+        "jsCode": "const keywords = $input.first().json.keywords;\nreturn [\n  {\n    json: {\n      keyword: keywords[0],\n      all_keywords: keywords,\n      reasoning: $input.first().json.reasoning,\n      direction: $('Merge Triggers').first().json.idea || $('Merge Triggers').first().json.context || \"\"\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "set-keyword-direct",
+      "name": "Set Keyword (direct input)",
+      "type": "n8n-nodes-base.code",
+      "position": [-400, 300],
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      keyword: $input.first().json.keyword,\n      direction: $input.first().json.direction || \"\"\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "merge-keyword-paths",
+      "name": "Merge Keyword Paths",
+      "type": "n8n-nodes-base.merge",
+      "position": [-200, 400],
+      "parameters": {
+        "mode": "mergeByIndex",
+        "options": {}
+      },
+      "typeVersion": 3
+    },
+    {
+      "id": "generate-draft",
+      "name": "Generate Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [0, 400],
+      "parameters": {
+        "url": "http://localhost:8003/api/n8n/generate",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"keyword\": \"{{ $json.keyword }}\",\n  \"direction\": \"{{ $json.direction }}\"\n}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "generate-images",
+      "name": "Generate Images",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [200, 400],
+      "parameters": {
+        "url": "http://localhost:8003/api/n8n/generate-images",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $json.title }}\",\n  \"content\": \"{{ $json.content }}\",\n  \"count\": 3\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "split-image-prompts",
+      "name": "Split Image Prompts",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [400, 400],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "typeVersion": 3
+    },
+    {
+      "id": "generate-image-dalle",
+      "name": "Generate Image (DALL-E)",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [600, 400],
+      "parameters": {
+        "url": "https://api.openai.com/v1/images/generations",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"dall-e-3\",\n  \"prompt\": \"{{ $json.image_prompts[$itemIndex] }}\",\n  \"n\": 1,\n  \"size\": \"1024x1024\"\n}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "aggregate-image-urls",
+      "name": "Aggregate Image URLs",
+      "type": "n8n-nodes-base.code",
+      "position": [800, 400],
+      "parameters": {
+        "jsCode": "const urls = [];\nfor (const item of $input.all()) {\n  if (item.json.data && item.json.data[0]) {\n    urls.push(item.json.data[0].url);\n  }\n}\nreturn [{ json: { image_urls: urls } }];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "replace-image-urls",
+      "name": "Replace Image URLs in Content",
+      "type": "n8n-nodes-base.code",
+      "position": [1000, 400],
+      "parameters": {
+        "jsCode": "const draft = $('Generate Draft').first().json;\nconst imageData = $('Generate Images').first().json;\nconst imageUrls = $input.first().json.image_urls;\n\nlet finalContent = imageData.content_with_images;\n\n// Replace placeholders\nimageUrls.forEach((url, i) => {\n  const placeholder = `image_${i + 1}.png`;\n  finalContent = finalContent.replace(placeholder, url);\n});\n\nreturn [\n  {\n    json: {\n      title: draft.title,\n      slug: draft.slug,\n      content: finalContent,\n      excerpt: draft.excerpt,\n      keyword: draft.keyword,\n      tags: draft.tags,\n      outline: draft.outline\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "review-draft",
+      "name": "Review Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1200, 400],
+      "parameters": {
+        "url": "http://localhost:8003/api/n8n/review",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $json.title }}\",\n  \"content\": \"{{ $json.content }}\",\n  \"keyword\": \"{{ $json.keyword }}\"\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "check-score",
+      "name": "Check Score (>= 7?)",
+      "type": "n8n-nodes-base.if",
+      "position": [1400, 400],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "seo-score",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              },
+              "leftValue": "={{ $json.seo.score }}",
+              "rightValue": 7
+            },
+            {
+              "id": "ai-score",
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              },
+              "leftValue": "={{ $json.ai_review.overall }}",
+              "rightValue": 7
+            }
+          ]
+        }
+      },
+      "typeVersion": 2.2
+    },
+    {
+      "id": "save-draft",
+      "name": "Save Draft to DB",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1600, 300],
+      "parameters": {
+        "url": "http://localhost:8003/api/n8n/save-draft",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $('Replace Image URLs in Content').first().json.title }}\",\n  \"slug\": \"{{ $('Replace Image URLs in Content').first().json.slug }}\",\n  \"content\": \"{{ $('Replace Image URLs in Content').first().json.content }}\",\n  \"excerpt\": \"{{ $('Replace Image URLs in Content').first().json.excerpt }}\",\n  \"keyword\": \"{{ $('Replace Image URLs in Content').first().json.keyword }}\",\n  \"tags\": {{ $('Replace Image URLs in Content').first().json.tags }},\n  \"outline\": \"{{ $('Replace Image URLs in Content').first().json.outline }}\"\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "revise-draft",
+      "name": "Revise Draft",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1600, 500],
+      "parameters": {
+        "url": "http://localhost:8003/api/n8n/revise",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"{{ $('Replace Image URLs in Content').first().json.title }}\",\n  \"content\": \"{{ $('Replace Image URLs in Content').first().json.content }}\",\n  \"keyword\": \"{{ $('Replace Image URLs in Content').first().json.keyword }}\",\n  \"feedback\": \"{{ $('Review Draft').first().json.ai_review.technical_suggestions.join(', ') }}\"\n}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "typeVersion": 4.2
+    },
+    {
+      "id": "update-content-after-revise",
+      "name": "Update Content After Revise",
+      "type": "n8n-nodes-base.code",
+      "position": [1800, 500],
+      "parameters": {
+        "jsCode": "const original = $('Replace Image URLs in Content').first().json;\nconst revised = $input.first().json;\n\nreturn [\n  {\n    json: {\n      ...original,\n      content: revised.revised_content\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
+      "id": "sticky-note-input",
+      "name": "Input Options",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-1280, 180],
+      "parameters": {
+        "width": 360,
+        "height": 140,
+        "content": "## Input Options\n**Webhook**: POST /webhook/blog-automation\n- `{\"keyword\": \"...\"}`\n- `{\"idea\": \"...\"}`\n\n**Cron**: Daily 9 AM (needs default idea)"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "sticky-note-flow",
+      "name": "Flow Logic",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-880, 180],
+      "parameters": {
+        "width": 320,
+        "height": 140,
+        "content": "## Branching Logic\n- Has `keyword`? → Direct to Generate\n- Has `idea`/`context`? → Extract Keywords first\n- Both paths merge at Generate Draft"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "sticky-note-images",
+      "name": "Image Generation",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [380, 180],
+      "parameters": {
+        "width": 440,
+        "height": 120,
+        "content": "## DALL-E Integration\n**Note**: Requires OpenAI API credentials\nGenerates 3 images in loop, then replaces placeholders"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "sticky-note-review",
+      "name": "Review & Decision",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [1180, 180],
+      "parameters": {
+        "width": 340,
+        "height": 120,
+        "content": "## Quality Check\nScore >= 7 → Save to DB\nScore < 7 → Revise → Review again"
+      },
+      "typeVersion": 1
+    },
+    {
+      "id": "sticky-note-output",
+      "name": "Final Output",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [1580, 180],
+      "parameters": {
+        "width": 240,
+        "height": 100,
+        "content": "## Draft Saved!\nCheck admin panel:\nhttp://localhost:3100/admin/drafts"
+      },
+      "typeVersion": 1
+    }
+  ],
+  "connections": {
+    "webhook-trigger": {
+      "main": [[{ "node": "merge-triggers", "type": "main", "index": 0 }]]
+    },
+    "schedule-trigger": {
+      "main": [[{ "node": "merge-triggers", "type": "main", "index": 1 }]]
+    },
+    "merge-triggers": {
+      "main": [[{ "node": "check-input-type", "type": "main", "index": 0 }]]
+    },
+    "check-input-type": {
+      "main": [
+        [{ "node": "set-keyword-direct", "type": "main", "index": 0 }],
+        [{ "node": "extract-keywords", "type": "main", "index": 0 }]
+      ]
+    },
+    "extract-keywords": {
+      "main": [[{ "node": "set-keyword-from-extraction", "type": "main", "index": 0 }]]
+    },
+    "set-keyword-from-extraction": {
+      "main": [[{ "node": "merge-keyword-paths", "type": "main", "index": 1 }]]
+    },
+    "set-keyword-direct": {
+      "main": [[{ "node": "merge-keyword-paths", "type": "main", "index": 0 }]]
+    },
+    "merge-keyword-paths": {
+      "main": [[{ "node": "generate-draft", "type": "main", "index": 0 }]]
+    },
+    "generate-draft": {
+      "main": [[{ "node": "generate-images", "type": "main", "index": 0 }]]
+    },
+    "generate-images": {
+      "main": [[{ "node": "split-image-prompts", "type": "main", "index": 0 }]]
+    },
+    "split-image-prompts": {
+      "main": [[{ "node": "generate-image-dalle", "type": "main", "index": 0 }]]
+    },
+    "generate-image-dalle": {
+      "main": [[{ "node": "split-image-prompts", "type": "main", "index": 0 }]]
+    },
+    "split-image-prompts": {
+      "main": [
+        [],
+        [{ "node": "aggregate-image-urls", "type": "main", "index": 0 }]
+      ]
+    },
+    "aggregate-image-urls": {
+      "main": [[{ "node": "replace-image-urls", "type": "main", "index": 0 }]]
+    },
+    "replace-image-urls": {
+      "main": [[{ "node": "review-draft", "type": "main", "index": 0 }]]
+    },
+    "review-draft": {
+      "main": [[{ "node": "check-score", "type": "main", "index": 0 }]]
+    },
+    "check-score": {
+      "main": [
+        [{ "node": "save-draft", "type": "main", "index": 0 }],
+        [{ "node": "revise-draft", "type": "main", "index": 0 }]
+      ]
+    },
+    "revise-draft": {
+      "main": [[{ "node": "update-content-after-revise", "type": "main", "index": 0 }]]
+    },
+    "update-content-after-revise": {
+      "main": [[{ "node": "review-draft", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "blog-automation-v1",
+  "id": "blog-automation",
+  "tags": []
+}
