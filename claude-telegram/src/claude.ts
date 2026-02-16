@@ -4,7 +4,9 @@ const HOME = process.env.HOME || "";
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const PROJECT_DIR = process.env.PROJECT_DIR || undefined;
 const MODEL = process.env.MODEL || undefined;
-const PROGRESS_INTERVAL_MS = 180_000; // 3 minutes
+const PROGRESS_INTERVAL_MS = 30_000; // 30 seconds
+const INITIAL_FEEDBACK_MS = 15_000; // 15 seconds before first "processing" message
+const INACTIVITY_WARN_MS = 180_000; // 3 minutes without stdout data → warn user
 
 export interface ClaudeOptions {
   sessionId: string;
@@ -147,6 +149,34 @@ async function parseStream(
   let recentActivities: string[] = [];
   let buffer = "";
 
+  // Activity watchdog: track last time we received data from stdout
+  let lastDataTime = Date.now();
+  let inactivityWarned = false;
+  let initialFeedbackSent = false;
+  let completed = false;
+
+  // Timers for proactive feedback
+  const initialTimer = onProgress
+    ? setTimeout(() => {
+        if (!completed && !initialFeedbackSent) {
+          initialFeedbackSent = true;
+          onProgress("⏳ 처리 중입니다...");
+        }
+      }, INITIAL_FEEDBACK_MS)
+    : null;
+
+  const watchdogInterval = onProgress
+    ? setInterval(() => {
+        if (completed) return;
+        const elapsed = Date.now() - lastDataTime;
+        if (elapsed >= INACTIVITY_WARN_MS && !inactivityWarned) {
+          inactivityWarned = true;
+          const mins = Math.floor(elapsed / 60000);
+          onProgress(`⚠️ 응답 대기 중... (${mins}분 이상 활동 없음)`);
+        }
+      }, 30_000)
+    : null;
+
   function checkProgress() {
     if (!onProgress) return;
     const now = Date.now();
@@ -162,6 +192,10 @@ async function parseStream(
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
+      // Update watchdog on any data received
+      lastDataTime = Date.now();
+      inactivityWarned = false;
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -192,6 +226,9 @@ async function parseStream(
       }
     }
   } finally {
+    completed = true;
+    if (initialTimer) clearTimeout(initialTimer);
+    if (watchdogInterval) clearInterval(watchdogInterval);
     reader.releaseLock();
   }
 

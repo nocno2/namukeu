@@ -3,7 +3,8 @@ import { join } from "path";
 import { acquireLock, releaseLock } from "./session";
 import { createBot, heartbeat, taskStore, goalStore, auditLog, forbidden } from "./bot";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
-import { startHttpApi } from "./http-api";
+// HTTP API moved to content-pipeline (port 8003)
+// import { startHttpApi } from "./http-api";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -63,8 +64,7 @@ async function main(): Promise<void> {
         heartbeat.start();
       }
 
-      // Start HTTP API for dashboard integration
-      startHttpApi({ heartbeat, taskStore, goalStore, auditLog, forbidden });
+      // Agent HTTP API moved to content-pipeline (port 8003)
     },
   });
 }
