@@ -1,5 +1,17 @@
 const BASE = "";
 
+class ApiError extends Error {
+  status: number;
+  detail: string;
+
+  constructor(status: number, detail: string) {
+    super(detail);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
@@ -7,10 +19,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
-    throw new Error(`${res.status}`);
+    let detail = `HTTP ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body.detail) detail = body.detail;
+    } catch {
+      // response body not JSON, use status text
+      if (res.statusText) detail = `${res.status} ${res.statusText}`;
+    }
+    throw new ApiError(res.status, detail);
   }
   return res.json();
 }
+
+export { ApiError };
 
 export const api = {
   login(username: string, password: string) {

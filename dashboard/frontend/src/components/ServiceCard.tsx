@@ -162,8 +162,8 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
     try {
       await api.restart(service.name);
       setTimeout(onRefresh, 2000);
-    } catch {
-      alert("재시작 실패");
+    } catch (err) {
+      alert(`재시작 실패: ${err instanceof Error ? err.message : "알 수 없는 오류"}`);
     } finally {
       setRestarting(false);
     }
