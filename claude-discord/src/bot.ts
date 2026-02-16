@@ -50,6 +50,8 @@ const CHANNEL_PROJECT_MAP: Record<string, { project: string; codename: string; d
   "1472150448558444576": { project: "coin-auto-trade", codename: "COIN", dir: "coin-auto-trade/", description: "Upbit 자동매매 서버 (Python FastAPI :8001)" },
   "1472220621340676217": { project: "ai-blog", codename: "BLOG", dir: "ai-blog/", description: "수익형 블로그 (Next.js + Bun :3100)" },
   "1472220670497788147": { project: "dashboard", codename: "DASH", dir: "dashboard/", description: "개인 대시보드 (React + FastAPI :8002)" },
+  "1472819862123446345": { project: "api-gateway", codename: "GATE", dir: "api-gateway/", description: "API 게이트웨이 (Python FastAPI :8080)" },
+  "1472820038607306804": { project: "content-pipeline", codename: "PIPE", dir: "content-pipeline/", description: "스케줄러 + 콘텐츠 파이프라인 (React + FastAPI :8003)" },
 };
 
 let profileContext = "";
