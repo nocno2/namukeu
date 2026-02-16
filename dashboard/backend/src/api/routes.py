@@ -514,8 +514,12 @@ def _parse_crontab() -> list[dict]:
         if is_disabled:
             line = line[1:].strip()
 
-        # 빈 주석이거나 설명 주석은 건너뜀
-        if not line or not any(c.isdigit() or c == "*" for c in line[:20]):
+        # 빈 주석이거나 설명 주석은 건너뜀 (크론 시간 필드로 시작하지 않으면 설명 주석)
+        if not line:
+            continue
+        # 크론 라인은 숫자나 *로 시작해야 함 (분 필드)
+        first_char = line[0] if line else ""
+        if not (first_char.isdigit() or first_char == "*"):
             continue
 
         parts = line.split(None, 5)
