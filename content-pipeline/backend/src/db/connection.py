@@ -52,6 +52,25 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_history_task_time
                 ON execution_history(task_id, started_at);
 
+            CREATE TABLE IF NOT EXISTS agent_goals (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                projects TEXT NOT NULL,
+                status TEXT DEFAULT 'active' CHECK(status IN ('active','completed','paused')),
+                priority TEXT DEFAULT 'medium' CHECK(priority IN ('high','medium','low')),
+                deadline TEXT,
+                progress TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_config (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+
             CREATE TABLE IF NOT EXISTS pipeline_runs (
                 id TEXT PRIMARY KEY,
                 status TEXT NOT NULL,

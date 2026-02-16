@@ -1,62 +1,83 @@
+import asyncio
+import json
 import logging
 import re
-
-import anthropic
 
 from src.config import Config
 
 logger = logging.getLogger(__name__)
 
-OUTLINE_SYSTEM = """You are a Korean tech/lifestyle blog content planner.
-Create a detailed blog post outline for the given keyword.
-The outline should include:
-- A compelling title (SEO-friendly, 30-60 chars)
-- 4-6 main sections with subpoints
-- Target audience consideration
-- Key points to cover
+OUTLINE_PROMPT = """당신은 한국어 블로그 콘텐츠 기획자입니다.
+다음 키워드로 블로그 포스트 아웃라인을 작성해주세요.
 
-Respond in Korean. Format as Markdown."""
+키워드: {keyword}
 
-ARTICLE_SYSTEM = """You are a professional Korean blog writer.
-Write a complete, well-structured blog post in Korean based on the given outline.
+아웃라인에 포함할 것:
+- SEO 친화적인 제목 (30-60자)
+- 4-6개 주요 섹션 (하위 포인트 포함)
+- 타겟 독자 고려
+- 다룰 핵심 포인트
 
-Requirements:
-- Write in Korean, natural and engaging tone
-- Use Markdown format
-- Include H2 (##) and H3 (###) headings
-- Each paragraph should be concise (3-5 sentences max)
-- Include a compelling introduction and conclusion
-- Target 1500-2500 words
-- Use the target keyword naturally throughout (2-3% density)
-- Include practical tips, examples, or data where appropriate
+마크다운 형식으로 한국어로 응답해주세요."""
 
-Do NOT include the title as H1 — start directly with the introduction."""
+ARTICLE_PROMPT = """당신은 전문 한국어 블로그 작가입니다.
 
-META_SYSTEM = """You are an SEO specialist. Given a blog post title and content, generate:
-1. A URL-friendly slug (lowercase, hyphens, no Korean — use romanized/English keywords)
-2. A concise excerpt (1-2 sentences, max 160 chars, in Korean)
-3. 3-5 relevant tags (in Korean)
+키워드: {keyword}
+제목: {title}
 
-Respond in this exact JSON format:
-{"slug": "...", "excerpt": "...", "tags": ["tag1", "tag2", "tag3"]}"""
+아웃라인:
+{outline}
+
+이 아웃라인을 바탕으로 완성된 블로그 글을 작성해주세요.
+
+요구사항:
+- 한국어, 자연스럽고 매력적인 톤
+- 마크다운 형식
+- H2 (##)와 H3 (###) 헤딩 사용
+- 각 단락 3-5문장
+- 매력적인 서론과 결론
+- 1500-2500단어 목표
+- 키워드를 자연스럽게 배치 (2-3% 밀도)
+- 실용적인 팁, 예시, 데이터 포함
+
+제목은 H1으로 넣지 말고, 서론부터 바로 시작하세요."""
+
+META_PROMPT = """다음 블로그 글의 메타데이터를 생성해주세요.
+
+제목: {title}
+
+본문:
+{content_preview}
+
+다음 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
+{{"slug": "영문-하이픈-slug", "excerpt": "한국어 요약 1-2문장 (160자 이내)", "tags": ["태그1", "태그2", "태그3"]}}"""
+
+
+async def _run_claude_cli(prompt: str) -> str:
+    """Run claude CLI with --print mode."""
+    proc = await asyncio.create_subprocess_exec(
+        "claude", "--print", "--dangerously-skip-permissions", prompt,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        env={
+            "PATH": "/Users/namwook/.local/bin:/usr/local/bin:/usr/bin:/bin",
+            "HOME": "/Users/namwook",
+        },
+    )
+    stdout, stderr = await proc.communicate()
+
+    if proc.returncode != 0:
+        err_msg = stderr.decode().strip()
+        raise RuntimeError(f"claude CLI failed (code {proc.returncode}): {err_msg}")
+
+    return stdout.decode().strip()
 
 
 async def generate_draft(keyword: str, config: Config) -> dict:
-    """Generate a blog post draft using Claude API."""
-    if not config.anthropic_api_key:
-        raise ValueError("ANTHROPIC_API_KEY not configured")
-
-    client = anthropic.AsyncAnthropic(api_key=config.anthropic_api_key)
-
+    """Generate a blog post draft using claude CLI."""
     # Step 1: Generate outline
     logger.info(f"[generator] Generating outline for: {keyword}")
-    outline_resp = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=1500,
-        system=OUTLINE_SYSTEM,
-        messages=[{"role": "user", "content": f"키워드: {keyword}\n\n이 키워드로 블로그 포스트 아웃라인을 작성해주세요."}],
-    )
-    outline = outline_resp.content[0].text
+    outline = await _run_claude_cli(OUTLINE_PROMPT.format(keyword=keyword))
 
     # Extract title from outline
     title = keyword
@@ -71,36 +92,24 @@ async def generate_draft(keyword: str, config: Config) -> dict:
 
     # Step 2: Generate full article
     logger.info(f"[generator] Generating article: {title}")
-    article_resp = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=4000,
-        system=ARTICLE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": f"키워드: {keyword}\n제목: {title}\n\n아웃라인:\n{outline}\n\n이 아웃라인을 바탕으로 완성된 블로그 글을 작성해주세요.",
-        }],
-    )
-    content = article_resp.content[0].text
+    content = await _run_claude_cli(ARTICLE_PROMPT.format(
+        keyword=keyword,
+        title=title,
+        outline=outline,
+    ))
 
     # Step 3: Generate metadata
     logger.info("[generator] Generating metadata")
-    meta_resp = await client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=500,
-        system=META_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": f"제목: {title}\n\n본문:\n{content[:2000]}",
-        }],
-    )
-    meta_text = meta_resp.content[0].text
+    meta_text = await _run_claude_cli(META_PROMPT.format(
+        title=title,
+        content_preview=content[:2000],
+    ))
 
     # Parse meta JSON
     slug = keyword.lower().replace(" ", "-")[:50]
     excerpt = ""
     tags: list[str] = []
     try:
-        import json
         meta_match = re.search(r"\{.*\}", meta_text, re.DOTALL)
         if meta_match:
             meta = json.loads(meta_match.group())

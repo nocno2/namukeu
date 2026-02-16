@@ -8,7 +8,9 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from src.api import auth, history, pipeline, tasks
+from src.agent.config import AgentConfigStore
+from src.agent.goals import GoalStore
+from src.api import agent, auth, history, pipeline, tasks
 from src.config import Config
 from src.db.connection import Database
 from src.scheduler.engine import SchedulerEngine
@@ -28,10 +30,17 @@ async def lifespan(app: FastAPI):
     db = Database(config.db_path)
     scheduler = SchedulerEngine(db)
 
+    # Agent stores
+    goal_store = GoalStore(db)
+    config_store = AgentConfigStore(db)
+
     # Dependency overrides
     app.dependency_overrides[auth.get_db] = lambda: db
     app.dependency_overrides[auth.get_config] = lambda: config
     app.dependency_overrides[tasks.get_scheduler] = lambda: scheduler
+    app.dependency_overrides[agent.get_goal_store] = lambda: goal_store
+    app.dependency_overrides[agent.get_config_store] = lambda: config_store
+    app.dependency_overrides[agent.get_config] = lambda: config
 
     db.cleanup_expired()
     await scheduler.start()
@@ -58,6 +67,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(history.router)
     app.include_router(pipeline.router)
+    app.include_router(agent.router)
 
     # Health check (no auth)
     @app.get("/health")
