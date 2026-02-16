@@ -1,7 +1,7 @@
 """AuditLog — SQLite-based audit logging. Port of agent-core/src/audit.ts"""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from src.db.connection import Database
 
@@ -47,11 +47,13 @@ class AuditLog:
         return row["total"] if row else 0.0
 
     def get_proactive_count_last_hour(self) -> int:
+        one_hour_ago = (datetime.now() - timedelta(hours=1)).isoformat()
         with self.db._lock:
             row = self.db.conn.execute(
                 """SELECT COUNT(*) as cnt FROM agent_audit
                    WHERE type = 'heartbeat'
-                   AND ts >= datetime('now', '-1 hour')"""
+                   AND ts >= ?""",
+                (one_hour_ago,),
             ).fetchone()
         return row["cnt"] if row else 0
 
