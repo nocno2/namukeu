@@ -8,14 +8,24 @@ import json
 import logging
 import re
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from src.config import Config
 from src.pipeline.generator import ARTICLE_PROMPT, META_PROMPT, OUTLINE_PROMPT
+from src.pipeline.publisher import create_draft_in_blog
 from src.pipeline.reviewer import ai_review, calculate_readability, calculate_seo_score
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/n8n", tags=["n8n"])
+
+
+# --- Dependency ---
+
+
+def get_config() -> Config:
+    """Dependency injection for Config (overridden in main.py)."""
+    raise NotImplementedError
 
 
 # --- Pydantic Models ---
@@ -80,6 +90,22 @@ class GenerateImagesResponse(BaseModel):
     content_with_images: str
     image_prompts: list[str]
     image_count: int
+
+
+class SaveDraftRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    slug: str = Field(..., min_length=1, max_length=100)
+    content: str = Field(..., min_length=100)
+    excerpt: str = Field(..., max_length=500)
+    keyword: str = Field(..., min_length=1, max_length=200)
+    tags: list[str] = Field(default_factory=list)
+    outline: str | None = None
+
+
+class SaveDraftResponse(BaseModel):
+    draft_id: int
+    status: str
+    message: str
 
 
 # --- Helper Functions ---
@@ -394,6 +420,43 @@ async def generate_images(body: GenerateImagesRequest):
     except Exception as e:
         logger.error(f"[n8n/generate-images] Failed: {e}")
         raise HTTPException(status_code=500, detail="Image generation failed")
+
+
+@router.post("/save-draft", response_model=SaveDraftResponse)
+async def save_draft(body: SaveDraftRequest, config: Config = Depends(get_config)):
+    """
+    완성된 블로그 글을 ai-blog DB에 draft로 저장.
+
+    - n8n 워크플로우의 마지막 단계
+    - 관리자 페이지에서 승인/반려 가능
+    """
+    try:
+        draft_data = {
+            "keyword": body.keyword,
+            "title": body.title,
+            "slug": body.slug,
+            "content": body.content,
+            "excerpt": body.excerpt,
+            "tags": body.tags,
+            "outline": body.outline or "",
+        }
+
+        draft_id = create_draft_in_blog(draft_data, config)
+        if not draft_id:
+            raise HTTPException(status_code=500, detail="Failed to save draft to blog DB")
+
+        logger.info(f"[n8n/save-draft] Draft saved: id={draft_id}, title={body.title}")
+        return SaveDraftResponse(
+            draft_id=draft_id,
+            status="written",
+            message=f"Draft saved successfully (ID: {draft_id}). Awaiting approval in admin panel.",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[n8n/save-draft] Failed: {e}")
+        raise HTTPException(status_code=500, detail="Draft save failed")
 
 
 # --- Health Check ---

@@ -88,6 +88,7 @@ async def lifespan(app: FastAPI):
     app.dependency_overrides[agent.get_audit_log] = lambda: audit_log
     app.dependency_overrides[agent.get_forbidden] = lambda: forbidden
     app.dependency_overrides[agent.get_evolution_engine] = lambda: evolution_engine
+    app.dependency_overrides[n8n.get_config] = lambda: config
 
     db.cleanup_expired()
     await scheduler.start()

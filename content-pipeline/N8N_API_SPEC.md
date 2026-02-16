@@ -314,7 +314,69 @@
 
 ---
 
-### 6. 헬스체크
+### 6. Draft 저장 (신규)
+
+**POST** `/api/n8n/save-draft`
+
+완성된 블로그 글을 ai-blog DB에 draft로 저장합니다. (관리자 승인 대기)
+
+#### Request Body
+
+```json
+{
+  "title": "두바이 쫀득 쿠키로 이해하는 로컬 LLM",
+  "slug": "dubai-cookie-local-llm",
+  "content": "## 서론\n...\n![이미지](https://...)",
+  "excerpt": "두쫀쿠에 비유해 로컬 LLM을 쉽게 설명합니다.",
+  "keyword": "두바이 쫀득 쿠키 맥미니 로컬 LLM",
+  "tags": ["AI", "로컬LLM", "맥미니"],
+  "outline": "# 아웃라인\n..."
+}
+```
+
+| 필드 | 타입 | 필수 | 설명 |
+|------|------|------|------|
+| `title` | string | ✅ | 글 제목 (1-200자) |
+| `slug` | string | ✅ | URL slug (1-100자) |
+| `content` | string | ✅ | 본문 마크다운 (최소 100자) |
+| `excerpt` | string | ✅ | 요약 (최대 500자) |
+| `keyword` | string | ✅ | 타겟 키워드 (1-200자) |
+| `tags` | array | ❌ | 태그 배열 |
+| `outline` | string | ❌ | 아웃라인 |
+
+#### Response (200 OK)
+
+```json
+{
+  "draft_id": 42,
+  "status": "written",
+  "message": "Draft saved successfully (ID: 42). Awaiting approval in admin panel."
+}
+```
+
+#### n8n 설정 예시
+
+**HTTP Request Node**:
+- Method: `POST`
+- URL: `http://localhost:8003/api/n8n/save-draft`
+- Body:
+  ```json
+  {
+    "title": "{{ $json.title }}",
+    "slug": "{{ $json.slug }}",
+    "content": "{{ $json.content }}",
+    "excerpt": "{{ $json.excerpt }}",
+    "keyword": "{{ $json.keyword }}",
+    "tags": {{ $json.tags }},
+    "outline": "{{ $json.outline }}"
+  }
+  ```
+
+**다음 단계**: 관리자 페이지 (`http://localhost:3100/admin/drafts`)에서 승인/반려
+
+---
+
+### 7. 헬스체크
 
 **GET** `/api/n8n/health`
 
@@ -333,7 +395,7 @@ API 서버 상태 확인.
 
 ## n8n 워크플로우 예시
 
-### 시나리오 1: 아이디어 → 키워드 → 초안 → 이미지 → 검토 → 첨삭 (전체 자동화)
+### 시나리오 1: 아이디어 → 키워드 → 초안 → 이미지 → 검토 → 첨삭 → 저장 (전체 자동화)
 
 ```
 ┌─────────────────┐
@@ -381,7 +443,15 @@ API 서버 상태 확인.
 └───┬────────┬────┘
     │ True   │ False
     v        v
- [Publish] [Revise] → Review 다시
+ [Save]   [Revise] → Review 다시
+    │
+    v
+┌─────────────────┐
+│  Save Draft     │ POST /api/n8n/save-draft
+└────────┬────────┘
+         │
+         v
+    ✅ 완료! 관리자 승인 대기
 ```
 
 ### 시나리오 2: 키워드만 있을 때 (기존 방식)
@@ -471,6 +541,7 @@ API 서버 상태 확인.
 | `/review` | 20-30초 | 1회 (AI 리뷰) |
 | `/revise` | 40-60초 | 2회 (첨삭 + 변경 요약) |
 | `/generate-images` | 15-25초 | 1회 (이미지 위치 + 프롬프트) |
+| `/save-draft` | <1초 | 0회 (DB INSERT만) |
 
 **n8n 타임아웃 설정**: 각 HTTP Request Node의 타임아웃을 **120초** 이상 설정 권장.
 
