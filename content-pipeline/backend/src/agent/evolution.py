@@ -34,7 +34,7 @@ class EvolutionEngine:
         self._ensure_table()
 
     def _ensure_table(self):
-        """Ensure evolution_state table exists (migration safety)."""
+        """Ensure evolution_state table exists and agent_goals supports 'proposed' status."""
         with self.db._lock:
             self.db.conn.execute("""
                 CREATE TABLE IF NOT EXISTS evolution_state (
@@ -51,6 +51,40 @@ class EvolutionEngine:
                 self.db.conn.execute("SELECT source FROM agent_goals LIMIT 1")
             except Exception:
                 self.db.conn.execute("ALTER TABLE agent_goals ADD COLUMN source TEXT DEFAULT 'user'")
+
+            # Migrate agent_goals CHECK constraint to include 'proposed'
+            # SQLite can't ALTER CHECK constraints, so recreate table if needed
+            try:
+                # Test if 'proposed' status is allowed
+                self.db.conn.execute(
+                    "INSERT INTO agent_goals (id, title, description, projects, status, created_at, updated_at) "
+                    "VALUES ('__test__', 'test', 'test', '[]', 'proposed', '', '')"
+                )
+                self.db.conn.execute("DELETE FROM agent_goals WHERE id = '__test__'")
+            except Exception:
+                # CHECK constraint blocks 'proposed' — recreate the table
+                logger.info("Migrating agent_goals table to support 'proposed' status")
+                self.db.conn.executescript("""
+                    ALTER TABLE agent_goals RENAME TO agent_goals_old;
+                    CREATE TABLE agent_goals (
+                        id TEXT PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        projects TEXT NOT NULL,
+                        status TEXT DEFAULT 'active' CHECK(status IN ('active','completed','paused','proposed')),
+                        priority TEXT DEFAULT 'medium' CHECK(priority IN ('high','medium','low')),
+                        deadline TEXT,
+                        progress TEXT,
+                        source TEXT DEFAULT 'user',
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
+                    INSERT INTO agent_goals SELECT
+                        id, title, description, projects, status, priority, deadline, progress,
+                        COALESCE(source, 'user'), created_at, updated_at
+                    FROM agent_goals_old;
+                    DROP TABLE agent_goals_old;
+                """)
             self.db.conn.commit()
 
     def get_next_project(self) -> str:
