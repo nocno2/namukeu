@@ -64,6 +64,32 @@ export function seedInitialTasks(taskStore: TaskStore): void {
     notifyUser: true,
   });
 
+  // 10분 주기 서비스 모니터링 — 헬스체크 + 자체 개선점 파악
+  taskStore.createTask({
+    title: "서비스 모니터링 및 자체 개선",
+    prompt:
+      "10분 주기 자동 모니터링 태스크입니다.\n\n" +
+      "1. 서비스 헬스체크:\n" +
+      "   - coin-auto-trade: curl -s http://127.0.0.1:8001/status (Authorization: Bearer test-token-for-dev)\n" +
+      "   - train-go: curl -s http://127.0.0.1:8000/health\n" +
+      "   - dashboard: curl -s http://127.0.0.1:8002/health\n" +
+      "   - ai-blog: curl -s http://127.0.0.1:3100\n" +
+      "   - content-pipeline: curl -s http://127.0.0.1:8003/health\n\n" +
+      "2. 장애 감지 시:\n" +
+      "   - 해당 서비스의 프로세스 상태 확인\n" +
+      "   - 최근 에러 로그 확인\n" +
+      "   - 가능하면 재시작 시도 (1번만)\n\n" +
+      "3. 자체 개선점 파악:\n" +
+      "   - 최근 에러 로그에서 반복되는 패턴 탐지\n" +
+      "   - 개선할 수 있는 간단한 항목이 있으면 메모\n\n" +
+      "결과 요약: 모든 서비스 정상이면 '✅ 전체 정상'만 보고.\n" +
+      "장애나 개선점이 있을 때만 상세 보고해.",
+    type: "recurring",
+    project: "GENERAL",
+    scheduleCron: "*/10 * * * *",
+    notifyUser: false,
+  });
+
   // Server down auto-response
   taskStore.createTask({
     title: "서버 장애 대응",
@@ -80,5 +106,5 @@ export function seedInitialTasks(taskStore: TaskStore): void {
     notifyUser: true,
   });
 
-  console.log("[agent] 4 initial tasks seeded.");
+  console.log("[agent] 5 initial tasks seeded.");
 }
