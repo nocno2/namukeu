@@ -492,6 +492,15 @@ class Heartbeat:
 
     async def get_status(self) -> dict:
         stats = self.audit.get_today_stats(self.config.user_timezone)
+        # Convert ISO string to ms timestamp for frontend
+        last_at = stats["last_task_at"]
+        last_at_ms = None
+        if last_at:
+            try:
+                dt = datetime.fromisoformat(last_at.replace("Z", "+00:00"))
+                last_at_ms = int(dt.timestamp() * 1000)
+            except (ValueError, AttributeError):
+                pass
         return {
             "running": not self._stopped,
             "runningTasks": [r.to_dict() for r in self._running_tasks.values()],
@@ -500,6 +509,6 @@ class Heartbeat:
             "monitorsEnabled": self._monitors_enabled,
             "todayTaskCount": stats["task_count"],
             "todayCost": stats["total_cost"],
-            "lastTaskExecutedAt": stats["last_task_at"],
+            "lastTaskExecutedAt": last_at_ms,
             "monitorStatus": self._monitor_system.get_status() if self._monitor_system else None,
         }
