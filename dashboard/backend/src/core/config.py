@@ -109,6 +109,18 @@ class Config:
                 git_codename="DASH",
                 error_log_path=f"{log_base}/dashboard.error.log",
             ),
+            ServiceDef(
+                name="api-gateway",
+                display_name="API Gateway",
+                description="API 게이트웨이 (리버스 프록시)",
+                type="http",
+                port=8080,
+                health_url="http://127.0.0.1:8080/health",
+                launchd_label="com.namukeu.api-gateway",
+                git_dir=project_root,
+                git_codename="GATE",
+                error_log_path=f"{log_base}/api-gateway.error.log",
+            ),
         ]
 
         return cls(
