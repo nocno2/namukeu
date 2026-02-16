@@ -203,9 +203,12 @@ export interface TrainReservation {
 export interface LaunchAgent {
   label: string;
   display_name: string;
+  description: string;
+  schedule: string | null;
   status: string;
   pid: number | null;
   last_exit: number | null;
+  last_run: string | null;
 }
 
 export interface AgentStatus {

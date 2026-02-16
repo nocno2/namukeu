@@ -423,23 +423,93 @@ async def train_summary(
     }
 
 
-# --- LaunchAgent Schedule ---
+# --- Scheduled Tasks (주기적 예약 작업만) ---
 
-LAUNCHD_LABELS = [
-    ("com.namukeu.dashboard", "Dashboard"),
-    ("com.namukeu.train-go", "Train Go"),
-    ("com.namukeu.claude-telegram", "Claude Telegram"),
-    ("com.namukeu.claude-discord", "Claude Discord"),
-    ("com.namukeu.cloudflared", "Cloudflared"),
-    ("com.namukeu.check-ip", "IP 변경 감지"),
+import plistlib
+from pathlib import Path
+
+SCHEDULED_TASKS = [
+    {
+        "label": "com.namukeu.check-ip",
+        "display_name": "IP 변경 감지",
+        "description": "공인 IP 변경 시 텔레그램 알림",
+        "plist": Path.home() / "Library/LaunchAgents/com.namukeu.check-ip.plist",
+    },
+    {
+        "label": "com.namukeu.blog-pipeline",
+        "display_name": "블로그 자동 발행",
+        "description": "AI 블로그 글 자동 생성·발행",
+        "plist": Path.home() / "Library/LaunchAgents/com.namukeu.blog-pipeline.plist",
+    },
 ]
 
 
+def _parse_schedule(plist_path: Path) -> str | None:
+    """plist에서 스케줄 정보를 사람이 읽기 쉬운 형태로 변환"""
+    try:
+        with open(plist_path, "rb") as f:
+            data = plistlib.load(f)
+    except Exception:
+        return None
+
+    # StartInterval (초 단위 반복)
+    interval = data.get("StartInterval")
+    if interval:
+        if interval < 60:
+            return f"{interval}초마다"
+        elif interval < 3600:
+            return f"{interval // 60}분마다"
+        else:
+            return f"{interval // 3600}시간마다"
+
+    # StartCalendarInterval (크론 스타일)
+    cal = data.get("StartCalendarInterval")
+    if cal:
+        entries = cal if isinstance(cal, list) else [cal]
+        times = []
+        for entry in entries:
+            hour = entry.get("Hour", "*")
+            minute = entry.get("Minute", "0")
+            times.append(f"{hour:>2}:{int(minute):02d}")
+        if len(times) == 1:
+            return f"매일 {times[0]}"
+        return f"매일 {', '.join(times)}"
+
+    return None
+
+
+def _get_last_run(plist_path: Path) -> str | None:
+    """로그 파일의 마지막 수정 시간으로 최근 실행 시각 추정"""
+    try:
+        with open(plist_path, "rb") as f:
+            data = plistlib.load(f)
+        log_path = data.get("StandardOutPath") or data.get("StandardErrorPath")
+        if log_path:
+            log_file = Path(log_path)
+            if log_file.exists():
+                mtime = log_file.stat().st_mtime
+                from datetime import datetime, timezone
+                return datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+    except Exception:
+        pass
+    return None
+
+
 @router.get("/system/launchagents")
-def launchagent_status(_=Depends(verify_session)):
-    agents = []
-    for label, display in LAUNCHD_LABELS:
-        info = {"label": label, "display_name": display, "status": "unknown", "pid": None, "last_exit": None}
+def scheduled_tasks_status(_=Depends(verify_session)):
+    tasks = []
+    for task_def in SCHEDULED_TASKS:
+        label = task_def["label"]
+        info = {
+            "label": label,
+            "display_name": task_def["display_name"],
+            "description": task_def["description"],
+            "schedule": _parse_schedule(task_def["plist"]),
+            "status": "unknown",
+            "pid": None,
+            "last_exit": None,
+            "last_run": _get_last_run(task_def["plist"]),
+        }
         try:
             proc = subprocess.run(
                 ["launchctl", "list", label],
@@ -462,8 +532,8 @@ def launchagent_status(_=Depends(verify_session)):
                 info["status"] = "not_loaded"
         except Exception:
             info["status"] = "error"
-        agents.append(info)
-    return {"agents": agents}
+        tasks.append(info)
+    return {"agents": tasks}
 
 
 # --- Agent Control Proxy ---
