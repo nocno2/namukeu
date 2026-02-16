@@ -3,7 +3,7 @@ import { eq, desc, sql } from "drizzle-orm";
 import Link from "next/link";
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 export const metadata: Metadata = {
   title: "Tags",

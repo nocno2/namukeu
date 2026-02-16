@@ -8,7 +8,7 @@ export default function ViewTracker({ slug }: { slug: string }) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ slug }),
-    }).catch(() => {});
+    }).catch((e) => console.warn("조회수 기록 실패:", e));
   }, [slug]);
 
   return null;

@@ -2,8 +2,9 @@ import { db, schema } from "@/lib/db";
 import { desc, eq, sql } from "drizzle-orm";
 import PostCard from "@/components/PostCard";
 import Link from "next/link";
+import { generateWebSiteJsonLd } from "@/lib/seo";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 export default async function HomePage() {
   const posts = await db
@@ -57,6 +58,10 @@ export default async function HomePage() {
 
   return (
     <div>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(generateWebSiteJsonLd()) }}
+      />
       {/* Hero */}
       <section className="border-b border-[var(--border-light)]">
         <div className="mx-auto max-w-4xl px-6 py-16 md:py-20">

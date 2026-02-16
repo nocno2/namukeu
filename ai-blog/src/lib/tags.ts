@@ -1,13 +1,6 @@
 import { db, schema } from "@/lib/db";
 import { eq } from "drizzle-orm";
-
-function slugify(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s가-힣-]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
+import { slugify } from "@/lib/utils";
 
 export async function syncPostTags(postId: number, tagNames: string[]) {
   // Delete existing tags for this post

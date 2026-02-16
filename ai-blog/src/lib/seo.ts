@@ -43,6 +43,20 @@ export function generatePostMetadata(post: {
   };
 }
 
+export function generateWebSiteJsonLd() {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: SITE_NAME,
+    url: SITE_URL,
+    description: "AI와 차세대 기술의 인사이트 — 최신 트렌드, 심층 분석, 실용 가이드",
+    publisher: {
+      "@type": "Organization",
+      name: SITE_NAME,
+    },
+  };
+}
+
 export function generateJsonLd(post: {
   title: string;
   excerpt?: string | null;

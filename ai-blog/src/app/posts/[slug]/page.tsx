@@ -1,5 +1,5 @@
 import { db, schema } from "@/lib/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne, desc, sql, inArray } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { markdownToHtml } from "@/lib/markdown";
 import { generatePostMetadata, generateJsonLd } from "@/lib/seo";
@@ -9,7 +9,7 @@ import ViewTracker from "@/components/ViewTracker";
 import Link from "next/link";
 import type { Metadata } from "next";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 3600;
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -62,6 +62,39 @@ export default async function PostPage({ params }: Props) {
   });
 
   const siteName = process.env.NEXT_PUBLIC_SITE_NAME || "AI Blog";
+
+  // 관련 글: 같은 태그를 공유하는 글을 공통 태그 수 기준으로 정렬
+  const tagIds = tags.length > 0
+    ? await db
+        .select({ tagId: schema.tags.id })
+        .from(schema.tags)
+        .where(inArray(schema.tags.slug, tags.map((t) => t.slug)))
+        .then((rows) => rows.map((r) => r.tagId))
+    : [];
+
+  let relatedPosts: { title: string; slug: string; featuredImage: string | null; publishedAt: string | null }[] = [];
+
+  if (tagIds.length > 0) {
+    relatedPosts = await db
+      .select({
+        title: schema.posts.title,
+        slug: schema.posts.slug,
+        featuredImage: schema.posts.featuredImage,
+        publishedAt: schema.posts.publishedAt,
+      })
+      .from(schema.posts)
+      .innerJoin(schema.postTags, eq(schema.posts.id, schema.postTags.postId))
+      .where(
+        and(
+          eq(schema.posts.status, "published"),
+          ne(schema.posts.id, post.id),
+          inArray(schema.postTags.tagId, tagIds),
+        )
+      )
+      .groupBy(schema.posts.id)
+      .orderBy(desc(sql`count(*)`), desc(schema.posts.publishedAt))
+      .limit(4);
+  }
 
   return (
     <>
@@ -120,6 +153,36 @@ export default async function PostPage({ params }: Props) {
               ))}
             </div>
           </footer>
+        )}
+
+        {relatedPosts.length > 0 && (
+          <section className="mt-12 pt-8 border-t border-[var(--border-light)]">
+            <h2 className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wider mb-6">
+              관련 글
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {relatedPosts.map((rp) => (
+                <Link
+                  key={rp.slug}
+                  href={`/posts/${rp.slug}`}
+                  className="group block p-4 rounded-xl border border-[var(--border)]/50 bg-[var(--bg-card)] hover:border-[var(--accent)]/30 transition"
+                >
+                  <h3 className="text-sm font-semibold text-[var(--text-secondary)] group-hover:text-[var(--accent)] transition line-clamp-2">
+                    {rp.title}
+                  </h3>
+                  {rp.publishedAt && (
+                    <time dateTime={rp.publishedAt} className="text-xs text-[var(--text-muted)] mt-1 block">
+                      {new Date(rp.publishedAt).toLocaleDateString("ko-KR", {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </time>
+                  )}
+                </Link>
+              ))}
+            </div>
+          </section>
         )}
       </article>
     </>

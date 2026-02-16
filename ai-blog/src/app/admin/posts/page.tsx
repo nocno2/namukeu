@@ -26,8 +26,13 @@ export default function AdminPostsPage() {
 
   async function fetchPosts() {
     const res = await fetch("/api/posts?all=true&limit=100");
-    if (!res.ok) {
+    if (res.status === 401) {
       router.push("/admin/login");
+      return;
+    }
+    if (!res.ok) {
+      console.error("글 목록 로드 실패:", res.status);
+      setLoading(false);
       return;
     }
     const data = await res.json();
@@ -37,7 +42,11 @@ export default function AdminPostsPage() {
 
   async function handleDelete(id: number) {
     if (!confirm("정말 삭제하시겠습니까?")) return;
-    await fetch(`/api/posts/${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/posts/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      alert("삭제에 실패했습니다.");
+      return;
+    }
     fetchPosts();
   }
 

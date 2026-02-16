@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 interface PostCardProps {
   title: string;
@@ -40,11 +41,16 @@ export default function PostCard({
     <article className="card-hover bg-[var(--bg-card)] rounded-xl overflow-hidden border border-[var(--border)]/50">
       <Link href={`/posts/${slug}`} className="block overflow-hidden">
         {featuredImage ? (
-          <img
-            src={featuredImage}
-            alt={title}
-            className="w-full h-44 object-cover hover:scale-105 transition duration-500"
-          />
+          <div className="relative w-full h-44">
+            <Image
+              src={featuredImage}
+              alt={title}
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+              className="object-cover hover:scale-105 transition duration-500"
+              unoptimized={featuredImage.startsWith("/")}
+            />
+          </div>
         ) : (
           <div className={`w-full h-44 bg-gradient-to-br ${getGradient(slug)} flex items-end p-5`}>
             <span className="text-sm font-medium text-[var(--text-tertiary)] line-clamp-2 leading-relaxed">

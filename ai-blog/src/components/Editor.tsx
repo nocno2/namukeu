@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { slugify } from "@/lib/utils";
 
 interface Category {
   id: number;
@@ -21,14 +22,6 @@ interface PostData {
   metaTitle: string;
   metaDescription: string;
   tags: string[];
-}
-
-function slugify(text: string) {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s가-힣-]/g, "")
-    .replace(/[\s_]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 export default function Editor({ postId }: { postId?: number }) {
@@ -55,7 +48,7 @@ export default function Editor({ postId }: { postId?: number }) {
     fetch("/api/categories")
       .then((r) => r.json())
       .then(setCategories)
-      .catch(() => {});
+      .catch((e) => console.error("카테고리 로드 실패:", e));
 
     if (postId) {
       fetch(`/api/posts/${postId}`)
