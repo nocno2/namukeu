@@ -377,7 +377,7 @@ export async function createBot(): Promise<Bot> {
 
   bot.command("tasks", async (ctx) => {
     try {
-      const tasks = await pipelineApi("/api/tasks?active_only=true");
+      const tasks = await pipelineApi("/api/agent-tasks?active_only=true");
       if (!tasks || tasks.length === 0) {
         await ctx.reply("No active tasks.");
         return;
@@ -406,7 +406,7 @@ export async function createBot(): Promise<Bot> {
     }
 
     try {
-      await pipelineApi(`/api/tasks/${search}/cancel`, "POST");
+      await pipelineApi(`/api/agent-tasks/${search}/cancel`, "POST");
       await ctx.reply(`Task cancelled: ${search}`);
     } catch (err) {
       await ctx.reply(`Failed to cancel: ${err}`);
@@ -542,7 +542,7 @@ export async function createBot(): Promise<Bot> {
     }
 
     try {
-      await pipelineApi(`/api/tasks/${searchText}/approve`, "POST");
+      await pipelineApi(`/api/agent-tasks/${searchText}/approve`, "POST");
       await ctx.reply(`승인 완료. 다음 heartbeat tick에서 실행됩니다.`);
     } catch (err) {
       await ctx.reply(`승인 실패: ${err}`);
@@ -551,7 +551,7 @@ export async function createBot(): Promise<Bot> {
 
   bot.command("approve_all", async (ctx) => {
     try {
-      const result = await pipelineApi("/api/tasks/approve-all", "POST");
+      const result = await pipelineApi("/api/agent-tasks/approve-all", "POST");
       await ctx.reply(`✓ ${result.count || 0}건 전체 승인 완료.`);
     } catch (err) {
       await ctx.reply(`전체 승인 실패: ${err}`);
@@ -560,7 +560,7 @@ export async function createBot(): Promise<Bot> {
 
   bot.command("pending", async (ctx) => {
     try {
-      const tasks = await pipelineApi("/api/tasks?active_only=true");
+      const tasks = await pipelineApi("/api/agent-tasks?active_only=true");
       const pending = (tasks || []).filter((t: any) => t.requires_approval);
       if (pending.length === 0) {
         await ctx.reply("승인 대기 중인 태스크가 없습니다.");
@@ -583,7 +583,7 @@ export async function createBot(): Promise<Bot> {
   bot.callbackQuery(/^app_(.+)$/, async (ctx) => {
     const idPrefix = ctx.match[1];
     try {
-      await pipelineApi(`/api/tasks/${idPrefix}/approve`, "POST");
+      await pipelineApi(`/api/agent-tasks/${idPrefix}/approve`, "POST");
       await ctx.answerCallbackQuery({ text: "✓ 승인 완료!" });
       await ctx.editMessageText(`✓ 승인됨`);
     } catch {
@@ -594,7 +594,7 @@ export async function createBot(): Promise<Bot> {
   bot.callbackQuery(/^rej_(.+)$/, async (ctx) => {
     const idPrefix = ctx.match[1];
     try {
-      await pipelineApi(`/api/tasks/${idPrefix}/cancel`, "POST");
+      await pipelineApi(`/api/agent-tasks/${idPrefix}/cancel`, "POST");
       await ctx.answerCallbackQuery({ text: "✗ 거절됨" });
       await ctx.editMessageText(`✗ 거절됨`);
     } catch {
