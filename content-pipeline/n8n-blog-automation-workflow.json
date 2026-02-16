@@ -265,16 +265,26 @@
       "typeVersion": 2
     },
     {
+      "id": "prepare-review-request",
+      "name": "Prepare Review Request",
+      "type": "n8n-nodes-base.code",
+      "position": [1200, 400],
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nreturn [\n  {\n    json: {\n      title: data.title,\n      content: data.content,\n      keyword: data.keyword\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
       "id": "review-draft",
       "name": "Review Draft",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1200, 400],
+      "position": [1350, 400],
       "parameters": {
         "url": "http://host.docker.internal:8003/api/n8n/review",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $json.title }}\",\n  \"content\": \"{{ $json.content }}\",\n  \"keyword\": \"{{ $json.keyword }}\"\n}",
+        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
           "timeout": 300000
         }
@@ -285,7 +295,7 @@
       "id": "check-score",
       "name": "Check Score (>= 7?)",
       "type": "n8n-nodes-base.if",
-      "position": [1400, 400],
+      "position": [1550, 400],
       "parameters": {
         "conditions": {
           "options": {
@@ -317,16 +327,26 @@
       "typeVersion": 2.2
     },
     {
+      "id": "prepare-save-request",
+      "name": "Prepare Save Request",
+      "type": "n8n-nodes-base.code",
+      "position": [1750, 300],
+      "parameters": {
+        "jsCode": "const data = $('Replace Image URLs in Content').first().json;\nreturn [\n  {\n    json: {\n      title: data.title,\n      slug: data.slug,\n      content: data.content,\n      excerpt: data.excerpt,\n      keyword: data.keyword,\n      tags: data.tags,\n      outline: data.outline\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
       "id": "save-draft",
       "name": "Save Draft to DB",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1600, 300],
+      "position": [1900, 300],
       "parameters": {
         "url": "http://host.docker.internal:8003/api/n8n/save-draft",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $('Replace Image URLs in Content').first().json.title }}\",\n  \"slug\": \"{{ $('Replace Image URLs in Content').first().json.slug }}\",\n  \"content\": \"{{ $('Replace Image URLs in Content').first().json.content }}\",\n  \"excerpt\": \"{{ $('Replace Image URLs in Content').first().json.excerpt }}\",\n  \"keyword\": \"{{ $('Replace Image URLs in Content').first().json.keyword }}\",\n  \"tags\": {{ $('Replace Image URLs in Content').first().json.tags }},\n  \"outline\": \"{{ $('Replace Image URLs in Content').first().json.outline }}\"\n}",
+        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
           "timeout": 300000
         }
@@ -334,16 +354,26 @@
       "typeVersion": 4.2
     },
     {
+      "id": "prepare-revise-request",
+      "name": "Prepare Revise Request",
+      "type": "n8n-nodes-base.code",
+      "position": [1750, 500],
+      "parameters": {
+        "jsCode": "const contentData = $('Replace Image URLs in Content').first().json;\nconst reviewData = $('Review Draft').first().json;\nconst feedback = reviewData.ai_review?.technical_suggestions?.join(', ') || '';\n\nreturn [\n  {\n    json: {\n      title: contentData.title,\n      content: contentData.content,\n      keyword: contentData.keyword,\n      feedback: feedback\n    }\n  }\n];"
+      },
+      "typeVersion": 2
+    },
+    {
       "id": "revise-draft",
       "name": "Revise Draft",
       "type": "n8n-nodes-base.httpRequest",
-      "position": [1600, 500],
+      "position": [1900, 500],
       "parameters": {
         "url": "http://host.docker.internal:8003/api/n8n/revise",
         "method": "POST",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"title\": \"{{ $('Replace Image URLs in Content').first().json.title }}\",\n  \"content\": \"{{ $('Replace Image URLs in Content').first().json.content }}\",\n  \"keyword\": \"{{ $('Replace Image URLs in Content').first().json.keyword }}\",\n  \"feedback\": \"{{ $('Review Draft').first().json.ai_review.technical_suggestions.join(', ') }}\"\n}",
+        "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
           "timeout": 300000
         }
@@ -354,7 +384,7 @@
       "id": "update-content-after-revise",
       "name": "Update Content After Revise",
       "type": "n8n-nodes-base.code",
-      "position": [1800, 500],
+      "position": [2100, 500],
       "parameters": {
         "jsCode": "const original = $('Replace Image URLs in Content').first().json;\nconst revised = $input.first().json;\n\nreturn [\n  {\n    json: {\n      ...original,\n      content: revised.revised_content\n    }\n  }\n];"
       },
@@ -486,6 +516,9 @@
       "main": [[{ "node": "replace-image-urls", "type": "main", "index": 0 }]]
     },
     "replace-image-urls": {
+      "main": [[{ "node": "prepare-review-request", "type": "main", "index": 0 }]]
+    },
+    "prepare-review-request": {
       "main": [[{ "node": "review-draft", "type": "main", "index": 0 }]]
     },
     "review-draft": {
@@ -493,15 +526,21 @@
     },
     "check-score": {
       "main": [
-        [{ "node": "save-draft", "type": "main", "index": 0 }],
-        [{ "node": "revise-draft", "type": "main", "index": 0 }]
+        [{ "node": "prepare-save-request", "type": "main", "index": 0 }],
+        [{ "node": "prepare-revise-request", "type": "main", "index": 0 }]
       ]
+    },
+    "prepare-save-request": {
+      "main": [[{ "node": "save-draft", "type": "main", "index": 0 }]]
+    },
+    "prepare-revise-request": {
+      "main": [[{ "node": "revise-draft", "type": "main", "index": 0 }]]
     },
     "revise-draft": {
       "main": [[{ "node": "update-content-after-revise", "type": "main", "index": 0 }]]
     },
     "update-content-after-revise": {
-      "main": [[{ "node": "review-draft", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "prepare-review-request", "type": "main", "index": 0 }]]
     }
   },
   "active": false,
