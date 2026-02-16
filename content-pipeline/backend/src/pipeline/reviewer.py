@@ -7,7 +7,13 @@ def calculate_seo_score(title: str, content: str, keyword: str) -> dict:
 
     # Title checks
     checks["title_length"] = 20 <= len(title) <= 70
-    checks["keyword_in_title"] = keyword.lower() in title.lower()
+    # Check if major keyword parts appear in title (split by space)
+    kw_parts = [p for p in keyword.lower().split() if len(p) >= 2]
+    if kw_parts:
+        matched = sum(1 for p in kw_parts if p in title.lower())
+        checks["keyword_in_title"] = matched >= len(kw_parts) * 0.5
+    else:
+        checks["keyword_in_title"] = keyword.lower() in title.lower()
 
     # Content checks
     words = content.split()
@@ -18,9 +24,15 @@ def calculate_seo_score(title: str, content: str, keyword: str) -> dict:
     checks["has_headings"] = len(headings) >= 2
     checks["sufficient_headings"] = len(headings) >= 3
 
-    # Keyword density
-    keyword_count = content.lower().count(keyword.lower())
-    density = keyword_count / max(word_count, 1)
+    # Keyword density (check individual keyword parts)
+    content_lower = content.lower()
+    if kw_parts:
+        part_counts = [content_lower.count(p) for p in kw_parts]
+        avg_count = sum(part_counts) / len(part_counts)
+        density = avg_count / max(word_count, 1)
+    else:
+        keyword_count = content_lower.count(keyword.lower())
+        density = keyword_count / max(word_count, 1)
     checks["keyword_density_ok"] = 0.005 <= density <= 0.04
 
     # Paragraph checks
