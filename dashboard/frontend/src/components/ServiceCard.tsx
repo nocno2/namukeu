@@ -10,6 +10,7 @@ interface Props {
   onToggleCollapse: () => void;
   onTogglePin: () => void;
   onShowLogs: () => void;
+  badge?: { count: number; label: string } | null;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -129,7 +130,7 @@ function timeAgo(dateStr: string): string {
   return `${hours}시간 전`;
 }
 
-export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, onToggleCollapse, onTogglePin, onShowLogs }: Props) {
+export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, onToggleCollapse, onTogglePin, onShowLogs, badge }: Props) {
   const isRunning = service.status === "running";
   const canRestart = service.type !== "self";
   const [restarting, setRestarting] = useState(false);
@@ -194,6 +195,11 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
             }`}
           />
           <h3 className="font-semibold text-sm truncate">{service.display_name}</h3>
+          {badge && badge.count > 0 && (
+            <span className="text-[10px] bg-warning/15 text-warning border border-warning/20 px-1.5 py-0.5 rounded-full shrink-0">
+              {badge.count} {badge.label}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           <button

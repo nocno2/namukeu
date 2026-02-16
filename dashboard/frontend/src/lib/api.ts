@@ -112,6 +112,25 @@ export const api = {
     });
   },
 
+  agentTasks(activeOnly = true) {
+    return request<AgentTask[]>(`/api/agent/tasks?active_only=${activeOnly}`);
+  },
+  agentApproveTask(taskId: string) {
+    return request<{ ok: boolean }>(`/api/agent/tasks/${taskId}/approve`, {
+      method: "POST",
+    });
+  },
+  agentCancelTask(taskId: string) {
+    return request<{ ok: boolean }>(`/api/agent/tasks/${taskId}/cancel`, {
+      method: "POST",
+    });
+  },
+  agentApproveAllTasks() {
+    return request<{ ok: boolean; count: number }>("/api/agent/tasks/approve-all", {
+      method: "POST",
+    });
+  },
+
   serviceUptime(name: string, hours = 24) {
     return request<ServiceUptime>(
       `/api/services/${name}/uptime?hours=${hours}`,
@@ -241,6 +260,26 @@ export interface Incident {
   duration_sec: number | null;
   auto_recovered: number;
   recovery_attempt_count: number;
+}
+
+export interface AgentTask {
+  id: string;
+  type: "one-time" | "recurring" | "event";
+  status: "pending" | "running" | "completed" | "failed" | "paused";
+  title: string;
+  prompt: string;
+  project: string;
+  schedule_cron: string | null;
+  schedule_next: string | null;
+  event_trigger: string | null;
+  last_run_at: string | null;
+  last_result: string | null;
+  run_count: number;
+  max_runs: number | null;
+  notify_user: boolean;
+  requires_approval: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AgentGoal {

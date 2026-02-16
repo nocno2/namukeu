@@ -656,3 +656,78 @@ async def agent_delete_goal(goal_id: str, _=Depends(verify_session)):
             return r.json()
         except httpx.ConnectError:
             raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+# --- Agent Tasks Proxy ---
+
+
+@router.get("/agent/tasks")
+async def agent_tasks(active_only: bool = True, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(
+                f"{AGENT_API_BASE}/api/agent-tasks",
+                params={"active_only": str(active_only).lower()},
+                headers=_agent_headers(), timeout=5.0,
+            )
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.post("/agent/tasks/approve-all")
+async def agent_approve_all_tasks(_=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/agent-tasks/approve-all",
+                headers=_agent_headers(), timeout=5.0,
+            )
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.get("/agent/tasks/{task_id}")
+async def agent_task_detail(task_id: str, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(
+                f"{AGENT_API_BASE}/api/agent-tasks/{task_id}",
+                headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code == 404:
+                raise HTTPException(status_code=404, detail="Task not found")
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.post("/agent/tasks/{task_id}/approve")
+async def agent_approve_task(task_id: str, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/agent-tasks/{task_id}/approve",
+                headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code == 404:
+                raise HTTPException(status_code=404, detail="Task not found")
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.post("/agent/tasks/{task_id}/cancel")
+async def agent_cancel_task(task_id: str, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/agent-tasks/{task_id}/cancel",
+                headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code == 404:
+                raise HTTPException(status_code=404, detail="Task not found")
+            return r.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Agent API unavailable")

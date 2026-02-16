@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type CardPreference, type ServiceStatus } from "../lib/api";
+import { api, type AgentTask, type CardPreference, type ServiceStatus } from "../lib/api";
 import { AgentControl } from "./AgentControl";
+import { AgentTasksPanel } from "./AgentTasksPanel";
 import { BlogTraffic } from "./BlogTraffic";
 import { ClaudeUsage } from "./ClaudeUsage";
 import { CommitPanel } from "./CommitPanel";
@@ -37,6 +38,8 @@ export function Dashboard({ username, onLogout }: Props) {
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [logService, setLogService] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<Record<string, CardPreference>>({});
+  const [showAgentTasks, setShowAgentTasks] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState(0);
 
   const fetchServices = useCallback(async () => {
     try {
@@ -57,12 +60,21 @@ export function Dashboard({ username, onLogout }: Props) {
     } catch { /* ignore */ }
   }, []);
 
+  const fetchPendingApprovals = useCallback(async () => {
+    try {
+      const tasks: AgentTask[] = await api.agentTasks(true);
+      setPendingApprovals(tasks.filter((t) => t.requires_approval).length);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchServices();
     fetchPrefs();
+    fetchPendingApprovals();
     const interval = setInterval(fetchServices, POLL_INTERVAL);
-    return () => clearInterval(interval);
-  }, [fetchServices, fetchPrefs]);
+    const approvalInterval = setInterval(fetchPendingApprovals, POLL_INTERVAL);
+    return () => { clearInterval(interval); clearInterval(approvalInterval); };
+  }, [fetchServices, fetchPrefs, fetchPendingApprovals]);
 
   const isCollapsed = (cardId: string) => !!prefs[cardId]?.collapsed;
   const isPinned = (cardId: string) => !!prefs[cardId]?.pinned;
@@ -156,9 +168,18 @@ export function Dashboard({ username, onLogout }: Props) {
                     <ServiceCard
                       service={card.service}
                       {...cardProps(card.id)}
-                      onClick={() => setSelectedService(card.id)}
+                      onClick={() => {
+                        if (card.id === "content-pipeline") {
+                          setShowAgentTasks(true);
+                        } else {
+                          setSelectedService(card.id);
+                        }
+                      }}
                       onRefresh={fetchServices}
                       onShowLogs={() => setLogService(card.id)}
+                      badge={card.id === "content-pipeline" && pendingApprovals > 0
+                        ? { count: pendingApprovals, label: "승인 대기" }
+                        : undefined}
                     />
                   );
                   break;
@@ -207,6 +228,12 @@ export function Dashboard({ username, onLogout }: Props) {
         <LogViewer
           serviceName={logService}
           onClose={() => setLogService(null)}
+        />
+      )}
+
+      {showAgentTasks && (
+        <AgentTasksPanel
+          onClose={() => { setShowAgentTasks(false); fetchPendingApprovals(); }}
         />
       )}
     </div>
