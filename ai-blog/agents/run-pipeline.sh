@@ -11,6 +11,9 @@
 #   0 9 * * * cd /Users/namwook/Documents/namukeu/ai-blog && ./agents/run-pipeline.sh >> /tmp/blog-pipeline.log 2>&1
 set -euo pipefail
 
+# Claude Code 중첩 세션 방지
+unset CLAUDECODE 2>/dev/null || true
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR/.." || exit 1
 
