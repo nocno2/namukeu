@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class ReservationScheduler:
+    # 스텔스 상수
+    SESSION_REFRESH_INTERVAL = 50  # N회 검색마다 세션 갱신 (로그아웃→로그인)
+    SESSION_REFRESH_JITTER = 15    # 갱신 주기에 ±N 랜덤 편차
+    ERROR_BACKOFF_BASE = 2.0       # 지수 백오프 기본 배수 (초)
+    ERROR_BACKOFF_MAX = 120.0      # 최대 백오프 (초)
+    STARTUP_DELAY_MIN = 2.0        # 매크로 시작 시 초기 지연 최소 (초)
+    STARTUP_DELAY_MAX = 8.0        # 매크로 시작 시 초기 지연 최대 (초)
+
     def __init__(
         self,
         db: Database,
@@ -67,6 +75,26 @@ class ReservationScheduler:
         interval = random.gauss(mid, std)
         return max(self.search_interval_min, min(self.search_interval_max, interval))
 
+    def _error_backoff(self, consecutive_errors: int) -> float:
+        """연속 에러 시 지수 백오프. 사람이 에러를 보고 점점 오래 쉬는 패턴."""
+        base = self.ERROR_BACKOFF_BASE * (2 ** min(consecutive_errors, 6))
+        jitter = random.uniform(0.5, 1.5)
+        return min(base * jitter, self.ERROR_BACKOFF_MAX)
+
+    def _next_session_refresh(self) -> int:
+        """세션 갱신까지 남은 검색 횟수 (랜덤 편차 포함)"""
+        return self.SESSION_REFRESH_INTERVAL + random.randint(
+            -self.SESSION_REFRESH_JITTER, self.SESSION_REFRESH_JITTER
+        )
+
+    async def _refresh_session(self, service, login_id: str, login_pw: str, reservation_id: int):
+        """세션 갱신: 로그아웃 후 잠시 쉬고 재로그인 (장기 세션 탐지 회피)"""
+        logger.info(f"매크로 #{reservation_id} 세션 갱신 시작")
+        service.logout()
+        await asyncio.sleep(random.uniform(3, 8))
+        service.login(login_id, login_pw)
+        logger.info(f"매크로 #{reservation_id} 세션 갱신 완료")
+
     async def restore_pending(self):
         """서버 재시작 시 pending/searching 상태 예약 복원"""
         for status in ("pending", "searching"):
@@ -106,7 +134,13 @@ class ReservationScheduler:
 
             passengers = json.loads(reservation["passengers"])
             search_count = 0
+            consecutive_errors = 0
             last_report = datetime.now()
+            next_refresh_at = self._next_session_refresh()
+
+            # 사람처럼 시작 전 잠시 대기 (즉시 검색은 봇 패턴)
+            startup_delay = random.uniform(self.STARTUP_DELAY_MIN, self.STARTUP_DELAY_MAX)
+            await asyncio.sleep(startup_delay)
 
             # 반복 검색
             while datetime.now() < deadline:
@@ -122,6 +156,7 @@ class ReservationScheduler:
                     )
 
                     search_count += 1
+                    consecutive_errors = 0  # 성공 시 에러 카운터 리셋
 
                     if result:
                         self.db.update_reservation_status(
@@ -136,14 +171,40 @@ class ReservationScheduler:
 
                 except Exception as e:
                     search_count += 1
+                    consecutive_errors += 1
                     logger.error(f"매크로 #{reservation_id} 검색 에러: {e}")
                     self.db.add_search_log(reservation_id, error=str(e))
+
                     # 로그인 만료 시 재로그인 시도
                     if "로그인" in str(e) or "login" in str(e).lower():
                         try:
+                            await asyncio.sleep(random.uniform(2, 5))
                             service.login(login_id, login_pw)
+                            consecutive_errors = 0
                         except Exception:
                             pass
+
+                    # 에러 시 지수 백오프 적용 후 다음 반복으로
+                    backoff = self._error_backoff(consecutive_errors)
+                    logger.info(f"매크로 #{reservation_id} 에러 백오프 {backoff:.1f}초")
+                    await asyncio.sleep(backoff)
+
+                    # 주기적 진행 알림 체크 (에러 경로에서도)
+                    now = datetime.now()
+                    if (now - last_report).total_seconds() >= self.progress_report_minutes * 60:
+                        elapsed = now - (deadline - timedelta(hours=self.max_duration_hours))
+                        elapsed_min = int(elapsed.total_seconds() // 60)
+                        await self.notifier.notify_progress(reservation, search_count, elapsed_min)
+                        last_report = now
+                    continue
+
+                # 세션 주기적 갱신 (장기 세션 탐지 회피)
+                if search_count >= next_refresh_at:
+                    try:
+                        await self._refresh_session(service, login_id, login_pw, reservation_id)
+                        next_refresh_at = search_count + self._next_session_refresh()
+                    except Exception as e:
+                        logger.warning(f"매크로 #{reservation_id} 세션 갱신 실패: {e}")
 
                 # 주기적 진행 알림
                 now = datetime.now()
