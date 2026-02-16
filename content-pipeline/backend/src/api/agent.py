@@ -126,7 +126,7 @@ class TaskCreate(BaseModel):
     max_runs: int | None = None
 
 
-@router.get("/tasks", dependencies=[Depends(verify_agent_token)])
+@router.get("/agent-tasks", dependencies=[Depends(verify_agent_token)])
 def list_agent_tasks(
     ts: TaskStore = Depends(get_task_store),
     active_only: bool = True,
@@ -134,7 +134,7 @@ def list_agent_tasks(
     return ts.get_active() if active_only else ts.get_all()
 
 
-@router.post("/tasks", status_code=201, dependencies=[Depends(verify_agent_token)])
+@router.post("/agent-tasks", status_code=201, dependencies=[Depends(verify_agent_token)])
 def create_agent_task(
     body: TaskCreate,
     ts: TaskStore = Depends(get_task_store),
@@ -153,7 +153,7 @@ def create_agent_task(
     )
 
 
-@router.get("/tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
+@router.get("/agent-tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
 def get_agent_task(
     task_id: str,
     ts: TaskStore = Depends(get_task_store),
@@ -164,7 +164,7 @@ def get_agent_task(
     return task
 
 
-@router.delete("/tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
+@router.delete("/agent-tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
 def delete_agent_task(
     task_id: str,
     ts: TaskStore = Depends(get_task_store),
@@ -173,7 +173,7 @@ def delete_agent_task(
     return {"ok": True}
 
 
-@router.post("/tasks/{task_id}/cancel", dependencies=[Depends(verify_agent_token)])
+@router.post("/agent-tasks/{task_id}/cancel", dependencies=[Depends(verify_agent_token)])
 def cancel_agent_task(
     task_id: str,
     ts: TaskStore = Depends(get_task_store),
@@ -189,7 +189,7 @@ def cancel_agent_task(
     return {"ok": True}
 
 
-@router.post("/tasks/{task_id}/approve", dependencies=[Depends(verify_agent_token)])
+@router.post("/agent-tasks/{task_id}/approve", dependencies=[Depends(verify_agent_token)])
 def approve_agent_task(
     task_id: str,
     ts: TaskStore = Depends(get_task_store),
@@ -208,7 +208,7 @@ def approve_agent_task(
     return {"ok": True}
 
 
-@router.post("/tasks/approve-all", dependencies=[Depends(verify_agent_token)])
+@router.post("/agent-tasks/approve-all", dependencies=[Depends(verify_agent_token)])
 def approve_all_tasks(
     ts: TaskStore = Depends(get_task_store),
 ):
