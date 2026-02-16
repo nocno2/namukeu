@@ -6,6 +6,7 @@ import { generatePostMetadata, generateJsonLd } from "@/lib/seo";
 import { getPostTags } from "@/lib/tags";
 import PostContent from "@/components/PostContent";
 import ViewTracker from "@/components/ViewTracker";
+import AdBanner from "@/components/AdBanner";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -135,9 +136,13 @@ export default async function PostPage({ params }: Props) {
           </address>
         </header>
 
+        <AdBanner slot="article-top" format="auto" className="my-6" />
+
         <section className="article-body">
           <PostContent html={html} />
         </section>
+
+        <AdBanner slot="article-bottom" format="rectangle" className="my-8" />
 
         {tags.length > 0 && (
           <footer className="mt-12 pt-8 border-t border-[var(--border-light)]">
@@ -154,6 +159,8 @@ export default async function PostPage({ params }: Props) {
             </div>
           </footer>
         )}
+
+        <AdBanner slot="before-related" format="auto" className="mt-8" />
 
         {relatedPosts.length > 0 && (
           <section className="mt-12 pt-8 border-t border-[var(--border-light)]">

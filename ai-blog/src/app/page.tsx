@@ -1,6 +1,7 @@
 import { db, schema } from "@/lib/db";
 import { desc, eq, sql } from "drizzle-orm";
 import PostCard from "@/components/PostCard";
+import AdBanner from "@/components/AdBanner";
 import Link from "next/link";
 import { generateWebSiteJsonLd } from "@/lib/seo";
 
@@ -102,6 +103,8 @@ export default async function HomePage() {
             </div>
           </section>
         )}
+
+        <AdBanner slot="home-mid" format="auto" className="mb-10" />
 
         {/* Latest Posts */}
         <section>

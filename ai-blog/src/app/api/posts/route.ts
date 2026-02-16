@@ -101,6 +101,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Auto-generate meta fields if not provided
+  const finalMetaTitle = metaTitle || (title.length > 60 ? title.substring(0, 57) + "..." : title);
+  const finalMetaDescription = metaDescription || excerpt || content.replace(/[#*`>\-\[\]()!]/g, "").substring(0, 155).trim() + "...";
+
   const status = rawStatus === "published" ? "published" as const : "draft" as const;
   const publishedAt =
     status === "published" ? new Date().toISOString() : null;
@@ -115,8 +119,8 @@ export async function POST(request: NextRequest) {
       categoryId: categoryId || null,
       status,
       featuredImage: featuredImage || null,
-      metaTitle: metaTitle || null,
-      metaDescription: metaDescription || null,
+      metaTitle: finalMetaTitle,
+      metaDescription: finalMetaDescription,
       publishedAt,
     })
     .returning();
