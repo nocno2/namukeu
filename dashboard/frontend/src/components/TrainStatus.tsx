@@ -62,7 +62,14 @@ function parseTrainInfo(r: TrainReservation): string | null {
   }
 }
 
-function ReservationCard({ r, isActive }: { r: TrainReservation; isActive: boolean }) {
+interface ReservationCardProps {
+  r: TrainReservation;
+  isActive: boolean;
+  onCancel?: (id: number) => void;
+  canceling?: boolean;
+}
+
+function ReservationCard({ r, isActive, onCancel, canceling }: ReservationCardProps) {
   const trainInfo = parseTrainInfo(r);
 
   return (
@@ -78,7 +85,19 @@ function ReservationCard({ r, isActive }: { r: TrainReservation; isActive: boole
           )}
           <span className="font-medium text-sm">{r.dep_station} → {r.arr_station}</span>
         </div>
-        <StatusBadge status={r.status || "pending"} />
+        <div className="flex items-center gap-1.5">
+          <StatusBadge status={r.status || "pending"} />
+          {isActive && onCancel && r.id !== undefined && (
+            <button
+              onClick={() => onCancel(r.id!)}
+              disabled={canceling}
+              className={`text-[10px] px-1.5 py-0.5 rounded border border-danger/30 text-danger hover:bg-danger/10 transition-colors ${canceling ? "opacity-50 cursor-not-allowed" : ""}`}
+              title="매크로 취소"
+            >
+              취소
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 상세 정보 */}
@@ -105,9 +124,79 @@ function ReservationCard({ r, isActive }: { r: TrainReservation; isActive: boole
   );
 }
 
+interface AllReservationsModalProps {
+  reservations: TrainReservation[];
+  activeIds: Set<number | undefined>;
+  onClose: () => void;
+  onCancel: (id: number) => void;
+  cancelingId: number | null;
+}
+
+function AllReservationsModal({ reservations, activeIds, onClose, onCancel, cancelingId }: AllReservationsModalProps) {
+  const [page, setPage] = useState(0);
+  const pageSize = 10;
+  const totalPages = Math.ceil(reservations.length / pageSize);
+  const paged = reservations.slice(page * pageSize, (page + 1) * pageSize);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="bg-surface border border-border rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col m-4" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h2 className="font-semibold text-lg">전체 예약 내역</h2>
+          <button onClick={onClose} className="p-1 hover:bg-bg rounded transition-colors">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {paged.map((r, i) => (
+            <ReservationCard
+              key={r.id ?? i}
+              r={r}
+              isActive={activeIds.has(r.id)}
+              onCancel={activeIds.has(r.id) ? onCancel : undefined}
+              canceling={cancelingId === r.id}
+            />
+          ))}
+        </div>
+
+        {/* Footer - Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 p-3 border-t border-border">
+            <button
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={page === 0}
+              className="px-2 py-1 text-xs rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-bg transition-colors"
+            >
+              이전
+            </button>
+            <span className="text-xs text-text-muted">
+              {page + 1} / {totalPages}
+            </span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={page === totalPages - 1}
+              className="px-2 py-1 text-xs rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-bg transition-colors"
+            >
+              다음
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
   const [data, setData] = useState<TrainSummary | null>(null);
   const [error, setError] = useState(false);
+  const [showAllModal, setShowAllModal] = useState(false);
+  const [cancelingId, setCancelingId] = useState<number | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -124,84 +213,126 @@ export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }
     return () => clearInterval(interval);
   }, [fetchData]);
 
+  const handleCancel = async (reservationId: number) => {
+    setCancelingId(reservationId);
+    try {
+      await api.cancelTrainReservation(reservationId);
+      await fetchData();
+    } catch (err) {
+      console.error("Failed to cancel reservation:", err);
+      alert("매크로 취소 실패");
+    } finally {
+      setCancelingId(null);
+    }
+  };
+
   if (error || !data) return null;
 
   const activeIds = new Set(data.active_reservations.map((r) => r.id));
   const allReservations = data.recent_reservations;
 
   return (
-    <div className={`bg-surface border rounded-xl ${pinned ? "border-primary/40" : "border-border"} ${collapsed ? "p-3" : "p-5"}`}>
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">기차 예약</h3>
-          {data.active_macros > 0 && (
-            <span className="text-[10px] text-warning font-medium">
-              매크로 {data.active_macros}개 실행 중
-            </span>
-          )}
+    <>
+      <div className={`bg-surface border rounded-xl ${pinned ? "border-primary/40" : "border-border"} ${collapsed ? "p-3" : "p-5"}`}>
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-sm">기차 예약</h3>
+            {data.active_macros > 0 && (
+              <span className="text-[10px] text-warning font-medium">
+                매크로 {data.active_macros}개 실행 중
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <button onClick={onTogglePin} className={`p-1 rounded transition-colors ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`} title={pinned ? "고정 해제" : "상단 고정"}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" /></svg>
+            </button>
+            <button onClick={onToggleCollapse} className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors" title={collapsed ? "펼치기" : "접기"}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                {collapsed ? <polyline points="6 9 12 15 18 9" /> : <polyline points="6 15 12 9 18 15" />}
+              </svg>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button onClick={onTogglePin} className={`p-1 rounded transition-colors ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`} title={pinned ? "고정 해제" : "상단 고정"}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" /></svg>
-          </button>
-          <button onClick={onToggleCollapse} className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors" title={collapsed ? "펼치기" : "접기"}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              {collapsed ? <polyline points="6 9 12 15 18 9" /> : <polyline points="6 15 12 9 18 15" />}
-            </svg>
-          </button>
-        </div>
+
+        {collapsed ? (
+          <div className="flex items-center gap-2 mt-1.5 text-[10px]">
+            {data.active_macros > 0 && (
+              <>
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
+                </span>
+                <span className="text-warning font-medium">검색 중 {data.by_status.searching || 0}</span>
+                <span className="text-text-muted">·</span>
+              </>
+            )}
+            <span className="text-success">예약 {data.by_status.reserved || 0}</span>
+            <span className="text-text-muted">· 전체 {data.total_reservations}</span>
+          </div>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {/* 활성 매크로 섹션 */}
+            {data.active_reservations.length > 0 && (
+              <div>
+                <div className="text-[11px] text-text-muted font-medium mb-2">검색 중인 매크로</div>
+                <div className="space-y-2">
+                  {data.active_reservations.map((r, i) => (
+                    <ReservationCard
+                      key={r.id ?? i}
+                      r={r}
+                      isActive={true}
+                      onCancel={handleCancel}
+                      canceling={cancelingId === r.id}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 최근 예약 1개만 표시 + 전체보기 버튼 */}
+            {allReservations.filter((r) => !activeIds.has(r.id)).length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] text-text-muted font-medium">예약 이력</div>
+                  {allReservations.length > 1 && (
+                    <button
+                      onClick={() => setShowAllModal(true)}
+                      className="text-[10px] text-primary hover:underline"
+                    >
+                      전체보기 ({allReservations.length})
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {allReservations
+                    .filter((r) => !activeIds.has(r.id))
+                    .slice(0, 1)
+                    .map((r, i) => (
+                      <ReservationCard key={r.id ?? i} r={r} isActive={false} />
+                    ))}
+                </div>
+              </div>
+            )}
+
+            {allReservations.length === 0 && (
+              <div className="text-xs text-text-muted text-center py-4">등록된 예약이 없습니다</div>
+            )}
+          </div>
+        )}
       </div>
 
-      {collapsed ? (
-        <div className="flex items-center gap-2 mt-1.5 text-[10px]">
-          {data.active_macros > 0 && (
-            <>
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-warning opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
-              </span>
-              <span className="text-warning font-medium">검색 중 {data.by_status.searching || 0}</span>
-              <span className="text-text-muted">·</span>
-            </>
-          )}
-          <span className="text-success">예약 {data.by_status.reserved || 0}</span>
-          <span className="text-text-muted">· 전체 {data.total_reservations}</span>
-        </div>
-      ) : (
-        <div className="mt-3 space-y-3">
-          {/* 활성 매크로 섹션 */}
-          {data.active_reservations.length > 0 && (
-            <div>
-              <div className="text-[11px] text-text-muted font-medium mb-2">검색 중인 매크로</div>
-              <div className="space-y-2">
-                {data.active_reservations.map((r, i) => (
-                  <ReservationCard key={r.id ?? i} r={r} isActive={true} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* 완료된 예약 / 전체 이력 */}
-          {allReservations.filter((r) => !activeIds.has(r.id)).length > 0 && (
-            <div>
-              <div className="text-[11px] text-text-muted font-medium mb-2">예약 이력</div>
-              <div className="space-y-2">
-                {allReservations
-                  .filter((r) => !activeIds.has(r.id))
-                  .slice(0, 5)
-                  .map((r, i) => (
-                    <ReservationCard key={r.id ?? i} r={r} isActive={false} />
-                  ))}
-              </div>
-            </div>
-          )}
-
-          {allReservations.length === 0 && (
-            <div className="text-xs text-text-muted text-center py-4">등록된 예약이 없습니다</div>
-          )}
-        </div>
+      {/* 전체 내역 모달 */}
+      {showAllModal && (
+        <AllReservationsModal
+          reservations={allReservations}
+          activeIds={activeIds}
+          onClose={() => setShowAllModal(false)}
+          onCancel={handleCancel}
+          cancelingId={cancelingId}
+        />
       )}
-    </div>
+    </>
   );
 }

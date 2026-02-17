@@ -423,6 +423,34 @@ async def train_summary(
     }
 
 
+@router.delete("/train/reservations/{reservation_id}")
+async def cancel_train_reservation(
+    reservation_id: int,
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+):
+    svc = next((s for s in config.services if s.name == "train-go"), None)
+    if not svc or not svc.status_token:
+        raise HTTPException(status_code=503, detail="Train service not configured")
+
+    base_url = f"http://127.0.0.1:{svc.port}"
+    headers = {"Authorization": f"Bearer {svc.status_token}"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.delete(
+                f"{base_url}/reservations/{reservation_id}",
+                headers=headers, timeout=5.0,
+            )
+            if resp.status_code == 404:
+                raise HTTPException(status_code=404, detail="Reservation not found")
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="Train cancel API error")
+            return resp.json()
+        except httpx.ConnectError:
+            raise HTTPException(status_code=502, detail="Train service unavailable")
+
+
 # --- Scheduled Tasks (crontab 기반) ---
 
 import re

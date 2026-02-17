@@ -100,6 +100,12 @@ export const api = {
     return request<TrainSummary>("/api/train/summary");
   },
 
+  cancelTrainReservation(reservationId: number) {
+    return request<{ message: string }>(`/api/train/reservations/${reservationId}`, {
+      method: "DELETE",
+    });
+  },
+
   scheduledTasks() {
     return request<{ tasks: ScheduledTask[] }>("/api/system/launchagents");
   },
