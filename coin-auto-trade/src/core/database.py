@@ -171,6 +171,8 @@ class Database:
         pos_columns = [row[1] for row in self.conn.execute("PRAGMA table_info(positions)").fetchall()]
         if "leverage" not in pos_columns:
             self.conn.execute("ALTER TABLE positions ADD COLUMN leverage INTEGER NOT NULL DEFAULT 1")
+        if "high_price" not in pos_columns:
+            self.conn.execute("ALTER TABLE positions ADD COLUMN high_price REAL")
 
         # Migrate strategies UNIQUE(name, ticker) → UNIQUE(name, ticker, exchange)
         indexes = self.conn.execute("PRAGMA index_list(strategies)").fetchall()
@@ -432,11 +434,14 @@ class Database:
                 unrealized_pnl = (current_price - avg_entry_price) * volume
             unrealized_pnl_pct = (unrealized_pnl / (avg_entry_price * volume)) * 100
 
+        # For new positions, initialize high_price to entry price
+        high_price = current_price or avg_entry_price
+
         self.conn.execute(
             """INSERT INTO positions (ticker, side, volume, avg_entry_price, current_price,
                 unrealized_pnl, unrealized_pnl_pct, strategy_id, opened_at, updated_at,
-                exchange, leverage)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                exchange, leverage, high_price)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(ticker) DO UPDATE SET
                  side=excluded.side, volume=excluded.volume,
                  avg_entry_price=excluded.avg_entry_price,
@@ -446,7 +451,17 @@ class Database:
                  exchange=excluded.exchange, leverage=excluded.leverage,
                  updated_at=excluded.updated_at""",
             (ticker, side, volume, avg_entry_price, current_price,
-             unrealized_pnl, unrealized_pnl_pct, strategy_id, now, now, exchange, leverage),
+             unrealized_pnl, unrealized_pnl_pct, strategy_id, now, now, exchange, leverage,
+             high_price),
+        )
+        self.conn.commit()
+
+    def update_position_high_price(self, ticker: str, high_price: float):
+        """Update the highest price reached for trailing stop tracking."""
+        now = datetime.now().isoformat()
+        self.conn.execute(
+            "UPDATE positions SET high_price = ?, updated_at = ? WHERE ticker = ?",
+            (high_price, now, ticker),
         )
         self.conn.commit()
 

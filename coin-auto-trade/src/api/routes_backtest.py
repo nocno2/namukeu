@@ -36,6 +36,8 @@ async def run_backtest(
         fee_rate=fee_rate,
         leverage=body.leverage,
         enable_short=body.enable_short,
+        trailing_stop_pct=body.trailing_stop_pct,
+        stop_loss_pct=body.stop_loss_pct,
     )
     try:
         result = await backtester.run(config)
@@ -112,6 +114,8 @@ async def optimize_strategy(
             fee_rate=fee_rate,
             leverage=body.leverage,
             enable_short=body.enable_short,
+            trailing_stop_pct=body.trailing_stop_pct,
+            stop_loss_pct=body.stop_loss_pct,
         )
         try:
             result = await backtester.run(config)

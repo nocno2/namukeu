@@ -26,6 +26,8 @@ class BacktestConfig:
     slippage_rate: float = 0.001
     leverage: int = 1
     enable_short: bool = False
+    trailing_stop_pct: float | None = None
+    stop_loss_pct: float = 5.0
 
 
 @dataclass
@@ -110,6 +112,8 @@ class Backtester:
     async def _run_spot(self, config: BacktestConfig, strategy: Strategy, df: pd.DataFrame) -> BacktestResult:
         capital = config.initial_capital
         position_volume = 0.0
+        entry_price = 0.0
+        high_price = 0.0  # Track peak price for trailing stop
         trades: list[BacktestTrade] = []
         equity_curve: list[dict] = []
         peak_equity = capital
@@ -122,6 +126,21 @@ class Backtester:
             current_price = float(window["close"].iloc[-1])
             timestamp = str(window.index[-1])
 
+            # Check trailing stop before strategy signal
+            trailing_triggered = False
+            if position_volume > 0 and config.trailing_stop_pct:
+                high_price = max(high_price, current_price)
+                drop_pct = ((high_price - current_price) / high_price) * 100
+                if drop_pct >= config.trailing_stop_pct:
+                    trailing_triggered = True
+
+            # Check hard stop-loss
+            stop_triggered = False
+            if position_volume > 0 and entry_price > 0:
+                loss_pct = ((entry_price - current_price) / entry_price) * 100
+                if loss_pct >= config.stop_loss_pct:
+                    stop_triggered = True
+
             signal = strategy.analyze(window, config.strategy_params)
 
             if signal.signal == Signal.BUY and position_volume == 0 and capital > 0:
@@ -130,16 +149,26 @@ class Backtester:
                 buy_amount = capital - fee
                 volume = buy_amount / buy_price
                 position_volume = volume
+                entry_price = buy_price
+                high_price = buy_price
                 capital = 0
                 trades.append(BacktestTrade(timestamp, "buy", buy_price, volume, fee, signal.reason))
 
-            elif signal.signal == Signal.SELL and position_volume > 0:
+            elif position_volume > 0 and (signal.signal == Signal.SELL or trailing_triggered or stop_triggered):
                 sell_price = current_price * (1 - config.slippage_rate)
                 proceeds = position_volume * sell_price
                 fee = proceeds * config.fee_rate
                 capital = proceeds - fee
-                trades.append(BacktestTrade(timestamp, "sell", sell_price, position_volume, fee, signal.reason))
+                if stop_triggered:
+                    reason = f"스탑로스: {((entry_price - current_price) / entry_price * 100):.1f}% 손실"
+                elif trailing_triggered:
+                    reason = f"트레일링 스탑: 고점 대비 {((high_price - current_price) / high_price * 100):.1f}% 하락"
+                else:
+                    reason = signal.reason
+                trades.append(BacktestTrade(timestamp, "sell", sell_price, position_volume, fee, reason))
                 position_volume = 0
+                entry_price = 0.0
+                high_price = 0.0
 
             equity = capital + (position_volume * current_price)
             peak_equity = max(peak_equity, equity)
@@ -171,6 +200,7 @@ class Backtester:
         position_side: str | None = None  # "long" or "short"
         position_volume = 0.0
         entry_price = 0.0
+        high_price = 0.0  # Peak price for trailing stop (lowest for shorts)
         margin_used = 0.0  # margin locked in position
         trades: list[BacktestTrade] = []
         equity_curve: list[dict] = []
@@ -179,10 +209,53 @@ class Backtester:
         daily_returns: list[float] = []
         prev_equity = capital
 
+        def _close_position(close_price: float, reason: str, timestamp: str):
+            nonlocal capital, position_side, position_volume, margin_used, entry_price, high_price
+            if position_side == "long":
+                pnl = (close_price - entry_price) * position_volume
+                side_label = "close_long"
+            else:
+                pnl = (entry_price - close_price) * position_volume
+                side_label = "close_short"
+            fee = close_price * position_volume * config.fee_rate
+            capital = capital + margin_used + pnl - fee
+            trades.append(BacktestTrade(timestamp, side_label, close_price, position_volume, fee, reason))
+            position_side = None
+            position_volume = 0.0
+            margin_used = 0.0
+            entry_price = 0.0
+            high_price = 0.0
+
         for i in range(strategy.required_candle_count, len(df)):
             window = df.iloc[:i + 1]
             current_price = float(window["close"].iloc[-1])
             timestamp = str(window.index[-1])
+
+            # Check stop-loss and trailing stop before strategy signal
+            if position_side and position_volume > 0:
+                # Update high_price
+                if position_side == "long":
+                    high_price = max(high_price, current_price)
+                    loss_pct = ((entry_price - current_price) / entry_price) * 100
+                else:
+                    high_price = min(high_price, current_price) if high_price > 0 else current_price
+                    loss_pct = ((current_price - entry_price) / entry_price) * 100
+
+                # Hard stop-loss
+                if loss_pct >= config.stop_loss_pct:
+                    effective_loss = loss_pct * leverage
+                    close_price = current_price * (1 + config.slippage_rate if position_side == "short" else 1 - config.slippage_rate)
+                    _close_position(close_price, f"스탑로스: {loss_pct:.1f}% (실효 {effective_loss:.1f}%)", timestamp)
+                # Trailing stop
+                elif config.trailing_stop_pct and high_price > 0:
+                    if position_side == "long":
+                        drop_pct = ((high_price - current_price) / high_price) * 100
+                    else:
+                        drop_pct = ((current_price - high_price) / high_price) * 100
+                    effective_drop = drop_pct * leverage
+                    if effective_drop >= config.trailing_stop_pct:
+                        close_price = current_price * (1 + config.slippage_rate if position_side == "short" else 1 - config.slippage_rate)
+                        _close_position(close_price, f"트레일링 스탑: 극점 대비 {drop_pct:.1f}% 반전", timestamp)
 
             signal = strategy.analyze(window, config.strategy_params)
 
@@ -190,13 +263,7 @@ class Backtester:
                 # Close short if exists
                 if position_side == "short" and position_volume > 0:
                     close_price = current_price * (1 + config.slippage_rate)
-                    pnl = (entry_price - close_price) * position_volume
-                    fee = close_price * position_volume * config.fee_rate
-                    capital = capital + margin_used + pnl - fee
-                    trades.append(BacktestTrade(timestamp, "close_short", close_price, position_volume, fee, signal.reason))
-                    position_side = None
-                    position_volume = 0.0
-                    margin_used = 0.0
+                    _close_position(close_price, signal.reason, timestamp)
 
                 # Open long if no position
                 if position_side is None and capital > 0:
@@ -208,6 +275,7 @@ class Backtester:
                     position_side = "long"
                     position_volume = volume
                     entry_price = buy_price
+                    high_price = buy_price
                     margin_used = margin
                     capital -= margin
                     trades.append(BacktestTrade(timestamp, "open_long", buy_price, volume, fee,
@@ -217,13 +285,7 @@ class Backtester:
                 # Close long if exists
                 if position_side == "long" and position_volume > 0:
                     close_price = current_price * (1 - config.slippage_rate)
-                    pnl = (close_price - entry_price) * position_volume
-                    fee = close_price * position_volume * config.fee_rate
-                    capital = capital + margin_used + pnl - fee
-                    trades.append(BacktestTrade(timestamp, "close_long", close_price, position_volume, fee, signal.reason))
-                    position_side = None
-                    position_volume = 0.0
-                    margin_used = 0.0
+                    _close_position(close_price, signal.reason, timestamp)
 
                 # Open short if no position and shorts enabled
                 if position_side is None and capital > 0 and config.enable_short:
@@ -235,6 +297,7 @@ class Backtester:
                     position_side = "short"
                     position_volume = volume
                     entry_price = sell_price
+                    high_price = sell_price
                     margin_used = margin
                     capital -= margin
                     trades.append(BacktestTrade(timestamp, "open_short", sell_price, volume, fee,

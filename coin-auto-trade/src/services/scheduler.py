@@ -266,7 +266,17 @@ class TradingScheduler:
         for p in positions:
             current_price = p.get("current_price") or 0
             entry_price = p.get("avg_entry_price", 0)
-            if current_price > 0 and self.risk_manager.check_stop_loss(entry_price, current_price):
+            if current_price <= 0:
+                continue
+
+            # Update high_price for trailing stop tracking
+            high_price = p.get("high_price") or entry_price
+            if current_price > high_price:
+                high_price = current_price
+                self.db.update_position_high_price(p["ticker"], high_price)
+
+            # Check hard stop-loss first
+            if self.risk_manager.check_stop_loss(entry_price, current_price):
                 logger.warning(f"스탑로스 발동: {p['ticker']} (진입: {entry_price:,.0f}, 현재: {current_price:,.0f})")
                 from src.strategies.base import TradeSignal, Signal as Sig
                 signal = TradeSignal(
@@ -279,6 +289,31 @@ class TradingScheduler:
                 await self.notifier.send_message(
                     f"🛑 *스탑로스* `{p['ticker']}`\n"
                     f"진입: {entry_price:,.0f} → 현재: {current_price:,.0f}"
+                )
+                continue
+
+            # Check trailing stop
+            triggered, drop_pct = self.risk_manager.check_trailing_stop(high_price, current_price)
+            if triggered:
+                pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                logger.warning(
+                    f"트레일링 스탑 발동: {p['ticker']} "
+                    f"(고점: {high_price:,.0f}, 현재: {current_price:,.0f}, "
+                    f"하락: {drop_pct:.1f}%, 수익: {pnl_pct:.1f}%)"
+                )
+                from src.strategies.base import TradeSignal, Signal as Sig
+                signal = TradeSignal(
+                    signal=Sig.SELL, ticker=p["ticker"], confidence=1.0,
+                    reason=f"트레일링 스탑: 고점 대비 {drop_pct:.1f}% 하락 (수익 {pnl_pct:.1f}%)",
+                    indicators={"entry_price": entry_price, "high_price": high_price,
+                                "current_price": current_price, "drop_pct": drop_pct},
+                )
+                await self._execute_sell(p["ticker"], signal, p.get("strategy_id"),
+                                         self.exchange.info.quote_currency)
+                await self.notifier.send_message(
+                    f"📉 *트레일링 스탑* `{p['ticker']}`\n"
+                    f"진입: {entry_price:,.0f} | 고점: {high_price:,.0f} | 현재: {current_price:,.0f}\n"
+                    f"고점 대비 {drop_pct:.1f}% 하락"
                 )
 
     # --- Futures execution ---
@@ -433,11 +468,22 @@ class TradingScheduler:
             side = p.get("side", "long")
             leverage = p.get("leverage", 1)
 
+            # Update high_price for trailing stop tracking
+            high_price = p.get("high_price") or entry_price
+            if side == "long" and current_price > high_price:
+                high_price = current_price
+                self.db.update_position_high_price(p["ticker"], high_price)
+            elif side == "short" and current_price < high_price:
+                # For shorts, track the lowest price as "high_price"
+                high_price = current_price
+                self.db.update_position_high_price(p["ticker"], high_price)
+
             if side == "long":
                 loss_pct = ((entry_price - current_price) / entry_price) * 100
             else:
                 loss_pct = ((current_price - entry_price) / entry_price) * 100
 
+            # Check hard stop-loss first
             if loss_pct >= self.risk_manager.limits.stop_loss_pct:
                 effective_loss = loss_pct * leverage
                 logger.warning(
@@ -466,6 +512,46 @@ class TradingScheduler:
                     f"*선물 스탑로스* `{p['ticker']}` ({side} {leverage}x)\n"
                     f"진입: {entry_price:,.2f} -> 현재: {current_price:,.2f}\n"
                     f"손실: {effective_loss:.1f}%"
+                )
+                continue
+
+            # Check trailing stop
+            triggered, drop_pct = self.risk_manager.check_trailing_stop(
+                high_price, current_price, side, leverage
+            )
+            if triggered:
+                if side == "long":
+                    pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                else:
+                    pnl_pct = ((entry_price - current_price) / entry_price) * 100
+
+                logger.warning(
+                    f"선물 트레일링 스탑: {p['ticker']} {side} {leverage}x "
+                    f"(고점: {high_price:,.2f}, 현재: {current_price:,.2f}, "
+                    f"하락: {drop_pct:.1f}%, 수익: {pnl_pct:.1f}%)"
+                )
+                from src.strategies.base import TradeSignal, Signal as Sig
+                close_signal = Sig.SELL if side == "long" else Sig.BUY
+                signal = TradeSignal(
+                    signal=close_signal, ticker=p["ticker"], confidence=1.0,
+                    reason=f"트레일링 스탑: 극점 대비 {drop_pct:.1f}% 반전 (수익 {pnl_pct:.1f}%)",
+                    indicators={"entry_price": entry_price, "high_price": high_price,
+                                "current_price": current_price, "drop_pct": drop_pct,
+                                "leverage": leverage, "side": side},
+                )
+                fee_rate = self.exchange.info.fee_rate
+                min_order = self.exchange.info.min_order_value
+                quote = self.exchange.info.quote_currency
+                if side == "long":
+                    await self._execute_futures_sell(p["ticker"], signal, p.get("strategy_id"),
+                                                     fee_rate, min_order, quote, params)
+                else:
+                    await self._execute_futures_buy(p["ticker"], signal, p.get("strategy_id"),
+                                                    fee_rate, min_order, quote, params)
+                await self.notifier.send_message(
+                    f"📉 *선물 트레일링 스탑* `{p['ticker']}` ({side} {leverage}x)\n"
+                    f"진입: {entry_price:,.2f} | 극점: {high_price:,.2f} | 현재: {current_price:,.2f}\n"
+                    f"극점 대비 {drop_pct:.1f}% 반전 (수익 {pnl_pct:.1f}%)"
                 )
 
     async def _check_margin_safety(self, params: dict):

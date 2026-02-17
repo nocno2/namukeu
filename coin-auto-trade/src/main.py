@@ -104,10 +104,20 @@ async def lifespan(app: FastAPI):
             max_positions=config.max_positions,
             max_total_loss_pct=config.max_loss_percent,
             min_order_value=exc.info.min_order_value,
+            trailing_stop_pct=config.trailing_stop_pct,
         ))
         portfolio = PortfolioTracker(db, exc)
         collector = DataCollector(db, exc, config.ohlcv_collect_interval_minutes)
         runtime.collectors[provider] = collector
+
+        # Set initial equity for risk limit checks
+        try:
+            balance = await exc.get_balance()
+            if balance is not None:
+                risk_manager.set_initial_equity(balance)
+                logger.info(f"{provider}: 초기 자산 설정 완료 ({balance:,.2f})")
+        except Exception as e:
+            logger.warning(f"{provider}: 초기 자산 조회 실패 — {e}")
 
         scheduler = TradingScheduler(
             db=db, exchange=exc, risk_manager=risk_manager,
@@ -135,9 +145,10 @@ async def lifespan(app: FastAPI):
     app.dependency_overrides[dashboard_get_db] = lambda: db
     app.dependency_overrides[dashboard_get_config] = lambda: config
 
-    # Restore enabled strategies per exchange
+    # Restore enabled strategies per exchange & start snapshot loops
     for provider, scheduler in runtime.schedulers.items():
         await scheduler.restore_enabled()
+        scheduler.start_snapshot_loop(interval_minutes=10)
 
     # Start data collectors for active tickers per exchange
     for provider, collector in runtime.collectors.items():

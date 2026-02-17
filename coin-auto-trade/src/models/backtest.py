@@ -11,6 +11,8 @@ class BacktestRequest(BaseModel):
     initial_capital: float = 1_000_000
     leverage: int = 1
     enable_short: bool = False
+    trailing_stop_pct: float | None = None  # e.g. 3.0 = close when 3% drop from peak
+    stop_loss_pct: float = 5.0
 
 
 class BackfillRequest(BaseModel):
@@ -29,6 +31,8 @@ class OptimizeRequest(BaseModel):
     initial_capital: float = 1_000_000
     leverage: int = 1
     enable_short: bool = False
+    trailing_stop_pct: float | None = None
+    stop_loss_pct: float = 5.0
     param_grid: dict  # e.g. {"rsi_period": [10, 14, 20], "rsi_oversold": [25, 30]}
     top_n: int = 5
 

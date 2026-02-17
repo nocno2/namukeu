@@ -107,3 +107,23 @@ class RiskManager:
             loss_pct = ((entry_price - current_price) / entry_price) * 100
         effective_loss = loss_pct * leverage
         return effective_loss >= self.limits.stop_loss_pct
+
+    def check_trailing_stop(self, high_price: float, current_price: float,
+                            side: str = "long", leverage: int = 1) -> tuple[bool, float]:
+        """Check if trailing stop is triggered.
+
+        Returns (triggered, drop_pct) where drop_pct is the percentage drop
+        from the high (for long) or rise from the low (for short).
+        """
+        if not self.limits.trailing_stop_pct or high_price <= 0:
+            return False, 0.0
+
+        if side == "short":
+            # For shorts, high_price tracks the lowest price (best for short)
+            rise_pct = ((current_price - high_price) / high_price) * 100
+            effective_rise = rise_pct * leverage
+            return effective_rise >= self.limits.trailing_stop_pct, rise_pct
+        else:
+            drop_pct = ((high_price - current_price) / high_price) * 100
+            effective_drop = drop_pct * leverage
+            return effective_drop >= self.limits.trailing_stop_pct, drop_pct
