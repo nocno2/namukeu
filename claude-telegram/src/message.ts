@@ -3,8 +3,8 @@ import type { Context } from "grammy";
 const MAX_LENGTH = 4000; // Leave buffer under Telegram's 4096 limit
 
 /**
- * Send a response to Telegram, automatically chunking long messages
- * and handling Markdown parse failures.
+ * Send a response to Telegram, automatically chunking long messages.
+ * Uses HTML parse mode (more reliable than legacy Markdown with Claude output).
  */
 export async function sendResponse(
   ctx: Context,
@@ -27,11 +27,64 @@ export async function sendResponse(
 }
 
 /**
- * Try sending with Markdown, fall back to plain text.
+ * Convert Markdown-style formatting to Telegram HTML.
+ * Handles: code blocks, inline code, bold, italic.
+ */
+export function markdownToHtml(text: string): string {
+  // First, extract code blocks to protect them from other transformations
+  const codeBlocks: string[] = [];
+  let result = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_match, lang, code) => {
+    const idx = codeBlocks.length;
+    const escaped = escapeHtml(code.replace(/\n$/, ""));
+    codeBlocks.push(
+      lang
+        ? `<pre><code class="language-${escapeHtml(lang)}">${escaped}</code></pre>`
+        : `<pre><code>${escaped}</code></pre>`
+    );
+    return `\x00CODEBLOCK_${idx}\x00`;
+  });
+
+  // Extract inline code
+  const inlineCodes: string[] = [];
+  result = result.replace(/`([^`\n]+)`/g, (_match, code) => {
+    const idx = inlineCodes.length;
+    inlineCodes.push(`<code>${escapeHtml(code)}</code>`);
+    return `\x00INLINE_${idx}\x00`;
+  });
+
+  // Escape HTML entities in remaining text
+  result = escapeHtml(result);
+
+  // Bold: **text** or __text__
+  result = result.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  result = result.replace(/__(.+?)__/g, "<b>$1</b>");
+
+  // Italic: *text* or _text_ (but not mid-word underscores like file_name)
+  result = result.replace(/(?<!\w)\*([^*\n]+?)\*(?!\w)/g, "<i>$1</i>");
+  result = result.replace(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>");
+
+  // Restore inline code
+  result = result.replace(/\x00INLINE_(\d+)\x00/g, (_m, idx) => inlineCodes[parseInt(idx)]);
+
+  // Restore code blocks
+  result = result.replace(/\x00CODEBLOCK_(\d+)\x00/g, (_m, idx) => codeBlocks[parseInt(idx)]);
+
+  return result;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Try sending with HTML parse mode, fall back to plain text.
  */
 async function sendSafe(ctx: Context, text: string): Promise<void> {
   try {
-    await ctx.reply(text, { parse_mode: "Markdown" });
+    await ctx.reply(markdownToHtml(text), { parse_mode: "HTML" });
   } catch {
     try {
       await ctx.reply(text);

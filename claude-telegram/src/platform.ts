@@ -1,7 +1,7 @@
 import type { Bot } from "grammy";
 import { InlineKeyboard } from "grammy";
 import type { PlatformAdapter } from "@namukeu/agent-core";
-import { sendResponse } from "./message";
+import { sendResponse, markdownToHtml } from "./message";
 
 // Match approval notification: extract 8-char task ID from /approve <id>
 const APPROVE_PATTERN = /실행하려면 \/approve ([a-f0-9]{8})$/;
@@ -28,8 +28,8 @@ export function createTelegramAdapter(bot: Bot): PlatformAdapter {
         // Strip the /approve instruction from message text
         const cleanText = text.replace(/\n실행하려면 \/approve [a-f0-9]{8}$/, "");
         try {
-          await bot.api.sendMessage(numericChatId, cleanText, {
-            parse_mode: "Markdown",
+          await bot.api.sendMessage(numericChatId, markdownToHtml(cleanText), {
+            parse_mode: "HTML",
             reply_markup: keyboard,
           });
         } catch {
@@ -43,8 +43,8 @@ export function createTelegramAdapter(bot: Bot): PlatformAdapter {
       // Split long messages
       if (text.length <= 4000) {
         try {
-          await bot.api.sendMessage(numericChatId, text, {
-            parse_mode: "Markdown",
+          await bot.api.sendMessage(numericChatId, markdownToHtml(text), {
+            parse_mode: "HTML",
           });
         } catch {
           try {
@@ -70,8 +70,8 @@ export function createTelegramAdapter(bot: Bot): PlatformAdapter {
         }
         for (const chunk of chunks) {
           try {
-            await bot.api.sendMessage(numericChatId, chunk, {
-              parse_mode: "Markdown",
+            await bot.api.sendMessage(numericChatId, markdownToHtml(chunk), {
+              parse_mode: "HTML",
             });
           } catch {
             await bot.api.sendMessage(numericChatId, chunk).catch(() => {});
