@@ -633,6 +633,88 @@ async def generate_images(body: GenerateImagesRequest):
         raise HTTPException(status_code=500, detail="Image generation failed")
 
 
+async def _validate_and_clean_links(content: str, blog_db_path: str | None) -> tuple[str, list[str]]:
+    """
+    본문의 마크다운 링크를 검증하고 불량 링크를 제거한다.
+
+    - /admin 으로 시작하는 내부 링크 → 즉시 제거
+    - 그 외 내부 링크(/posts/, /blog/ 등) → DB에서 slug 존재 확인 → 없으면 제거
+    - 외부 링크 → HEAD 요청으로 접근 가능 여부 확인 → 4xx면 제거 (관리자 알림용 목록 반환)
+
+    반환: (정제된 content, 제거된 링크 목록)
+    """
+    import sqlite3
+    import urllib.parse
+
+    removed = []
+
+    # 마크다운 링크 패턴: [텍스트](URL)
+    link_pattern = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+
+    # DB에서 존재하는 slug 목록 로드
+    existing_slugs: set[str] = set()
+    if blog_db_path:
+        try:
+            conn = sqlite3.connect(blog_db_path)
+            rows = conn.execute("SELECT slug FROM posts WHERE status = 'published'").fetchall()
+            existing_slugs = {row[0] for row in rows}
+            conn.close()
+        except Exception as e:
+            logger.warning(f"[link-validate] Could not load slugs: {e}")
+
+    async def check_external(url: str) -> bool:
+        try:
+            async with httpx.AsyncClient(timeout=8, follow_redirects=True) as client:
+                r = await client.head(url, headers={"User-Agent": "Mozilla/5.0"})
+                if r.status_code == 405:
+                    # HEAD 미지원 → GET으로 재시도
+                    r = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
+                return r.status_code < 400
+        except Exception:
+            return False
+
+    async def validate_link(text: str, url: str) -> str:
+        stripped = url.strip()
+
+        # 내부 링크 판별
+        parsed = urllib.parse.urlparse(stripped)
+        is_internal = not parsed.scheme or parsed.netloc in ("", "blog.namukeu.com")
+
+        if is_internal:
+            path = parsed.path.rstrip("/")
+            # /admin 링크 즉시 제거
+            if path.startswith("/admin"):
+                removed.append(f"[어드민 링크 제거] {stripped}")
+                return text
+            # slug 추출 (/posts/slug 또는 /blog/slug 또는 /slug)
+            slug = path.split("/")[-1] if "/" in path else path.lstrip("/")
+            if slug and existing_slugs and slug not in existing_slugs:
+                removed.append(f"[내부 링크 없음] {stripped}")
+                return text
+            return f"[{text}]({url})"
+        else:
+            # 외부 링크 HEAD 검증
+            ok = await check_external(stripped)
+            if not ok:
+                removed.append(f"[외부 링크 404] {stripped}")
+                return text
+            return f"[{text}]({url})"
+
+    # 비동기 병렬 처리
+    matches = list(link_pattern.finditer(content))
+    if not matches:
+        return content, []
+
+    tasks = [validate_link(m.group(1), m.group(2)) for m in matches]
+    results = await asyncio.gather(*tasks)
+
+    # 역순으로 치환 (인덱스 꼬임 방지)
+    for match, replacement in zip(reversed(matches), reversed(results)):
+        content = content[:match.start()] + replacement + content[match.end():]
+
+    return content, removed
+
+
 async def _send_telegram(bot_token: str, chat_id: str, text: str) -> None:
     """텔레그램 메시지 전송 (실패해도 무시)."""
     try:
@@ -652,11 +734,17 @@ async def save_draft(body: SaveDraftRequest, config: Config = Depends(get_config
     - reviewed 상태로 저장 → 관리자 페이지에서 승인/반려 가능
     """
     try:
+        # 링크 검증 및 정제
+        blog_db_path = config.blog_db_path if hasattr(config, "blog_db_path") else None
+        cleaned_content, removed_links = await _validate_and_clean_links(body.content, blog_db_path)
+        if removed_links:
+            logger.warning(f"[n8n/save-draft] Removed {len(removed_links)} invalid links: {removed_links}")
+
         draft_data = {
             "keyword": body.keyword,
             "title": body.title,
             "slug": body.slug,
-            "content": body.content,
+            "content": cleaned_content,
             "excerpt": body.excerpt,
             "tags": body.tags,
             "outline": body.outline or "",
@@ -672,10 +760,16 @@ async def save_draft(body: SaveDraftRequest, config: Config = Depends(get_config
         if config.telegram_bot_token and config.telegram_chat_id:
             import html
             admin_url = f"https://blog.namukeu.com/admin/drafts/{draft_id}"
+            removed_notice = ""
+            if removed_links:
+                removed_notice = f"\n\n⚠️ <b>제거된 링크 {len(removed_links)}개</b>\n" + "\n".join(
+                    f"• {html.escape(l)}" for l in removed_links
+                )
             msg = (
                 f"📝 <b>새 블로그 초안이 생성되었습니다</b>\n\n"
                 f"제목: {html.escape(body.title)}\n"
-                f"키워드: {html.escape(body.keyword)}\n\n"
+                f"키워드: {html.escape(body.keyword)}"
+                f"{removed_notice}\n\n"
                 f"<a href=\"{admin_url}\">👉 검토하러 가기</a>"
             )
             await _send_telegram(config.telegram_bot_token, config.telegram_chat_id, msg)
