@@ -471,8 +471,15 @@ CRON_META: dict[str, dict[str, str]] = {
 
 
 def _normalize_command(command: str) -> str:
-    """크론탭 명령어에서 리다이렉트 제거 후 정규화 (고유 ID로 사용)"""
+    """크론탭 명령어에서 리다이렉트 제거 후 정규화"""
     return re.sub(r"\s*>>.*$", "", command).strip()
+
+
+def _command_id(command: str) -> str:
+    """정규화된 명령어를 짧은 MD5 해시로 변환 (URL-safe ID)"""
+    import hashlib
+    normalized = _normalize_command(command)
+    return hashlib.md5(normalized.encode()).hexdigest()[:12]
 
 
 def _parse_cron_schedule(minute: str, hour: str, dom: str, month: str, dow: str) -> str:
@@ -570,7 +577,7 @@ def _parse_crontab() -> list[dict]:
 
             log_path = _extract_log_path(command)
             grouped[cmd_normalized] = {
-                "id": cmd_normalized,  # 토글 API에서 사용할 고유 ID
+                "id": _command_id(command),  # 짧은 해시 ID (URL-safe)
                 "command": cmd_normalized,
                 "display_name": meta["display_name"],
                 "description": meta["description"],
@@ -667,10 +674,9 @@ def toggle_scheduled_task(
                 continue
 
             command = parts[5]
-            cmd_normalized = _normalize_command(command)
 
-            # task_id와 매칭되면 토글
-            if cmd_normalized == task_id:
+            # 해시로 매칭 (task_id는 짧은 MD5 해시)
+            if _command_id(command) == task_id:
                 modified = True
                 if body.enabled and is_disabled:
                     # 활성화: # 제거
