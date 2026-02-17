@@ -106,6 +106,7 @@ async def lifespan(app: FastAPI):
             min_order_value=exc.info.min_order_value,
             trailing_stop_pct=config.trailing_stop_pct,
         ))
+        logger.info(f"{provider}: trailing_stop_pct={config.trailing_stop_pct}")
         portfolio = PortfolioTracker(db, exc)
         collector = DataCollector(db, exc, config.ohlcv_collect_interval_minutes)
         runtime.collectors[provider] = collector

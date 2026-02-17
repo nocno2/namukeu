@@ -85,6 +85,7 @@ class TradingScheduler:
             self._snapshot_task = asyncio.create_task(
                 self._snapshot_loop(interval_minutes, initial_equity)
             )
+            logger.info(f"스냅샷 루프 시작 (interval={interval_minutes}min)")
 
     async def _snapshot_loop(self, interval_minutes: int, initial_equity: float | None):
         try:
