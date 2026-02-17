@@ -56,7 +56,7 @@ async def ai_review(title: str, content: str, keyword: str) -> dict | None:
     prompt = AI_REVIEW_PROMPT.format(
         keyword=keyword,
         title=title,
-        content=content[:6000],  # Limit to avoid token overflow
+        content=content,  # Limit to avoid token overflow
     )
 
     try:
