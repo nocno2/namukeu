@@ -84,6 +84,8 @@ def service_commits(
             raise HTTPException(status_code=500, detail="git log failed")
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="git not found")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="git log timed out")
 
     commits = []
     entries = proc.stdout.strip().split("\n---\n")
@@ -261,20 +263,25 @@ async def claude_usage(_=Depends(verify_session)):
     if not token:
         raise HTTPException(status_code=500, detail="Claude token not found")
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            "https://api.anthropic.com/api/oauth/usage",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "anthropic-beta": "oauth-2025-04-20",
-                "Content-Type": "application/json",
-            },
-            timeout=10.0,
-        )
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Claude API error")
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.anthropic.com/api/oauth/usage",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "anthropic-beta": "oauth-2025-04-20",
+                    "Content-Type": "application/json",
+                },
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="Claude API error")
 
-        return resp.json()
+            return resp.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="Claude API unreachable")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=502, detail="Claude API timed out")
 
 
 # --- System Resources ---
@@ -344,8 +351,12 @@ def blog_traffic(_=Depends(verify_session)):
     if not Path(BLOG_DB_PATH).exists():
         raise HTTPException(status_code=503, detail="Blog DB not found")
 
-    conn = sqlite3.connect(f"file:{BLOG_DB_PATH}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
+    try:
+        conn = sqlite3.connect(f"file:{BLOG_DB_PATH}?mode=ro", uri=True)
+        conn.row_factory = sqlite3.Row
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=503, detail=f"Blog DB unavailable: {e}")
+
     try:
         today = datetime.now().strftime("%Y-%m-%d")
         today_views = conn.execute(
@@ -376,6 +387,8 @@ def blog_traffic(_=Depends(verify_session)):
             "top_posts": [{"slug": r["slug"], "title": r["title"] or r["slug"], "views": r["views"]} for r in top_posts],
             "daily_trend": [{"date": r["date"], "views": r["views"]} for r in daily_trend],
         }
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=503, detail=f"Blog DB query error: {e}")
     finally:
         conn.close()
 
@@ -400,7 +413,7 @@ async def train_summary(
             if status_resp.status_code != 200:
                 raise HTTPException(status_code=502, detail="Train status API error")
             status = status_resp.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Train service unavailable")
 
         reservations = []
@@ -447,7 +460,7 @@ async def cancel_train_reservation(
             if resp.status_code != 200:
                 raise HTTPException(status_code=502, detail="Train cancel API error")
             return resp.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Train service unavailable")
 
 
@@ -736,7 +749,7 @@ async def agent_status(_=Depends(verify_session)):
             if r.status_code != 200:
                 raise HTTPException(status_code=502, detail="Agent API error")
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -751,7 +764,7 @@ async def agent_toggle(feature: str, body: dict, _=Depends(verify_session)):
                 json=body, headers=_agent_headers(), timeout=5.0,
             )
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -761,7 +774,7 @@ async def agent_goals(_=Depends(verify_session)):
         try:
             r = await client.get(f"{AGENT_API_BASE}/api/goals", headers=_agent_headers(), timeout=5.0)
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -776,7 +789,7 @@ async def agent_create_goal(body: dict, _=Depends(verify_session)):
             if r.status_code not in (200, 201):
                 raise HTTPException(status_code=r.status_code, detail=r.text)
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -789,7 +802,7 @@ async def agent_update_goal(goal_id: str, body: dict, _=Depends(verify_session))
                 json=body, headers=_agent_headers(), timeout=5.0,
             )
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -802,7 +815,7 @@ async def agent_delete_goal(goal_id: str, _=Depends(verify_session)):
                 headers=_agent_headers(), timeout=5.0,
             )
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -817,7 +830,7 @@ async def agent_approve_goal(goal_id: str, _=Depends(verify_session)):
             if r.status_code == 404:
                 raise HTTPException(status_code=404, detail="Goal not found")
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -834,7 +847,7 @@ async def agent_tasks(active_only: bool = True, _=Depends(verify_session)):
                 headers=_agent_headers(), timeout=5.0,
             )
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -847,7 +860,7 @@ async def agent_approve_all_tasks(_=Depends(verify_session)):
                 headers=_agent_headers(), timeout=5.0,
             )
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -862,7 +875,7 @@ async def agent_task_detail(task_id: str, _=Depends(verify_session)):
             if r.status_code == 404:
                 raise HTTPException(status_code=404, detail="Task not found")
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -877,7 +890,7 @@ async def agent_update_task(task_id: str, body: dict, _=Depends(verify_session))
             if r.status_code == 404:
                 raise HTTPException(status_code=404, detail="Task not found")
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -892,7 +905,7 @@ async def agent_approve_task(task_id: str, _=Depends(verify_session)):
             if r.status_code == 404:
                 raise HTTPException(status_code=404, detail="Task not found")
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
@@ -907,5 +920,5 @@ async def agent_cancel_task(task_id: str, _=Depends(verify_session)):
             if r.status_code == 404:
                 raise HTTPException(status_code=404, detail="Task not found")
             return r.json()
-        except httpx.ConnectError:
+        except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")

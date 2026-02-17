@@ -91,7 +91,10 @@ class MetricsCollector:
             status = r["status"]
             response_time = round(elapsed * 1000, 2)
 
-            self.db.insert_metric(name, status, response_time)
+            try:
+                self.db.insert_metric(name, status, response_time)
+            except Exception as e:
+                logger.error(f"Failed to insert metric for {name}: {e}")
 
             prev = self._previous_status.get(name)
 
@@ -158,7 +161,7 @@ class MetricsCollector:
             success = True
         except Exception as e:
             logger.error(f"Auto-restart failed for {name}: {e}")
-            success = True  # still counts as attempted
+            success = False
 
         await self._send_restart_alert(service, success)
 
