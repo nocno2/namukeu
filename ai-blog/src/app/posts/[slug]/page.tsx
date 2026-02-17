@@ -1,5 +1,5 @@
 import { db, schema } from "@/lib/db";
-import { eq, and, ne, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, ne, desc, sql, inArray, count } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { markdownToHtml } from "@/lib/markdown";
 import { generatePostMetadata, generateJsonLd } from "@/lib/seo";
@@ -7,6 +7,8 @@ import { getPostTags } from "@/lib/tags";
 import PostContent from "@/components/PostContent";
 import ViewTracker from "@/components/ViewTracker";
 import AdBanner from "@/components/AdBanner";
+import LikeButton from "@/components/LikeButton";
+import CommentSection from "@/components/CommentSection";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -72,6 +74,17 @@ export default async function PostPage({ params }: Props) {
         .where(inArray(schema.tags.slug, tags.map((t) => t.slug)))
         .then((rows) => rows.map((r) => r.tagId))
     : [];
+
+  // 좋아요 수 + 댓글 수
+  const [{ likeCount }] = await db
+    .select({ likeCount: count() })
+    .from(schema.postLikes)
+    .where(eq(schema.postLikes.postId, post.id));
+
+  const [{ commentCount }] = await db
+    .select({ commentCount: count() })
+    .from(schema.comments)
+    .where(and(eq(schema.comments.postId, post.id), eq(schema.comments.isDeleted, false)));
 
   let relatedPosts: { title: string; slug: string; featuredImage: string | null; publishedAt: string | null }[] = [];
 
@@ -160,7 +173,15 @@ export default async function PostPage({ params }: Props) {
           </footer>
         )}
 
+        {/* 좋아요 버튼 */}
+        <div className="mt-8 flex justify-center">
+          <LikeButton postId={post.id} initialCount={likeCount} />
+        </div>
+
         <AdBanner slot="before-related" format="auto" className="mt-8" />
+
+        {/* 댓글 섹션 */}
+        <CommentSection postId={post.id} initialCount={commentCount} />
 
         {relatedPosts.length > 0 && (
           <section className="mt-12 pt-8 border-t border-[var(--border-light)]">

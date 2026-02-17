@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { db, schema } from "@/lib/db";
-import { count, eq, gte, sql } from "drizzle-orm";
+import { count, eq, gte, sql, and } from "drizzle-orm";
 import Link from "next/link";
 import AdminNav from "@/components/AdminNav";
 
@@ -36,6 +36,21 @@ export default async function AdminDashboard() {
     .from(schema.pageViews)
     .where(gte(schema.pageViews.createdAt, today));
 
+  // 댓글/좋아요 통계
+  const [{ total: totalComments }] = await db
+    .select({ total: count() })
+    .from(schema.comments)
+    .where(eq(schema.comments.isDeleted, false));
+
+  const [{ total: todayComments }] = await db
+    .select({ total: count() })
+    .from(schema.comments)
+    .where(and(eq(schema.comments.isDeleted, false), gte(schema.comments.createdAt, today)));
+
+  const [{ total: totalLikes }] = await db
+    .select({ total: count() })
+    .from(schema.postLikes);
+
   // 인기 글 Top 5
   const popularPosts = await db
     .select({
@@ -69,7 +84,7 @@ export default async function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div className="border border-[var(--border)] rounded-lg p-4 text-center bg-[var(--bg-card)]">
           <p className="text-3xl font-bold text-[var(--accent)]">{todayViews}</p>
           <p className="text-sm text-[var(--text-tertiary)]">오늘 조회수</p>
@@ -77,6 +92,21 @@ export default async function AdminDashboard() {
         <div className="border border-[var(--border)] rounded-lg p-4 text-center bg-[var(--bg-card)]">
           <p className="text-3xl font-bold text-[var(--text-tertiary)]">{totalViews}</p>
           <p className="text-sm text-[var(--text-tertiary)]">전체 조회수</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4 mb-8">
+        <div className="border border-[var(--border)] rounded-lg p-4 text-center bg-[var(--bg-card)]">
+          <p className="text-3xl font-bold text-purple-500">{todayComments}</p>
+          <p className="text-sm text-[var(--text-tertiary)]">오늘 댓글</p>
+        </div>
+        <div className="border border-[var(--border)] rounded-lg p-4 text-center bg-[var(--bg-card)]">
+          <p className="text-3xl font-bold text-[var(--text-tertiary)]">{totalComments}</p>
+          <p className="text-sm text-[var(--text-tertiary)]">전체 댓글</p>
+        </div>
+        <div className="border border-[var(--border)] rounded-lg p-4 text-center bg-[var(--bg-card)]">
+          <p className="text-3xl font-bold text-red-400">{totalLikes}</p>
+          <p className="text-sm text-[var(--text-tertiary)]">전체 좋아요</p>
         </div>
       </div>
 

@@ -86,3 +86,30 @@ export const pageViews = sqliteTable("page_views", {
     .default(sql`(datetime('now'))`)
     .notNull(),
 });
+
+export const comments = sqliteTable("comments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id")
+    .references(() => posts.id, { onDelete: "cascade" })
+    .notNull(),
+  parentId: integer("parent_id"),
+  nickname: text("nickname").notNull(),
+  passwordHash: text("password_hash").notNull(),
+  content: text("content").notNull(),
+  ipAddress: text("ip_address").notNull(),
+  isDeleted: integer("is_deleted", { mode: "boolean" }).default(false).notNull(),
+  createdAt: text("created_at")
+    .default(sql`(datetime('now'))`)
+    .notNull(),
+});
+
+export const postLikes = sqliteTable("post_likes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id")
+    .references(() => posts.id, { onDelete: "cascade" })
+    .notNull(),
+  ipAddress: text("ip_address").notNull(),
+  createdAt: text("created_at")
+    .default(sql`(datetime('now'))`)
+    .notNull(),
+});

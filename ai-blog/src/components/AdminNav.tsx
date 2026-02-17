@@ -37,6 +37,12 @@ export default function AdminNav() {
           초안 관리
         </Link>
         <Link
+          href="/admin/comments"
+          className="text-sm text-[var(--text-nav)] hover:text-[var(--text-primary)]"
+        >
+          댓글 관리
+        </Link>
+        <Link
           href="/"
           className="text-sm text-[var(--text-nav)] hover:text-[var(--text-primary)]"
         >
