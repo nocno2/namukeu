@@ -31,7 +31,6 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "blog-automation",
-        "responseMode": "lastNode",
         "options": {}
       },
       "id": "43ead4a5-1bf4-48b2-8ea5-b91c39ca0640",
@@ -115,7 +114,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"context\": \"{{ $json.body.idea || $json.body.context }}\"\n}",
         "options": {
-          "timeout": 300000
+          "timeout": 600000
         }
       },
       "id": "b9e62fc1-8e65-48d5-9cad-3deca5375e10",
@@ -148,7 +147,7 @@
         "specifyBody": "json",
         "jsonBody": "={\n  \"keyword\": \"{{ $json.body.keyword }}\"\n}",
         "options": {
-          "timeout": 300000
+          "timeout": 600000
         }
       },
       "id": "f473215d-f913-40b3-9a00-48cf024c3d98",
@@ -181,7 +180,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
-          "timeout": 300000
+          "timeout": 600000
         }
       },
       "id": "8e281da3-8f9c-4378-9801-ffa39c039cbc",
@@ -201,7 +200,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
-          "timeout": 300000
+          "timeout": 600000
         }
       },
       "id": "d4f545cd-1de5-4ba1-99d9-78f2c51d4f22",
@@ -276,8 +275,8 @@
       "name": "Replace Image URLs in Content1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1600,
-        1488
+        1664,
+        1568
       ],
       "typeVersion": 2
     },
@@ -376,7 +375,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
-          "timeout": 300000
+          "timeout": 600000
         }
       },
       "id": "3fda8712-d669-485a-9852-3fc43f77d1e8",
@@ -442,7 +441,7 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($json) }}",
         "options": {
-          "timeout": 300000
+          "timeout": 600000
         }
       },
       "id": "ef989692-56c7-4bdc-b6fa-66e0e9410d20",
@@ -492,7 +491,7 @@
           "conditions": [
             {
               "id": "92ce67e2-5984-418b-8e8a-6a3fa08a1181",
-              "leftValue": "={{ ($json.seo.score >=8 && $json.ai_review.overall >= 8) || $json.attempt >= 3 }}",
+              "leftValue": "={{ ($json.seo.score >=8 && $json.ai_review.overall >= 8)}}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -534,7 +533,7 @@
         "method": "POST",
         "url": "http://host.docker.internal:8003/api/n8n/discover-keywords",
         "options": {
-          "timeout": 300000
+          "timeout": 600000
         }
       },
       "id": "deb26e4c-c8db-49dd-a845-83ce79f93b3c",
@@ -558,54 +557,6 @@
         1264
       ],
       "typeVersion": 2
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "5c36c481-c75a-4e5e-8e2c-884e90717cf0",
-              "name": "attempt",
-              "value": 1,
-              "type": "number"
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        1728,
-        1488
-      ],
-      "id": "60ab569a-da8e-41ad-8ae4-fba9a6dcfb2a",
-      "name": "Init counter"
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "eb12dda8-fa8c-4882-a922-477110210c84",
-              "name": "attempt",
-              "value": "={{ $json.attempt + 1 }}",
-              "type": "number"
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        2480,
-        1696
-      ],
-      "id": "bffbed33-caee-4749-abf6-06edb40a5ed9",
-      "name": "Increase counter"
     }
   ],
   "pinData": {},
@@ -782,7 +733,7 @@
       "main": [
         [
           {
-            "node": "Init counter",
+            "node": "Prepare Review Request",
             "type": "main",
             "index": 0
           }
@@ -859,7 +810,7 @@
       "main": [
         [
           {
-            "node": "Increase counter",
+            "node": "Prepare Review Request",
             "type": "main",
             "index": 0
           }
@@ -927,37 +878,17 @@
           }
         ]
       ]
-    },
-    "Init counter": {
-      "main": [
-        [
-          {
-            "node": "Prepare Review Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Increase counter": {
-      "main": [
-        [
-          {
-            "node": "Prepare Review Request",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
-    "availableInMCP": false
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
   },
-  "versionId": "4fbc5d8d-b9dc-424e-a445-59a310bcd6f7",
+  "versionId": "c694a314-4fa5-4b93-92f0-abbbea5445a4",
   "meta": {
     "instanceId": "a027f86cc8fd1e1aa882c051a717007a094c291fe8c361f9ab8894acc54ce2c6"
   },
