@@ -669,11 +669,12 @@ async def save_draft(body: SaveDraftRequest, config: Config = Depends(get_config
 
         # 텔레그램 알림
         if config.telegram_bot_token and config.telegram_chat_id:
+            import html
             admin_url = f"https://blog.namukeu.com/admin/drafts/{draft_id}"
             msg = (
                 f"📝 <b>새 블로그 초안이 생성되었습니다</b>\n\n"
-                f"제목: {body.title}\n"
-                f"키워드: {body.keyword}\n\n"
+                f"제목: {html.escape(body.title)}\n"
+                f"키워드: {html.escape(body.keyword)}\n\n"
                 f"<a href=\"{admin_url}\">👉 검토하러 가기</a>"
             )
             await _send_telegram(config.telegram_bot_token, config.telegram_chat_id, msg)
