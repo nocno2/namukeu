@@ -692,13 +692,19 @@ def toggle_scheduled_task(
         if not modified:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        # 새 crontab 적용
+        # 새 crontab 적용 (임시 파일 경유 — macOS에서 stdin 방식이 블로킹됨)
+        import tempfile, os
         new_crontab = "\n".join(new_lines) + "\n"
-        proc = subprocess.run(
-            ["crontab", "-"],
-            input=new_crontab,
-            capture_output=True, text=True, timeout=5,
-        )
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".crontab", delete=False) as tf:
+            tf.write(new_crontab)
+            tmp_path = tf.name
+        try:
+            proc = subprocess.run(
+                ["crontab", tmp_path],
+                capture_output=True, text=True, timeout=5,
+            )
+        finally:
+            os.unlink(tmp_path)
         if proc.returncode != 0:
             raise HTTPException(status_code=500, detail=f"Failed to update crontab: {proc.stderr}")
 
