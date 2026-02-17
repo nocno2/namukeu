@@ -208,7 +208,7 @@
       "name": "Generate Images1",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        1760,
+        1808,
         1200
       ],
       "typeVersion": 4.2
@@ -276,7 +276,7 @@
       "name": "Replace Image URLs in Content1",
       "type": "n8n-nodes-base.code",
       "position": [
-        1664,
+        1600,
         1488
       ],
       "typeVersion": 2
@@ -363,8 +363,8 @@
       "name": "Prepare Review Request",
       "type": "n8n-nodes-base.code",
       "position": [
-        1856,
-        1488
+        1872,
+        1616
       ],
       "typeVersion": 2
     },
@@ -429,8 +429,8 @@
       "name": "Prepare Revise Request",
       "type": "n8n-nodes-base.code",
       "position": [
-        2560,
-        1648
+        2064,
+        1696
       ],
       "typeVersion": 2
     },
@@ -449,8 +449,8 @@
       "name": "Revise Draft",
       "type": "n8n-nodes-base.httpRequest",
       "position": [
-        2704,
-        1648
+        2208,
+        1696
       ],
       "typeVersion": 4.2
     },
@@ -462,8 +462,8 @@
       "name": "Update Content After Revise",
       "type": "n8n-nodes-base.code",
       "position": [
-        2848,
-        1648
+        2352,
+        1696
       ],
       "typeVersion": 2
     },
@@ -491,27 +491,21 @@
           },
           "conditions": [
             {
-              "id": "seo-score",
+              "id": "92ce67e2-5984-418b-8e8a-6a3fa08a1181",
+              "leftValue": "={{ ($json.seo.score >=8 && $json.ai_review.overall >= 8) || $json.attempt >= 3 }}",
+              "rightValue": "",
               "operator": {
-                "type": "number",
-                "operation": "gte"
-              },
-              "leftValue": "={{ $json.seo.score }}",
-              "rightValue": 8
-            },
-            {
-              "id": "ai-score",
-              "operator": {
-                "type": "number",
-                "operation": "gte"
-              },
-              "leftValue": "={{ $json.ai_review.overall }}",
-              "rightValue": 8
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
             }
           ],
-          "combinator": "and"
+          "combinator": "or"
         },
-        "options": {}
+        "options": {
+          "ignoreCase": false
+        }
       },
       "id": "3ed64948-d832-433f-bdd5-507de1afe700",
       "name": "Check Score (>= 8?)",
@@ -564,6 +558,54 @@
         1264
       ],
       "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5c36c481-c75a-4e5e-8e2c-884e90717cf0",
+              "name": "attempt",
+              "value": 1,
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1728,
+        1488
+      ],
+      "id": "60ab569a-da8e-41ad-8ae4-fba9a6dcfb2a",
+      "name": "Init counter"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eb12dda8-fa8c-4882-a922-477110210c84",
+              "name": "attempt",
+              "value": "={{ $json.attempt + 1 }}",
+              "type": "number"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2480,
+        1696
+      ],
+      "id": "bffbed33-caee-4749-abf6-06edb40a5ed9",
+      "name": "Increase counter"
     }
   ],
   "pinData": {},
@@ -740,7 +782,7 @@
       "main": [
         [
           {
-            "node": "Prepare Review Request",
+            "node": "Init counter",
             "type": "main",
             "index": 0
           }
@@ -817,7 +859,7 @@
       "main": [
         [
           {
-            "node": "Prepare Review Request",
+            "node": "Increase counter",
             "type": "main",
             "index": 0
           }
@@ -885,6 +927,28 @@
           }
         ]
       ]
+    },
+    "Init counter": {
+      "main": [
+        [
+          {
+            "node": "Prepare Review Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increase counter": {
+      "main": [
+        [
+          {
+            "node": "Prepare Review Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": false,
@@ -893,7 +957,7 @@
     "binaryMode": "separate",
     "availableInMCP": false
   },
-  "versionId": "41be6eb0-f027-497b-99b6-9d03d7beb011",
+  "versionId": "4fbc5d8d-b9dc-424e-a445-59a310bcd6f7",
   "meta": {
     "instanceId": "a027f86cc8fd1e1aa882c051a717007a094c291fe8c361f9ab8894acc54ce2c6"
   },
