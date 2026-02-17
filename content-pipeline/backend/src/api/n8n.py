@@ -8,6 +8,8 @@ import json
 import logging
 import re
 
+import httpx
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
@@ -630,13 +632,23 @@ async def generate_images(body: GenerateImagesRequest):
         raise HTTPException(status_code=500, detail="Image generation failed")
 
 
+async def _send_telegram(bot_token: str, chat_id: str, text: str) -> None:
+    """텔레그램 메시지 전송 (실패해도 무시)."""
+    try:
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(url, json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"})
+    except Exception as e:
+        logger.warning(f"[telegram] Failed to send notification: {e}")
+
+
 @router.post("/save-draft", response_model=SaveDraftResponse)
 async def save_draft(body: SaveDraftRequest, config: Config = Depends(get_config)):
     """
     완성된 블로그 글을 ai-blog DB에 draft로 저장.
 
     - n8n 워크플로우의 마지막 단계
-    - 관리자 페이지에서 승인/반려 가능
+    - reviewed 상태로 저장 → 관리자 페이지에서 승인/반려 가능
     """
     try:
         draft_data = {
@@ -654,9 +666,21 @@ async def save_draft(body: SaveDraftRequest, config: Config = Depends(get_config
             raise HTTPException(status_code=500, detail="Failed to save draft to blog DB")
 
         logger.info(f"[n8n/save-draft] Draft saved: id={draft_id}, title={body.title}")
+
+        # 텔레그램 알림
+        if config.telegram_bot_token and config.telegram_chat_id:
+            admin_url = f"{config.blog_api_url}/admin/drafts/{draft_id}"
+            msg = (
+                f"📝 <b>새 블로그 초안이 생성되었습니다</b>\n\n"
+                f"제목: {body.title}\n"
+                f"키워드: {body.keyword}\n\n"
+                f"<a href=\"{admin_url}\">👉 검토하러 가기</a>"
+            )
+            await _send_telegram(config.telegram_bot_token, config.telegram_chat_id, msg)
+
         return SaveDraftResponse(
             draft_id=draft_id,
-            status="written",
+            status="reviewed",
             message=f"Draft saved successfully (ID: {draft_id}). Awaiting approval in admin panel.",
         )
 

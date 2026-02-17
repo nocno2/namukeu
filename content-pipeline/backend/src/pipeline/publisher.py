@@ -33,7 +33,7 @@ def create_draft_in_blog(draft_data: dict, config: Config) -> int | None:
                 draft_data.get("content"),
                 draft_data.get("excerpt"),
                 json.dumps(draft_data.get("tags", []), ensure_ascii=False),
-                "written",
+                "reviewed",
                 draft_data.get("pipeline_id"),
                 now,
                 now,
