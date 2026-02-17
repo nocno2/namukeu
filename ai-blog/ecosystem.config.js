@@ -11,7 +11,9 @@ module.exports = {
       exec_mode: "fork",
       instances: 1,
       autorestart: true,
-      max_memory_restart: "512M",
+      max_memory_restart: "1G",
+      min_uptime: "10s",
+      max_restarts: 5,
     },
   ],
 };
