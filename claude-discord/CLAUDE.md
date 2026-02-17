@@ -13,6 +13,7 @@
 - **Message:** `src/message.ts` — response chunking (1900 char), Discord Markdown
 - **Queue:** `src/queue.ts` — per-channel sequential message processing
 - **DB:** `src/db.ts` — SQLite message history with WAL mode
+- **Scheduler:** `src/scheduler.ts` — cron-like task runner for autonomous scheduled actions
 - **Runtime:** Bun
 - **Dependency:** discord.js only
 
@@ -38,6 +39,10 @@
 - `/history [count]` — Show recent conversation history
 - `/search <query>` — Search past messages
 - `/coin` — coin-auto-trade 서버 요약 정보 조회 (상태, 포트폴리오, 포지션, 거래, 전략)
+- `/schedule list` — 예약 작업 목록 조회
+- `/schedule add <name> <interval> <prompt> [channel]` — 새 예약 작업 추가
+- `/schedule remove <id>` — 예약 작업 삭제
+- `/schedule toggle <id>` — 예약 작업 활성화/비활성화
 
 ## API Gateway 연동
 
@@ -83,6 +88,17 @@ Rules:
   - `[PROGRESS: 테스트 실행 중 — 2개 실패, 수정 중]`
   - `[PROGRESS: Git push 완료, PR 생성 중]`
 - These tags are automatically stripped from the final response and sent as intermediate updates to the user
+
+## Scheduler (예약 작업)
+
+봇이 자율적으로 주기적 작업을 실행하는 스케줄러.
+
+- 1분 간격으로 tick → 예약된 작업의 실행 시간 도래 시 자동 실행
+- 각 작업은 대상 채널에 Claude 프롬프트를 보내고 결과를 채널에 전송
+- 조용한 시간(23:00-08:00 KST) 동안 `respectQuietHours: true`인 작업은 건너뜀
+- 봇 재시작 시 밀린 작업은 2분 후 실행 (flood 방지)
+- 데이터: `data/schedules.json`에 영구 저장
+- `/schedule` 슬래시 커맨드로 CRUD 관리
 
 ## train-go Integration
 

@@ -3,6 +3,7 @@ import { join } from "path";
 import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
+import { stopScheduler } from "./scheduler";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -42,6 +43,7 @@ async function main(): Promise<void> {
 
   // Cleanup on exit
   const cleanup = async () => {
+    stopScheduler();
     await stopPlaywrightMCP();
     await releaseLock();
     process.exit(0);

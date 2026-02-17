@@ -30,6 +30,16 @@ import {
   getMessageCount,
   getConversationRecap,
 } from "./db";
+import {
+  initScheduler,
+  stopScheduler,
+  addTask,
+  removeTask,
+  toggleTask,
+  listTasks,
+  formatTaskList,
+  type ScheduledTask,
+} from "./scheduler";
 
 const ALLOWED_USER_ID = process.env.DISCORD_USER_ID!;
 const USER_NAME = process.env.USER_NAME || "";
@@ -239,8 +249,67 @@ export async function createBot(): Promise<Client> {
   const queue = new MessageQueue();
 
   // --- Ready event ---
-  client.once(Events.ClientReady, (c) => {
+  client.once(Events.ClientReady, async (c) => {
     console.log(`Bot is running as ${c.user.tag}. Waiting for messages...`);
+
+    // Initialize scheduler — scheduled tasks send prompts to channels via Claude
+    await initScheduler(async (task: ScheduledTask) => {
+      console.log(`[scheduler] Running task "${task.name}" in channel ${task.channelId}`);
+      try {
+        const channel = await client.channels.fetch(task.channelId);
+        if (!channel || !channel.isTextBased()) {
+          console.error(`[scheduler] Channel ${task.channelId} not found or not text-based`);
+          return;
+        }
+
+        const textChannel = channel as TextBasedChannel;
+        const stopTyping = startTypingIndicator(textChannel);
+
+        try {
+          const isNew = sessions.isNewSession(task.channelId);
+          const sessionId = sessions.getSessionId(task.channelId);
+
+          let finalPrompt: string;
+          let systemPrompt: string | undefined;
+
+          if (isNew) {
+            const memoryContext = await getMemoryContext();
+            const recap = getConversationRecap(task.channelId, 30);
+            systemPrompt = buildSystemPrompt(memoryContext, recap, task.channelId);
+            finalPrompt = `[Scheduled Task: ${task.name}]\n\n${task.prompt}`;
+          } else {
+            const prefix = buildResumePrefix();
+            finalPrompt = `${prefix}\n\n[Scheduled Task: ${task.name}]\n\n${task.prompt}`;
+          }
+
+          const result = await callClaude(finalPrompt, {
+            sessionId,
+            isNewSession: isNew,
+            systemPrompt,
+            onProgress: (progressMsg) => {
+              sendResponse(textChannel, progressMsg).catch(() => {});
+            },
+          });
+
+          if (result.success) {
+            const cleanResponse = await processMemoryTags(result.result);
+            saveMessage(task.channelId, "assistant", cleanResponse, {
+              costUsd: result.costUsd,
+              durationMs: result.durationMs,
+            });
+            await sessions.markActive(task.channelId);
+            await sendResponse(textChannel, cleanResponse);
+            console.log(`[scheduler] Task "${task.name}" done — $${result.costUsd?.toFixed(4) || "?"}`);
+          } else {
+            console.error(`[scheduler] Task "${task.name}" Claude error:`, result.error);
+          }
+        } finally {
+          stopTyping();
+        }
+      } catch (err) {
+        console.error(`[scheduler] Task "${task.name}" failed:`, err);
+      }
+    });
   });
 
   // --- Slash command handler ---
@@ -374,6 +443,60 @@ export async function createBot(): Promise<Client> {
           await interaction.editReply(msg.slice(0, 2000));
         } catch (err) {
           await interaction.editReply(`파이프라인 실행 실패: ${err}`);
+        }
+        break;
+      }
+
+      case "schedule": {
+        const sub = interaction.options.getSubcommand();
+
+        if (sub === "list") {
+          const list = formatTaskList();
+          await interaction.reply(list.slice(0, 2000));
+        } else if (sub === "add") {
+          const name = interaction.options.getString("name", true);
+          const intervalMinutes = interaction.options.getInteger("interval", true);
+          const prompt = interaction.options.getString("prompt", true);
+          const targetChannel = interaction.options.getChannel("channel");
+          const targetChannelId = targetChannel?.id || channelId;
+
+          const task = await addTask({
+            channelId: targetChannelId,
+            name,
+            intervalMinutes,
+            prompt,
+          });
+
+          const intervalStr = intervalMinutes >= 60
+            ? `${Math.floor(intervalMinutes / 60)}시간 ${intervalMinutes % 60 ? `${intervalMinutes % 60}분` : ""}`
+            : `${intervalMinutes}분`;
+          await interaction.reply(
+            `✅ 예약 작업 추가됨\n` +
+            `**${name}** — ${intervalStr}마다\n` +
+            `채널: <#${targetChannelId}>\n` +
+            `ID: \`${task.id.slice(0, 8)}\``
+          );
+        } else if (sub === "remove") {
+          const idPrefix = interaction.options.getString("id", true);
+          const tasks = listTasks();
+          const match = tasks.find((t) => t.id.startsWith(idPrefix));
+          if (!match) {
+            await interaction.reply(`작업을 찾을 수 없습니다: \`${idPrefix}\``);
+          } else {
+            await removeTask(match.id);
+            await interaction.reply(`🗑️ **${match.name}** 삭제됨`);
+          }
+        } else if (sub === "toggle") {
+          const idPrefix = interaction.options.getString("id", true);
+          const tasks = listTasks();
+          const match = tasks.find((t) => t.id.startsWith(idPrefix));
+          if (!match) {
+            await interaction.reply(`작업을 찾을 수 없습니다: \`${idPrefix}\``);
+          } else {
+            const updated = await toggleTask(match.id);
+            const status = updated?.enabled ? "✅ 활성화" : "⬜ 비활성화";
+            await interaction.reply(`${status}: **${match.name}**`);
+          }
         }
         break;
       }

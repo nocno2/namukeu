@@ -61,6 +61,46 @@ const commands = [
           { name: "4. 알림 (Notify)", value: "notify" },
         )
     ),
+
+  new SlashCommandBuilder()
+    .setName("schedule")
+    .setDescription("예약 작업 관리 (조회/추가/삭제/토글)")
+    .addSubcommand((sub) =>
+      sub.setName("list").setDescription("예약된 작업 목록 조회")
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("add")
+        .setDescription("새 예약 작업 추가")
+        .addStringOption((opt) =>
+          opt.setName("name").setDescription("작업 이름").setRequired(true)
+        )
+        .addIntegerOption((opt) =>
+          opt.setName("interval").setDescription("실행 간격 (분)").setRequired(true).setMinValue(5)
+        )
+        .addStringOption((opt) =>
+          opt.setName("prompt").setDescription("실행할 프롬프트").setRequired(true)
+        )
+        .addChannelOption((opt) =>
+          opt.setName("channel").setDescription("대상 채널 (기본: 현재 채널)")
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("remove")
+        .setDescription("예약 작업 삭제")
+        .addStringOption((opt) =>
+          opt.setName("id").setDescription("작업 ID (앞 8자리)").setRequired(true)
+        )
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName("toggle")
+        .setDescription("예약 작업 활성화/비활성화")
+        .addStringOption((opt) =>
+          opt.setName("id").setDescription("작업 ID (앞 8자리)").setRequired(true)
+        )
+    ),
 ];
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
