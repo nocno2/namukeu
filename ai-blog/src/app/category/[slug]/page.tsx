@@ -2,6 +2,7 @@ import { db, schema } from "@/lib/db";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import PostCard from "@/components/PostCard";
+import AdBanner from "@/components/AdBanner";
 import type { Metadata } from "next";
 
 export const revalidate = 3600;
@@ -58,6 +59,8 @@ export default async function CategoryPage({ params }: Props) {
         {category.description && <p className="text-[var(--text-tertiary)]">{category.description}</p>}
       </header>
 
+      <AdBanner slot="category-top" format="auto" className="mb-8" />
+
       {posts.length === 0 ? (
         <p className="text-[var(--text-tertiary)] text-center py-12">이 카테고리에 게시된 글이 없습니다.</p>
       ) : (
@@ -77,6 +80,8 @@ export default async function CategoryPage({ params }: Props) {
           ))}
         </div>
       )}
+
+      <AdBanner slot="category-bottom" format="horizontal" className="mt-10" />
     </div>
   );
 }
