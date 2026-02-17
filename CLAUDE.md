@@ -48,6 +48,27 @@
 - `.env` 파일, DB 파일, `node_modules/`, `.venv/` 등은 절대 커밋하지 않음
 - Python 프로젝트는 Python 3.12 사용 (`/Users/namwook/.local/bin/python3.12`)
 
+## 블로그 글 작성 요청 (n8n 자동화)
+
+사용자가 블로그 글 작성을 요청하면 n8n 웹훅으로 트리거한다.
+
+**키워드로 요청:**
+```bash
+curl -s -X POST http://localhost:5678/webhook/blog-automation \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "키워드"}'
+```
+
+**아이디어/컨텍스트로 요청:**
+```bash
+curl -s -X POST http://localhost:5678/webhook/blog-automation \
+  -H "Content-Type: application/json" \
+  -d '{"idea": "아이디어나 컨텍스트"}'
+```
+
+완료 시 텔레그램으로 알림이 오고, `blog.namukeu.com/admin`에서 승인/반려 가능.
+세부 내용은 `content-pipeline/CLAUDE.md` 참고.
+
 ## 작업 완료 보고
 작업이 끝나면 반드시 사용자에게 다음 형식으로 마무리 보고를 한다:
 

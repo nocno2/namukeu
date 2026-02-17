@@ -108,3 +108,37 @@ bun run build
 - A/B 테스트 (제목, 썸네일 변형)
 - dashboard 위젯 연동
 - Telegram/Discord 알림
+
+## n8n 블로그 자동화 워크플로우
+
+### 웹훅 URL
+```
+http://localhost:5678/webhook/blog-automation
+```
+
+### 사용 방법
+사용자가 키워드나 아이디어를 던지면 아래 명령으로 n8n 워크플로우를 트리거한다.
+
+**키워드로 글 작성 요청:**
+```bash
+curl -s -X POST http://localhost:5678/webhook/blog-automation \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "여기에 키워드"}'
+```
+
+**아이디어/컨텍스트로 글 작성 요청:**
+```bash
+curl -s -X POST http://localhost:5678/webhook/blog-automation \
+  -H "Content-Type: application/json" \
+  -d '{"idea": "여기에 아이디어나 컨텍스트"}'
+```
+
+### 플로우 설명
+- `keyword` 있으면 → enrich-keyword → 글 생성
+- `idea` 있으면 → enrich-context (키워드 추출 포함) → 글 생성
+- 생성 후 AI 리뷰 점수 8점 이상이면 → 자동 save-draft (reviewed 상태)
+- 8점 미만이면 → revise 후 재저장
+- 저장 완료 시 텔레그램 알림 전송 (blog.namukeu.com 링크)
+
+### 워크플로우 파일
+`content-pipeline/n8n-blog-automation-workflow.json`
