@@ -38,6 +38,8 @@ import src.strategies.bollinger_strategy  # noqa: F401
 import src.strategies.combined_strategy  # noqa: F401
 import src.strategies.combined_v2_strategy  # noqa: F401
 import src.strategies.trend_strategy  # noqa: F401
+import src.strategies.supertrend_strategy  # noqa: F401
+import src.strategies.ema_crossover_volume_strategy  # noqa: F401
 
 # Import pipeline providers to trigger registration
 import src.pipeline.providers.market_regime  # noqa: F401
