@@ -163,6 +163,15 @@ def dashboard_backtest(request: Request, page: int = 1, db: Database = Depends(g
 
     token = runtime.config.api_token if runtime.config else ""
 
+    # 전략별 최적 타임프레임 (백테스트 결과 기반)
+    recommended_timeframes = {
+        "combined_v2": "minute60",
+        "rsi": "minute60",
+        "ema_crossover_vol": "day",
+        "trend_following": "minute60",
+        "supertrend": "minute60",
+    }
+
     return templates.TemplateResponse("backtest.html", {
         "request": request,
         **ctx,
@@ -173,6 +182,7 @@ def dashboard_backtest(request: Request, page: int = 1, db: Database = Depends(g
         "page": page,
         "total_pages": total_pages,
         "total": total,
+        "recommended_timeframes": recommended_timeframes,
     })
 
 
