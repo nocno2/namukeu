@@ -1,4 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  Coins,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react";
 import { api, type ClaudeUsage as ClaudeUsageData } from "../lib/api";
 
 interface Props {
@@ -24,10 +34,12 @@ function UsageBar({
   label,
   utilization,
   resetsAt,
+  icon,
 }: {
   label: string;
   utilization: number;
   resetsAt: string;
+  icon: React.ReactNode;
 }) {
   const barColor =
     utilization >= 80
@@ -39,16 +51,20 @@ function UsageBar({
   return (
     <div>
       <div className="flex justify-between text-xs mb-1.5">
-        <span className="text-text-muted">{label}</span>
-        <span className="font-mono">{utilization}%</span>
+        <span className="text-text-muted flex items-center gap-1.5">
+          {icon}
+          {label}
+        </span>
+        <span className="font-mono text-text">{utilization}%</span>
       </div>
-      <div className="w-full h-2 bg-bg rounded-full overflow-hidden">
+      <div className="w-full h-2 bg-border/30 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${barColor}`}
           style={{ width: `${utilization}%` }}
         />
       </div>
-      <div className="text-[10px] text-text-muted mt-1">
+      <div className="text-[10px] text-text-muted mt-1 flex items-center gap-1">
+        <RefreshCw size={10} />
         갱신 {timeUntil(resetsAt)}
       </div>
     </div>
@@ -117,16 +133,24 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
   const isMinimax = currentModel === "minimax";
 
   return (
-    <div className={`bg-surface border rounded-xl ${pinned ? "border-primary/40" : "border-border"} ${collapsed ? "p-3" : "p-5"}`}>
+    <div
+      className={`bg-surface border border-border rounded-2xl transition-all card-glow card-transition ${
+        pinned ? "border-primary/50" : "border-border/60"
+      } ${collapsed ? "p-3" : "p-5"}`}
+      style={{ animation: 'slideUp 0.3s ease-out' }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-sm">Claude Code</h3>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-2">
+          <Bot size={16} className="text-primary" />
+          <h3 className="font-semibold text-sm text-text">Claude Code</h3>
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0">
           {/* Model switch button */}
           <button
             onClick={handleModelSwitch}
             disabled={switching}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-mono transition-colors ${
               isMinimax
                 ? "bg-violet-500/20 text-violet-400 hover:bg-violet-500/30"
                 : "bg-primary/10 text-primary hover:bg-primary/20"
@@ -134,46 +158,35 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
             title={isMinimax ? "Claude로 전환" : "MiniMax M2.5로 전환"}
           >
             {switching ? (
-              <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity=".25"/>
-                <path d="M21 12a9 9 0 01-9-9"/>
-              </svg>
+              <RefreshCw size={10} className="animate-spin" />
+            ) : isMinimax ? (
+              <Sparkles size={10} />
             ) : (
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
-              </svg>
+              <Bot size={10} />
             )}
             {isMinimax ? "M2.5" : "Claude"}
           </button>
           <button
             onClick={onTogglePin}
-            className={`p-1 rounded transition-colors ${
-              pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"
+            className={`p-1.5 rounded-lg transition-colors ${
+              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
             }`}
             title={pinned ? "고정 해제" : "상단 고정"}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
-              <path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" />
-            </svg>
+            {pinned ? <Pin size={14} /> : <PinOff size={14} />}
           </button>
           <button
             onClick={onToggleCollapse}
-            className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors"
+            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
             title={collapsed ? "펼치기" : "접기"}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              {collapsed ? (
-                <polyline points="6 9 12 15 18 9" />
-              ) : (
-                <polyline points="6 15 12 9 18 15" />
-              )}
-            </svg>
+            {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
           </button>
         </div>
       </div>
 
       {collapsed ? (
-        <div className="flex items-center gap-3 mt-1.5">
+        <div className="flex items-center gap-3 mt-2">
           {usage.five_hour && <CompactUsage label="5h" utilization={usage.five_hour.utilization} />}
           {usage.seven_day && <CompactUsage label="7d" utilization={usage.seven_day.utilization} />}
           {isMinimax && (
@@ -187,6 +200,7 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
               label="5시간"
               utilization={usage.five_hour.utilization}
               resetsAt={usage.five_hour.resets_at}
+              icon={<Coins size={12} />}
             />
           )}
           {usage.seven_day && (
@@ -194,10 +208,12 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
               label="7일"
               utilization={usage.seven_day.utilization}
               resetsAt={usage.seven_day.resets_at}
+              icon={<Coins size={12} />}
             />
           )}
           {isMinimax && (
-            <div className="text-[10px] text-violet-400/70 pt-1 border-t border-border">
+            <div className="text-[10px] text-violet-400/70 pt-2 border-t border-border/60 flex items-center gap-1">
+              <Sparkles size={10} />
               현재 MiniMax M2.5 사용 중 — 새 Claude Code 세션부터 적용됩니다
             </div>
           )}

@@ -1,4 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  Eye,
+  Pin,
+  PinOff,
+  Play,
+  Rocket,
+  Workflow,
+} from "lucide-react";
 import { api, type AgentStatus } from "../lib/api";
 
 interface Props {
@@ -8,10 +19,13 @@ interface Props {
   onTogglePin: () => void;
 }
 
-function Toggle({ label, enabled, onChange }: { label: string; enabled: boolean; onChange: (v: boolean) => void }) {
+function Toggle({ label, enabled, onChange, icon }: { label: string; enabled: boolean; onChange: (v: boolean) => void; icon: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-text-muted">{label}</span>
+      <span className="text-sm text-text-muted flex items-center gap-2">
+        {icon}
+        {label}
+      </span>
       <button
         onClick={() => onChange(!enabled)}
         className={`relative w-10 h-5 rounded-full transition-colors cursor-pointer ${enabled ? "bg-primary" : "bg-border"}`}
@@ -77,7 +91,7 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
     } catch { /* ignore */ }
   };
 
-  const borderClass = pinned ? "border-primary/40" : "border-border";
+  const borderClass = pinned ? "border-primary/50" : "border-border/60";
   const isExecuting = (status?.runningTasks?.length ?? 0) > 0;
 
   // Monitor failures
@@ -86,10 +100,11 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
 
   if (collapsed) {
     return (
-      <div className={`bg-surface border ${borderClass} rounded-xl p-3 flex items-center justify-between`}>
+      <div className={`bg-surface border ${borderClass} rounded-2xl p-3 flex items-center justify-between card-glow card-transition`}>
         <div className="flex items-center gap-2">
           <span className={`w-2 h-2 rounded-full ${isExecuting ? "bg-warning animate-pulse" : status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
-          <span className="text-sm font-medium">Agent</span>
+          <Bot size={14} className="text-primary" />
+          <span className="text-sm font-medium text-text">Agent</span>
           {status && (
             <span className="text-[10px] text-text-muted">
               {isExecuting
@@ -98,14 +113,20 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={onTogglePin} className={`p-1 rounded transition-colors ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" /></svg>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onTogglePin}
+            className={`p-1.5 rounded-lg transition-colors ${
+              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
+            }`}
+          >
+            {pinned ? <Pin size={14} /> : <PinOff size={14} />}
           </button>
-          <button onClick={onToggleCollapse} className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+          >
+            <ChevronDown size={14} />
           </button>
         </div>
       </div>
@@ -113,20 +134,26 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
   }
 
   return (
-    <div className={`bg-surface border ${borderClass} rounded-xl p-5`}>
+    <div className={`bg-surface border ${borderClass} rounded-2xl p-5 card-glow card-transition`}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${isExecuting ? "bg-warning animate-pulse" : status?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
-          <h3 className="font-semibold text-sm">자율 에이전트</h3>
+          <Bot size={16} className="text-primary" />
+          <h3 className="font-semibold text-sm text-text">자율 에이전트</h3>
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={onTogglePin} className={`p-1 rounded transition-colors ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" /></svg>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onTogglePin}
+            className={`p-1.5 rounded-lg transition-colors ${
+              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
+            }`}
+          >
+            {pinned ? <Pin size={14} /> : <PinOff size={14} />}
           </button>
-          <button onClick={onToggleCollapse} className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <polyline points="6 15 12 9 18 15" />
-            </svg>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+          >
+            <ChevronUp size={14} />
           </button>
         </div>
       </div>
@@ -146,7 +173,7 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
           {status.runningTasks.length > 0 && (
             <div className="space-y-1.5">
               {status.runningTasks.map((task, i) => (
-                <div key={i} className="bg-warning/10 border border-warning/20 rounded-lg p-2 flex items-center justify-between">
+                <div key={i} className="bg-warning/10 border border-warning/20 rounded-xl p-2.5 flex items-center justify-between">
                   <div>
                     <div className="text-xs text-warning font-medium">{task.title}</div>
                     <div className="text-[10px] text-text-muted mt-0.5">{task.project}</div>
@@ -158,22 +185,23 @@ export function AgentControl({ collapsed, pinned, onToggleCollapse, onTogglePin 
           )}
           <div className="flex items-center justify-between text-sm">
             <span className="text-text-muted">오늘 작업</span>
-            <span>{status.todayTaskCount}건 · ${status.todayCost.toFixed(2)}</span>
+            <span className="text-text">{status.todayTaskCount}건 · ${status.todayCost.toFixed(2)}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-text-muted">마지막 작업</span>
             <span className="text-text-muted">{timeAgo(status.lastTaskExecutedAt)}</span>
           </div>
 
-          <div className="border-t border-border pt-3 space-y-3">
-            <Toggle label="서비스 진화" enabled={status.evolutionEnabled} onChange={(v) => toggle("evolution", v)} />
-            <Toggle label="자율 탐색" enabled={status.idleEnabled} onChange={(v) => toggle("idle", v)} />
-            <Toggle label="작업 연쇄" enabled={status.chainingEnabled} onChange={(v) => toggle("chain", v)} />
-            <Toggle label="서비스 감시" enabled={status.monitorsEnabled} onChange={(v) => toggle("monitors", v)} />
+          <div className="border-t border-border/60 pt-3 space-y-3">
+            <Toggle label="서비스 진화" enabled={status.evolutionEnabled} onChange={(v) => toggle("evolution", v)} icon={<Rocket size={14} />} />
+            <Toggle label="자율 탐색" enabled={status.idleEnabled} onChange={(v) => toggle("idle", v)} icon={<Play size={14} />} />
+            <Toggle label="작업 연쇄" enabled={status.chainingEnabled} onChange={(v) => toggle("chain", v)} icon={<Workflow size={14} />} />
+            <Toggle label="서비스 감시" enabled={status.monitorsEnabled} onChange={(v) => toggle("monitors", v)} icon={<Eye size={14} />} />
           </div>
 
           {monitors.length > 0 && (
-            <div className="text-xs text-text-muted">
+            <div className="text-xs text-text-muted flex items-center gap-1">
+              <Eye size={10} />
               모니터 {monitors.length}개
               {totalFailures > 0 && <span className="text-warning"> · 장애 {totalFailures}</span>}
             </div>

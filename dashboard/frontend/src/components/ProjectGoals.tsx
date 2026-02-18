@@ -1,4 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Circle,
+  Plus,
+  Star,
+  Target,
+  Trash2,
+  X,
+} from "lucide-react";
 import { api, type AgentGoal } from "../lib/api";
 
 interface Props {
@@ -9,8 +19,11 @@ interface Props {
 }
 
 const PROJECTS = ["COIN", "BLOG", "DASH", "TRAIN", "TGBOT", "DCBOT"];
-const PRIORITY_ICON: Record<string, string> = { high: "\u2605", medium: "\u25CF", low: "\u25CB" };
-const PRIORITY_COLOR: Record<string, string> = { high: "text-warning", medium: "text-primary", low: "text-text-muted" };
+const PRIORITY_ICON: Record<string, React.ReactNode> = {
+  high: <Star size={10} className="text-warning" />,
+  medium: <Circle size={10} className="fill-primary text-primary" />,
+  low: <Circle size={10} className="text-text-muted" />,
+};
 
 export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
   const [goals, setGoals] = useState<AgentGoal[]>([]);
@@ -89,51 +102,79 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
     }
   }
 
-  const borderClass = pinned ? "border-primary/40" : "border-border";
+  const borderClass = pinned ? "border-primary/50" : "border-border/60";
 
   if (collapsed) {
     return (
-      <div className={`bg-surface border ${borderClass} rounded-xl p-3 flex items-center justify-between`}>
+      <div className={`bg-surface border ${borderClass} rounded-2xl p-3 flex items-center justify-between card-glow card-transition`}>
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Goals</span>
+          <Target size={14} className="text-primary" />
+          <span className="text-sm font-medium text-text">Goals</span>
           <span className="text-xs text-text-muted">
             {activeGoals.length} active{proposedGoals.length > 0 && <span className="text-warning"> · {proposedGoals.length} proposed</span>}
           </span>
         </div>
-        <div className="flex items-center gap-1">
-          <button onClick={onTogglePin} className="text-text-muted hover:text-text text-xs cursor-pointer">{pinned ? "\u{1F4CC}" : "\u{1F4CD}"}</button>
-          <button onClick={onToggleCollapse} className="text-text-muted hover:text-text text-xs cursor-pointer">+</button>
+        <div className="flex items-center gap-0.5">
+          <button
+            onClick={onTogglePin}
+            className={`p-1.5 rounded-lg transition-colors ${
+              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
+            }`}
+          >
+            {pinned ? <Star size={14} /> : <Circle size={14} />}
+          </button>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+          >
+            <ChevronDown size={14} />
+          </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={`bg-surface border ${borderClass} rounded-xl p-5`}>
+    <div className={`bg-surface border ${borderClass} rounded-2xl p-5 card-glow card-transition`}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-medium">Project Goals</h3>
         <div className="flex items-center gap-2">
+          <Target size={16} className="text-primary" />
+          <h3 className="font-semibold text-sm text-text">Project Goals</h3>
+        </div>
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => setShowForm(!showForm)}
-            className="text-xs text-primary hover:text-primary/80 cursor-pointer"
+            className="p-1.5 text-primary hover:bg-primary/10 rounded-lg transition-colors cursor-pointer"
           >
-            {showForm ? "Cancel" : "+ Add"}
+            {showForm ? <X size={14} /> : <Plus size={14} />}
           </button>
-          <button onClick={onTogglePin} className="text-text-muted hover:text-text text-xs cursor-pointer">{pinned ? "\u{1F4CC}" : "\u{1F4CD}"}</button>
-          <button onClick={onToggleCollapse} className="text-text-muted hover:text-text text-xs cursor-pointer">{"\u2212"}</button>
+          <button
+            onClick={onTogglePin}
+            className={`p-1.5 rounded-lg transition-colors ${
+              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
+            }`}
+          >
+            {pinned ? <Star size={14} /> : <Circle size={14} />}
+          </button>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+          >
+            <ChevronUp size={14} />
+          </button>
         </div>
       </div>
 
       {showForm && (
-        <div className="bg-bg border border-border rounded-lg p-3 mb-4 space-y-2">
+        <div className="bg-surface-hover border border-border/50 rounded-xl p-3 mb-4 space-y-2">
           <input
-            className="w-full bg-surface border border-border rounded px-2 py-1 text-sm focus:border-primary outline-none"
+            className="w-full bg-surface border border-border/50 rounded-lg px-3 py-2 text-sm focus:border-primary outline-none text-text"
             placeholder="Goal title"
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
           />
           <input
-            className="w-full bg-surface border border-border rounded px-2 py-1 text-sm focus:border-primary outline-none"
+            className="w-full bg-surface border border-border/50 rounded-lg px-3 py-2 text-sm focus:border-primary outline-none text-text"
             placeholder="Description (optional)"
             value={form.description}
             onChange={(e) => setForm({ ...form, description: e.target.value })}
@@ -143,8 +184,8 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
               <button
                 key={p}
                 onClick={() => toggleProject(p)}
-                className={`text-xs px-2 py-0.5 rounded border cursor-pointer ${
-                  form.projects.includes(p) ? "bg-primary/20 border-primary text-primary" : "border-border text-text-muted"
+                className={`text-xs px-2.5 py-1 rounded-lg border cursor-pointer transition-colors ${
+                  form.projects.includes(p) ? "bg-primary/20 border-primary text-primary" : "border-border/50 text-text-muted hover:bg-surface-hover"
                 }`}
               >
                 {p}
@@ -153,7 +194,7 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
           </div>
           <div className="flex gap-2">
             <select
-              className="bg-surface border border-border rounded px-2 py-1 text-sm"
+              className="bg-surface border border-border/50 rounded-lg px-2 py-2 text-sm text-text"
               value={form.priority}
               onChange={(e) => setForm({ ...form, priority: e.target.value })}
             >
@@ -163,13 +204,13 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
             </select>
             <input
               type="date"
-              className="bg-surface border border-border rounded px-2 py-1 text-sm flex-1 focus:border-primary outline-none"
+              className="bg-surface border border-border/50 rounded-lg px-2 py-2 text-sm flex-1 focus:border-primary outline-none text-text"
               value={form.deadline}
               onChange={(e) => setForm({ ...form, deadline: e.target.value })}
             />
             <button
               onClick={createGoal}
-              className="text-xs bg-primary hover:bg-primary/80 text-white rounded px-3 py-1 cursor-pointer"
+              className="text-xs bg-primary hover:bg-primary/80 text-white rounded-lg px-4 py-2 cursor-pointer font-medium"
             >
               Create
             </button>
@@ -183,15 +224,18 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
         <div className="space-y-3">
           {proposedGoals.length > 0 && (
             <div>
-              <div className="text-xs font-medium text-warning mb-1.5">Proposed by Evolution</div>
+              <div className="text-xs font-medium text-warning mb-1.5 flex items-center gap-1">
+                <Star size={10} />
+                Proposed by Evolution
+              </div>
               <div className="space-y-1.5">
                 {proposedGoals.map((g) => (
-                  <div key={g.id} className="bg-warning/5 border border-warning/20 rounded-lg px-3 py-2">
+                  <div key={g.id} className="bg-warning/5 border border-warning/20 rounded-xl px-3 py-2.5">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
-                          <span className={`${PRIORITY_COLOR[g.priority]} text-xs`}>{PRIORITY_ICON[g.priority]}</span>
-                          <span className="text-sm font-medium">{g.title}</span>
+                          {PRIORITY_ICON[g.priority]}
+                          <span className="text-sm font-medium text-text">{g.title}</span>
                           <span className="text-[10px] text-text-muted">{g.projects.join(", ")}</span>
                         </div>
                         {g.description && g.description !== g.title && (
@@ -199,8 +243,8 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
                         )}
                       </div>
                       <div className="flex gap-1.5 ml-2 shrink-0">
-                        <button onClick={() => approveGoal(g.id)} className="text-[10px] bg-success/20 text-success hover:bg-success/30 rounded px-2 py-0.5 cursor-pointer">Approve</button>
-                        <button onClick={() => deleteGoal(g.id)} className="text-[10px] bg-danger/20 text-danger hover:bg-danger/30 rounded px-2 py-0.5 cursor-pointer">Reject</button>
+                        <button onClick={() => approveGoal(g.id)} className="text-[10px] bg-success/20 text-success hover:bg-success/30 rounded-lg px-2 py-1 cursor-pointer">Approve</button>
+                        <button onClick={() => deleteGoal(g.id)} className="text-[10px] bg-danger/20 text-danger hover:bg-danger/30 rounded-lg px-2 py-1 cursor-pointer">Reject</button>
                       </div>
                     </div>
                   </div>
@@ -210,19 +254,22 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
           )}
 
           {activeGoals.length === 0 && proposedGoals.length === 0 ? (
-            <p className="text-sm text-text-muted">No active goals</p>
+            <p className="text-sm text-text-muted text-center py-4">No active goals</p>
           ) : (
             Object.entries(grouped).sort().map(([project, projectGoals]) => (
               <div key={project}>
-                <div className="text-xs font-medium text-text-muted mb-1">{project}</div>
+                <div className="text-xs font-medium text-text-muted mb-1.5 flex items-center gap-1">
+                  <Target size={10} />
+                  {project}
+                </div>
                 <div className="space-y-1.5">
                   {projectGoals.map((g) => (
-                    <div key={`${project}-${g.id}`} className="bg-bg/50 border border-border rounded-lg px-3 py-2 group">
+                    <div key={`${project}-${g.id}`} className="bg-surface-hover/50 border border-border/50 rounded-xl px-3 py-2.5 group">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-1.5 min-w-0">
-                          <span className={`${PRIORITY_COLOR[g.priority]} text-xs mt-0.5`}>{PRIORITY_ICON[g.priority]}</span>
+                          <span className={`mt-0.5`}>{PRIORITY_ICON[g.priority]}</span>
                           <div className="min-w-0">
-                            <div className="text-sm truncate">{g.title}</div>
+                            <div className="text-sm truncate text-text">{g.title}</div>
                             {g.projects.length > 1 && (
                               <div className="text-[10px] text-text-muted">shared: {g.projects.join(", ")}</div>
                             )}
@@ -232,7 +279,7 @@ export function ProjectGoals({ collapsed, pinned, onToggleCollapse, onTogglePin 
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => completeGoal(g.id)} className="text-[10px] text-success hover:text-success/80 cursor-pointer">Done</button>
-                          <button onClick={() => deleteGoal(g.id)} className="text-[10px] text-danger hover:text-danger/80 cursor-pointer">Del</button>
+                          <button onClick={() => deleteGoal(g.id)} className="text-[10px] text-danger hover:text-danger/80 cursor-pointer"><Trash2 size={10} /></button>
                         </div>
                       </div>
                     </div>

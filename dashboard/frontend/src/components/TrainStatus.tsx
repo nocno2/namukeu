@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Pin,
+  PinOff,
+  Train,
+  X,
+} from "lucide-react";
 import { api, type TrainReservation, type TrainSummary } from "../lib/api";
 
 interface Props {
@@ -20,7 +28,7 @@ const STATUS_MAP: Record<string, { label: string; cls: string }> = {
 function StatusBadge({ status }: { status: string }) {
   const info = STATUS_MAP[status] || { label: status, cls: "text-text-muted bg-bg border-border" };
   return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${info.cls}`}>
+    <span className={`text-[10px] px-1.5 py-0.5 rounded-full border font-medium ${info.cls}`}>
       {info.label}
     </span>
   );
@@ -73,7 +81,7 @@ function ReservationCard({ r, isActive, onCancel, canceling }: ReservationCardPr
   const trainInfo = parseTrainInfo(r);
 
   return (
-    <div className={`rounded-lg px-3 py-2.5 ${isActive ? "bg-warning/5 border border-warning/20" : "bg-bg/50 border border-border"}`}>
+    <div className={`rounded-xl px-3 py-2.5 ${isActive ? "bg-warning/5 border border-warning/20" : "bg-surface-hover/50 border border-border/50"}`}>
       {/* 구간 + 상태 */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
@@ -83,7 +91,7 @@ function ReservationCard({ r, isActive, onCancel, canceling }: ReservationCardPr
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
             </span>
           )}
-          <span className="font-medium text-sm">{r.dep_station} → {r.arr_station}</span>
+          <span className="font-medium text-sm text-text">{r.dep_station} → {r.arr_station}</span>
         </div>
         <div className="flex items-center gap-1.5">
           <StatusBadge status={r.status || "pending"} />
@@ -91,7 +99,7 @@ function ReservationCard({ r, isActive, onCancel, canceling }: ReservationCardPr
             <button
               onClick={() => onCancel(r.id!)}
               disabled={canceling}
-              className={`text-[10px] px-1.5 py-0.5 rounded border border-danger/30 text-danger hover:bg-danger/10 transition-colors ${canceling ? "opacity-50 cursor-not-allowed" : ""}`}
+              className={`text-[10px] px-1.5 py-0.5 rounded-full border border-danger/30 text-danger hover:bg-danger/10 transition-colors ${canceling ? "opacity-50 cursor-not-allowed" : ""}`}
               title="매크로 취소"
             >
               취소
@@ -110,7 +118,7 @@ function ReservationCard({ r, isActive, onCancel, canceling }: ReservationCardPr
 
       {/* 예약 성공 시 열차 정보 */}
       {trainInfo && (
-        <div className="mt-1.5 text-[11px] text-success bg-success/5 rounded px-2 py-1">
+        <div className="mt-1.5 text-[11px] text-success bg-success/5 rounded-lg px-2 py-1">
           {trainInfo}
         </div>
       )}
@@ -139,16 +147,13 @@ function AllReservationsModal({ reservations, activeIds, onClose, onCancel, canc
   const paged = reservations.slice(page * pageSize, (page + 1) * pageSize);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-surface border border-border rounded-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col m-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-surface border border-border rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col m-4 shadow-2xl" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="font-semibold text-lg">전체 예약 내역</h2>
-          <button onClick={onClose} className="p-1 hover:bg-bg rounded transition-colors">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
+        <div className="flex items-center justify-between p-4 border-b border-border/60">
+          <h2 className="font-semibold text-lg text-text">전체 예약 내역</h2>
+          <button onClick={onClose} className="p-1.5 hover:bg-surface-hover rounded-lg transition-colors">
+            <X size={20} className="text-text-muted" />
           </button>
         </div>
 
@@ -167,11 +172,11 @@ function AllReservationsModal({ reservations, activeIds, onClose, onCancel, canc
 
         {/* Footer - Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 p-3 border-t border-border">
+          <div className="flex items-center justify-center gap-2 p-3 border-t border-border/60">
             <button
               onClick={() => setPage((p) => Math.max(0, p - 1))}
               disabled={page === 0}
-              className="px-2 py-1 text-xs rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-bg transition-colors"
+              className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors"
             >
               이전
             </button>
@@ -181,7 +186,7 @@ function AllReservationsModal({ reservations, activeIds, onClose, onCancel, canc
             <button
               onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
               disabled={page === totalPages - 1}
-              className="px-2 py-1 text-xs rounded border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-bg transition-colors"
+              className="px-3 py-1.5 text-xs rounded-lg border border-border disabled:opacity-30 disabled:cursor-not-allowed hover:bg-surface-hover transition-colors"
             >
               다음
             </button>
@@ -233,31 +238,45 @@ export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }
 
   return (
     <>
-      <div className={`bg-surface border rounded-xl ${pinned ? "border-primary/40" : "border-border"} ${collapsed ? "p-3" : "p-5"}`}>
+      <div
+        className={`bg-surface border border-border rounded-2xl transition-all card-glow card-transition ${
+          pinned ? "border-primary/50" : "border-border/60"
+        } ${collapsed ? "p-3" : "p-5"}`}
+        style={{ animation: 'slideUp 0.3s ease-out' }}
+      >
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h3 className="font-semibold text-sm">기차 예약</h3>
+            <Train size={16} className="text-primary" />
+            <h3 className="font-semibold text-sm text-text">기차 예약</h3>
             {data.active_macros > 0 && (
               <span className="text-[10px] text-warning font-medium">
                 매크로 {data.active_macros}개 실행 중
               </span>
             )}
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <button onClick={onTogglePin} className={`p-1 rounded transition-colors ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`} title={pinned ? "고정 해제" : "상단 고정"}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" /></svg>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={onTogglePin}
+              className={`p-1.5 rounded-lg transition-colors ${
+                pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
+              }`}
+              title={pinned ? "고정 해제" : "상단 고정"}
+            >
+              {pinned ? <Pin size={14} /> : <PinOff size={14} />}
             </button>
-            <button onClick={onToggleCollapse} className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors" title={collapsed ? "펼치기" : "접기"}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                {collapsed ? <polyline points="6 9 12 15 18 9" /> : <polyline points="6 15 12 9 18 15" />}
-              </svg>
+            <button
+              onClick={onToggleCollapse}
+              className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+              title={collapsed ? "펼치기" : "접기"}
+            >
+              {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </button>
           </div>
         </div>
 
         {collapsed ? (
-          <div className="flex items-center gap-2 mt-1.5 text-[10px]">
+          <div className="flex items-center gap-2 mt-2 text-[10px]">
             {data.active_macros > 0 && (
               <>
                 <span className="relative flex h-1.5 w-1.5">
@@ -265,18 +284,22 @@ export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }
                   <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-warning" />
                 </span>
                 <span className="text-warning font-medium">검색 중 {data.by_status.searching || 0}</span>
-                <span className="text-text-muted">·</span>
+                <span className="text-text-muted/30">•</span>
               </>
             )}
             <span className="text-success">예약 {data.by_status.reserved || 0}</span>
-            <span className="text-text-muted">· 전체 {data.total_reservations}</span>
+            <span className="text-text-muted/30">•</span>
+            <span className="text-text-muted">전체 {data.total_reservations}</span>
           </div>
         ) : (
           <div className="mt-3 space-y-3">
             {/* 활성 매크로 섹션 */}
             {data.active_reservations.length > 0 && (
               <div>
-                <div className="text-[11px] text-text-muted font-medium mb-2">검색 중인 매크로</div>
+                <div className="text-[11px] text-text-muted font-medium mb-2 flex items-center gap-1">
+                  <Train size={10} />
+                  검색 중인 매크로
+                </div>
                 <div className="space-y-2">
                   {data.active_reservations.map((r, i) => (
                     <ReservationCard

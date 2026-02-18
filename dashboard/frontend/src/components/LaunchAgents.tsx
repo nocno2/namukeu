@@ -1,4 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Pin,
+  PinOff,
+  RotateCcw,
+} from "lucide-react";
 import { api, type ScheduledTask } from "../lib/api";
 
 interface Props {
@@ -55,37 +63,48 @@ export function LaunchAgents({ collapsed, pinned, onToggleCollapse, onTogglePin 
   if (error || tasks.length === 0) return null;
 
   return (
-    <div className={`bg-surface border rounded-xl ${pinned ? "border-primary/40" : "border-border"} ${collapsed ? "p-3" : "p-5"}`}>
+    <div
+      className={`bg-surface border border-border rounded-2xl transition-all card-glow card-transition ${
+        pinned ? "border-primary/50" : "border-border/60"
+      } ${collapsed ? "p-3" : "p-5"}`}
+      style={{ animation: 'slideUp 0.3s ease-out' }}
+    >
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-muted">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-          <h3 className="font-semibold text-sm">예약 작업</h3>
+          <Clock size={16} className="text-primary" />
+          <h3 className="font-semibold text-sm text-text">예약 작업</h3>
           <span className="text-[10px] text-text-muted font-mono">{tasks.length}개</span>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <button onClick={onTogglePin} className={`p-1 rounded transition-colors ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`} title={pinned ? "고정 해제" : "상단 고정"}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2"><path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" /></svg>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={onTogglePin}
+            className={`p-1.5 rounded-lg transition-colors ${
+              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
+            }`}
+            title={pinned ? "고정 해제" : "상단 고정"}
+          >
+            {pinned ? <Pin size={14} /> : <PinOff size={14} />}
           </button>
-          <button onClick={onToggleCollapse} className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors" title={collapsed ? "펼치기" : "접기"}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              {collapsed ? <polyline points="6 9 12 15 18 9" /> : <polyline points="6 15 12 9 18 15" />}
-            </svg>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+            title={collapsed ? "펼치기" : "접기"}
+          >
+            {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
           </button>
         </div>
       </div>
 
       {collapsed ? (
-        <div className="flex items-center gap-2 mt-1.5 text-[10px]">
-          <span className="font-mono">{tasks.length}개</span>
+        <div className="flex items-center gap-2 mt-2 text-[10px]">
+          <span className="font-mono text-text">{tasks.length}개</span>
           <span className="text-text-muted">등록됨</span>
         </div>
       ) : (
         <div className="mt-4 space-y-2.5">
           {tasks.map((t) => (
-            <div key={t.id} className="rounded-lg bg-background/50 border border-border/50 p-3">
+            <div key={t.id} className="rounded-xl bg-surface-hover/50 border border-border/50 p-3">
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <button
@@ -102,24 +121,22 @@ export function LaunchAgents({ collapsed, pinned, onToggleCollapse, onTogglePin 
                       }`}
                     />
                   </button>
-                  <span className={`font-medium text-sm ${!t.enabled ? "text-text-muted" : ""}`}>
+                  <span className={`font-medium text-sm ${!t.enabled ? "text-text-muted" : "text-text"}`}>
                     {t.display_name}
                   </span>
                 </div>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                <span className="text-[10px] font-mono px-2 py-1 rounded-lg bg-primary/10 text-primary">
                   {t.schedule}
                 </span>
               </div>
 
               {t.description && (
-                <p className="text-[11px] text-text-muted mb-2 ml-9">{t.description}</p>
+                <p className="text-[11px] text-text-muted mb-2 ml-10">{t.description}</p>
               )}
 
               {t.last_run && (
-                <div className="flex items-center gap-1 text-[10px] text-text-muted ml-9">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
-                  </svg>
+                <div className="flex items-center gap-1 text-[10px] text-text-muted ml-10">
+                  <RotateCcw size={10} />
                   <span>마지막 실행: {formatRelativeTime(t.last_run)}</span>
                 </div>
               )}
