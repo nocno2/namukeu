@@ -1032,7 +1032,7 @@ async def agent_cancel_task(task_id: str, _=Depends(verify_session)):
 
 # --- n8n Status ---
 
-N8N_BASE_URL = "http://127.0.0.1:5678"
+N8N_BASE_URL = "https://n8n.namukeu.com"
 N8N_API_KEY = os.environ.get("N8N_API_KEY", "")
 
 
@@ -1046,7 +1046,7 @@ def _get_n8n_headers() -> dict:
 @router.get("/n8n/status")
 async def n8n_status(_=Depends(verify_session)):
     """n8n 상태 및 실행 통계 조회"""
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(verify=False) as client:
         # 1. Health check
         health_status = "down"
         try:
@@ -1062,9 +1062,11 @@ async def n8n_status(_=Depends(verify_session)):
         # 2. Get active workflows count
         active_workflows = 0
         try:
-            resp = await client.get(f"{N8N_BASE_URL}/rest/workflows", headers=_get_n8n_headers(), timeout=5.0)
+            resp = await client.get(f"{N8N_BASE_URL}/api/v1/workflows", headers=_get_n8n_headers(), timeout=5.0)
             if resp.status_code == 200:
-                workflows = resp.json()
+                data = resp.json()
+                # n8n v1.x returns {"data": [...]}, older versions return [...]
+                workflows = data.get("data", data) if isinstance(data, dict) else data
                 active_workflows = sum(1 for w in workflows if w.get("active", False))
         except Exception:
             pass
@@ -1077,7 +1079,7 @@ async def n8n_status(_=Depends(verify_session)):
         last_execution = None
         try:
             resp = await client.get(
-                f"{N8N_BASE_URL}/rest/executions",
+                f"{N8N_BASE_URL}/api/v1/executions",
                 params={"limit": 100, "include": "data"},
                 headers=_get_n8n_headers(),
                 timeout=5.0,
