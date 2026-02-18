@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -134,7 +136,6 @@ def get_reservation(
     # 평균 검색 간격 계산
     avg_interval = None
     if len(logs) >= 2:
-        from datetime import datetime
         intervals = []
         for i in range(1, len(logs)):
             prev = datetime.fromisoformat(logs[i-1]["searched_at"])
