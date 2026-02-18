@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import sqlite3
 import subprocess
 from datetime import datetime, timedelta
@@ -258,7 +259,11 @@ def _get_claude_token() -> str | None:
 
 
 CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
-MINIMAX_API_KEY = __import__("os").environ.get("MINIMAX_API_KEY", "")
+
+
+def _get_minimax_api_key() -> str:
+    """load_dotenv() 이후에 호출되도록 런타임에 읽음."""
+    return os.environ.get("MINIMAX_API_KEY", "")
 
 
 def _read_claude_settings() -> dict:
@@ -297,8 +302,8 @@ def set_claude_model(body: ModelSwitchBody, _=Depends(verify_session)):
     if body.model == "minimax":
         # ANTHROPIC_AUTH_TOKEN 필수 — MiniMax는 Authorization 헤더로 인증
         env["ANTHROPIC_BASE_URL"] = "https://api.minimax.io/anthropic"
-        env["ANTHROPIC_API_KEY"] = MINIMAX_API_KEY
-        env["ANTHROPIC_AUTH_TOKEN"] = MINIMAX_API_KEY
+        env["ANTHROPIC_API_KEY"] = _get_minimax_api_key()
+        env["ANTHROPIC_AUTH_TOKEN"] = _get_minimax_api_key()
         env["API_TIMEOUT_MS"] = "3000000"
         env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = 1
         env["ANTHROPIC_MODEL"] = "MiniMax-M2.5"
