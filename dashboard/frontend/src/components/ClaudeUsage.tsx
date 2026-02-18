@@ -172,8 +172,8 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Bot size={16} className="text-primary" />
-          <h3 className="font-semibold text-sm text-text">Claude Code</h3>
+          <Coins size={16} className="text-primary" />
+          <h3 className="font-semibold text-sm text-text">모델 사용량</h3>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
           {/* Model switch button */}
@@ -223,32 +223,49 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
         </div>
       ) : (
         <div className="space-y-4 mt-4">
-          {usage?.five_hour && (
-            <UsageBar
-              label="5시간"
-              utilization={usage.five_hour.utilization}
-              resetsAt={usage.five_hour.resets_at}
-              icon={<Coins size={12} />}
-            />
+          {/* Claude Section */}
+          {(usage?.five_hour || usage?.seven_day) && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <Bot size={11} className="text-primary" />
+                <span className="text-[10px] font-medium text-text-muted uppercase tracking-wide">Claude</span>
+              </div>
+              {usage?.five_hour && (
+                <UsageBar
+                  label="5시간"
+                  utilization={usage.five_hour.utilization}
+                  resetsAt={usage.five_hour.resets_at}
+                  icon={<Coins size={12} />}
+                />
+              )}
+              {usage?.seven_day && (
+                <UsageBar
+                  label="7일"
+                  utilization={usage.seven_day.utilization}
+                  resetsAt={usage.seven_day.resets_at}
+                  icon={<Coins size={12} />}
+                />
+              )}
+            </div>
           )}
-          {usage?.seven_day && (
-            <UsageBar
-              label="7일"
-              utilization={usage.seven_day.utilization}
-              resetsAt={usage.seven_day.resets_at}
-              icon={<Coins size={12} />}
-            />
-          )}
+
+          {/* MiniMax Section */}
           {minimaxData && (
-            <UsageBar
-              label="MiniMax M2.5"
-              utilization={minimaxUtil}
-              resetsAt={minimaxResetsAt}
-              icon={<Sparkles size={12} className="text-violet-400" />}
-            />
+            <div className="pt-2 border-t border-border/40">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Sparkles size={11} className="text-violet-400" />
+                <span className="text-[10px] font-medium text-text-muted uppercase tracking-wide">MiniMax M2.5</span>
+              </div>
+              <UsageBar
+                label="남은 크레딧"
+                utilization={minimaxUtil}
+                resetsAt={minimaxResetsAt}
+                icon={<Sparkles size={12} className="text-violet-400" />}
+              />
+            </div>
           )}
-          {minimaxError && (
-            <div className="text-[10px] text-danger/70 pt-2 border-t border-border/60 flex items-center gap-1">
+          {minimaxError && !minimaxData && (
+            <div className="text-[10px] text-danger/70 flex items-center gap-1">
               MiniMax 사용량 조회 실패
             </div>
           )}
