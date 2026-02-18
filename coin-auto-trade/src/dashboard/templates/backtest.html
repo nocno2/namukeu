@@ -122,6 +122,7 @@
                 <tr>
                     <th>ID</th>
                     <th>전략</th>
+                    <th>파라미터</th>
                     <th>종목</th>
                     <th>기간</th>
                     <th>초기 자본</th>
@@ -139,6 +140,7 @@
                 <tr>
                     <td>{{ r.id }}</td>
                     <td>{{ r.strategy_name }} ({{ r.interval }})</td>
+                    <td style="font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ r.params }}">{{ r.params }}</td>
                     <td>{{ r.ticker }}</td>
                     <td style="font-family:var(--font);">{{ r.start_date }}~{{ r.end_date }}</td>
                     <td>{{ "{:,.0f}".format(r.initial_capital) }}</td>
