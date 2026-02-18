@@ -365,24 +365,29 @@ async def minimax_usage(_=Depends(verify_session)):
         raise HTTPException(status_code=500, detail="MiniMax API key not found")
 
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "application/json",
+                "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+                "Referer": "https://www.minimax.io/",
+            }
+        ) as client:
             resp = await client.get(
                 "https://www.minimax.io/v1/api/openplatform/coding_plan/remains",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
                 timeout=10.0,
             )
             if resp.status_code != 200:
+                logger.warning(f"MiniMax API returned {resp.status_code}: {resp.text[:200]}")
                 raise HTTPException(status_code=502, detail="MiniMax API error")
 
             data = resp.json()
             return data
-    except httpx.ConnectError:
-        raise HTTPException(status_code=502, detail="MiniMax API unreachable")
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=502, detail="MiniMax API timed out")
+    except httpx.HTTPError as e:
+        logger.error(f"MiniMax API error: {e}")
+        raise HTTPException(status_code=502, detail="MiniMax API error")
 
 
 # --- System Resources ---
