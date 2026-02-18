@@ -118,11 +118,13 @@ export async function callClaude(
       stdout: "pipe",
       stderr: "pipe",
       cwd: options.cwd || PROJECT_DIR || undefined,
-      env: {
-        ...process.env,
-        CLAUDECODE: undefined,
-        PATH: `${HOME}/.local/bin:${HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
-      },
+      env: (() => {
+        const { CLAUDECODE, ...rest } = process.env;
+        return {
+          ...rest,
+          PATH: `${HOME}/.local/bin:${HOME}/.bun/bin:/usr/local/bin:/usr/bin:/bin:${process.env.PATH || ""}`,
+        };
+      })(),
     });
 
     // Track child process for cleanup
