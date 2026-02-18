@@ -176,11 +176,20 @@ async def discover_keywords(config: Config = Depends(get_config)):
     트렌드 분석을 통해 블로그에 적합한 키워드를 자동으로 발굴.
 
     - 크론잡 트리거에서 사용
-    - 웹검색으로 현재 급상승 트렌드 수집
+    - 다양한 소스(Google Trends, Reddit, Naver News 등)에서 키워드 수집
+    - 관련 검색어(Rising Queries) 분석
     - 블로그 주제와 관련성, 검색량, 경쟁도 분석
     - 가장 유망한 키워드 1개 추천
     """
     try:
+        from src.pipeline.keyword import (
+            collect_keywords,
+            collect_google_trends,
+            collect_google_related_queries,
+            collect_reddit_trends,
+            collect_naver_news_trends,
+        )
+
         # Check if ai-blog DB exists to filter out already published keywords
         blog_db_path = config.blog_db_path if hasattr(config, 'blog_db_path') else None
         published_keywords = []
@@ -195,28 +204,74 @@ async def discover_keywords(config: Config = Depends(get_config)):
             except Exception as e:
                 logger.warning(f"Could not load published keywords: {e}")
 
+        # Collect keywords from multiple sources
+        all_keywords = await collect_google_trends()
+        logger.info(f"[discover-keywords] Collected {len(all_keywords)} Google Trends keywords")
+
+        # Collect related queries from top keywords
+        top_keywords = [kw["keyword"] for kw in all_keywords[:10]]
+        if top_keywords:
+            related = await collect_google_related_queries(top_keywords)
+            all_keywords.extend(related)
+            logger.info(f"[discover-keywords] Collected {len(related)} related queries")
+
+        # Collect Reddit trends
+        reddit_kws = await collect_reddit_trends()
+        all_keywords.extend(reddit_kws)
+        logger.info(f"[discover-keywords] Collected {len(reddit_kws)} Reddit keywords")
+
+        # Collect Naver News
+        naver_news = await collect_naver_news_trends()
+        all_keywords.extend(naver_news)
+        logger.info(f"[discover-keywords] Collected {len(naver_news)} Naver News keywords")
+
+        # Format keyword list for prompt
+        keyword_list = []
+        seen = set()
+
+        for kw in all_keywords:
+            k = kw.get("keyword", "")
+            if k and k not in seen and len(k) > 2:
+                # Filter out already published
+                if published_keywords and any(pub in k or k in pub for pub in published_keywords):
+                    continue
+
+                source = kw.get("source", "unknown")
+                kw_type = kw.get("type", "")
+                keyword_list.append(f"- {k} [{source}{' - ' + kw_type if kw_type else ''}]")
+                seen.add(k)
+
+                if len(keyword_list) >= 50:  # Limit to 50 keywords for prompt
+                    break
+
+        keywords_str = "\n".join(keyword_list) if keyword_list else "웹검색을 통해 트렌드 분석"
+
         published_str = ""
         if published_keywords:
             published_str = f"\n\n## 이미 작성한 키워드 (제외)\n{', '.join(published_keywords[:20])}"
 
         prompt = f"""당신은 블로그 콘텐츠 기획 전문가입니다.
-웹검색을 통해 현재 급상승 중인 트렌드를 분석하고, 블로그 글로 작성하기 좋은 키워드 1개를 추천해주세요.
+다음 다양한 소스에서 수집한 트렌드 키워드를 분석하고, 블로그 글로 작성하기 가장 적합한 키워드 1개를 추천해주세요.
+
+## 수집된 트렌드 키워드
+{keywords_str}{published_str}
 
 ## 분석 기준
-1. 최근 1주일 내 검색량이 급상승한 키워드
-2. 블로그 글 형식으로 작성 가능한 주제 (뉴스, 이슈, 가이드, 리뷰 등)
+1. 여러 소스에서 공통으로 등장하거나 Rising(급상승) 표시된 키워드 우선
+2. 블로그 글 형식으로 작성 가능한 주제 (뉴스, 이슈, 가이드, 리뷰, 튜토리얼 등)
 3. 너무 전문적이거나 일시적 이슈가 아닌, 지속 관심을 받을 주제
-4. 검색량 대비 경쟁이 낮은 롱테일 키워드 우선{published_str}
+4. 검색량 대비 경쟁이 낮은 롱테일 키워드 우선
+5. 기술, 금융, 트렌드, 라이프스타일 등 다양한 주제 포함
 
 ## 출력 형식 (JSON만)
 {{
-  "keyword": "추천 키워드 (2-5단어)",
+  "keyword": "추천 키워드 (2-6단어)",
   "reason": "이 키워드를 추천하는 이유 (1-2문장)",
   "search_volume": "높음/보통/낮음 중 하나",
   "competition": "높음/보통/낮음 중 하나"
 }}
 
-웹검색 기능을 적극 활용하여 실시간 트렌드를 반영하세요."""
+다양한 소스의 키워드를 복합적으로 분석하고, 웹검색으로 최신 트렌드를 확인하여 가장 유망한 키워드를 추천하세요."""
 
         logger.info("[n8n/discover-keywords] Discovering trending keywords")
         result_text = await _run_claude_cli(prompt)
