@@ -47,6 +47,7 @@ const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
 const GATE_URL = process.env.GATE_URL || "http://127.0.0.1:8080";
 const GATE_USERNAME = process.env.GATE_USERNAME || "";
 const GATE_ENCRYPTION_KEY = process.env.GATE_ENCRYPTION_KEY || "";
+const GATE_TIMEOUT_MS = 10_000; // 10 second timeout for Gateway API calls
 const GATE_PASSWORD = GATE_ENCRYPTION_KEY && process.env.GATE_PASSWORD
   ? decrypt(process.env.GATE_PASSWORD, GATE_ENCRYPTION_KEY)
   : process.env.GATE_PASSWORD || "";
@@ -207,9 +208,10 @@ async function handleAttachments(message: Message, content: string): Promise<str
   const parts: string[] = [];
 
   for (const [, attachment] of message.attachments) {
-    const timestamp = Date.now();
-    const fileName = attachment.name || `file_${timestamp}`;
-    const filePath = join(UPLOADS_DIR, `${timestamp}_${fileName}`);
+    // Use message.id for unique file identification (more reliable than timestamp)
+    const uniqueId = message.id;
+    const fileName = attachment.name || `file_${uniqueId}`;
+    const filePath = join(UPLOADS_DIR, `${uniqueId}_${fileName}`);
 
     try {
       const response = await fetch(attachment.url);
@@ -599,14 +601,11 @@ export async function createBot(): Promise<Client> {
 
         // Clean up attachment files after processing
         for (const [, attachment] of message.attachments) {
-          const timestamp = Date.now();
-          const fileName = attachment.name || `file_${timestamp}`;
-          // Find and delete uploaded files (best effort)
-          const { Glob } = await import("bun");
-          const glob = new Glob(`*_${fileName}`);
-          for await (const match of glob.scan(UPLOADS_DIR)) {
-            await unlink(join(UPLOADS_DIR, match)).catch(() => {});
-          }
+          // Use exact message.id for reliable file deletion
+          const uniqueId = message.id;
+          const fileName = attachment.name || `file_${uniqueId}`;
+          const filePath = join(UPLOADS_DIR, `${uniqueId}_${fileName}`);
+          await unlink(filePath).catch(() => {}); // Best effort deletion
         }
 
         await sendResponse(message.channel as TextBasedChannel, cleanResponse);
@@ -647,27 +646,40 @@ async function gateLogin(): Promise<string> {
 async function gateApi(path: string, retryCount: number = 0): Promise<any> {
   if (!gateToken) await gateLogin();
 
-  let resp = await fetch(`${GATE_URL}${path}`, {
-    headers: { Authorization: `Bearer ${gateToken}` },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GATE_TIMEOUT_MS);
 
-  // Token expired — re-login and retry once
-  if (resp.status === 401 && retryCount === 0) {
-    await gateLogin();
-    resp = await fetch(`${GATE_URL}${path}`, {
+  try {
+    let resp = await fetch(`${GATE_URL}${path}`, {
       headers: { Authorization: `Bearer ${gateToken}` },
+      signal: controller.signal,
     });
-  }
 
-  // Service unavailable — exponential backoff retry (max 2 retries)
-  if (resp.status >= 500 && retryCount < 2) {
-    const delay = Math.pow(2, retryCount) * 1000;
-    await new Promise((r) => setTimeout(r, delay));
-    return gateApi(path, retryCount + 1);
-  }
+    // Token expired — re-login and retry once
+    if (resp.status === 401 && retryCount === 0) {
+      clearTimeout(timeoutId);
+      await gateLogin();
+      return gateApi(path, retryCount + 1);
+    }
 
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
-  return resp.json();
+    // Service unavailable — exponential backoff retry (max 2 retries)
+    if (resp.status >= 500 && retryCount < 2) {
+      clearTimeout(timeoutId);
+      const delay = Math.pow(2, retryCount) * 1000;
+      await new Promise((r) => setTimeout(r, delay));
+      return gateApi(path, retryCount + 1);
+    }
+
+    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    return resp.json();
+  } catch (err) {
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error(`Gateway API timeout after ${GATE_TIMEOUT_MS}ms: ${path}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function coinApi(path: string): Promise<any> {
