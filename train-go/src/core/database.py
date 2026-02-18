@@ -171,5 +171,12 @@ class Database:
         )
         self.conn.commit()
 
+    def get_search_logs(self, reservation_id: int) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM search_logs WHERE reservation_id = ? ORDER BY searched_at ASC",
+            (reservation_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def close(self):
         self.conn.close()

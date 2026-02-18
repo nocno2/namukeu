@@ -4,7 +4,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from src.core.crypto import CryptoManager
 from src.core.database import Database
 from src.models.credential import CredentialCreate, CredentialResponse
-from src.models.reservation import ReservationCreate, ReservationResponse
+from src.models.reservation import ReservationCreate, ReservationResponse, SearchStats
 from src.services.scheduler import ReservationScheduler
 
 router = APIRouter()
@@ -124,7 +124,32 @@ def get_reservation(
     reservation = db.get_reservation(reservation_id)
     if not reservation:
         raise HTTPException(status_code=404, detail="Reservation not found")
-    return ReservationResponse(**reservation)
+
+    # 검색 통계 계산
+    logs = db.get_search_logs(reservation_id)
+    total_searches = len(logs)
+    success_count = sum(1 for log in logs if log.get("results_count", 0) > 0)
+    error_count = sum(1 for log in logs if log.get("error"))
+
+    # 평균 검색 간격 계산
+    avg_interval = None
+    if len(logs) >= 2:
+        from datetime import datetime
+        intervals = []
+        for i in range(1, len(logs)):
+            prev = datetime.fromisoformat(logs[i-1]["searched_at"])
+            curr = datetime.fromisoformat(logs[i]["searched_at"])
+            intervals.append((curr - prev).total_seconds())
+        avg_interval = sum(intervals) / len(intervals) if intervals else None
+
+    search_stats = SearchStats(
+        total_searches=total_searches,
+        success_count=success_count,
+        error_count=error_count,
+        avg_interval_seconds=avg_interval,
+    )
+
+    return ReservationResponse(**reservation, search_stats=search_stats)
 
 
 @router.delete("/reservations/{reservation_id}")

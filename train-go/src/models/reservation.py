@@ -18,6 +18,13 @@ class ReservationCreate(BaseModel):
     seat_type: str = "general"  # "general" or "special"
 
 
+class SearchStats(BaseModel):
+    total_searches: int = 0
+    success_count: int = 0
+    error_count: int = 0
+    avg_interval_seconds: float | None = None
+
+
 class ReservationResponse(BaseModel):
     id: int
     provider: str
@@ -33,3 +40,4 @@ class ReservationResponse(BaseModel):
     error_message: str | None = None
     created_at: str
     reserved_at: str | None = None
+    search_stats: SearchStats | None = None
