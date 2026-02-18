@@ -3,7 +3,7 @@ import { spawn } from "bun";
 const HOME = process.env.HOME || "";
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
 const PROJECT_DIR = process.env.PROJECT_DIR || undefined;
-const MODEL = process.env.MODEL || "opusplan";
+const MODEL = process.env.MODEL || "claude-opus-4-6";
 const PROGRESS_INTERVAL_MS = 30_000; // 30 seconds
 const INITIAL_FEEDBACK_MS = 15_000; // 15 seconds before first "processing" message
 const INACTIVITY_WARN_MS = 180_000; // 3 minutes without stdout data → warn user

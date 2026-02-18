@@ -20,7 +20,11 @@ async function loadRevenue(): Promise<RevenueData> {
     const raw = await readFile(REVENUE_FILE, "utf-8");
     return JSON.parse(raw);
   } catch {
-    return { monthlyTarget: 0, records: [] };
+    // Create default revenue.json if not exists
+    const defaultData: RevenueData = { monthlyTarget: 0, records: [] };
+    await saveRevenue(defaultData);
+    console.log("[revenue] Created new revenue.json with default values");
+    return defaultData;
   }
 }
 

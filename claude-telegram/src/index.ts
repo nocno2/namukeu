@@ -4,6 +4,7 @@ import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { killActiveChild } from "./claude";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
+import { getRevenueStatus } from "./revenue";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -24,9 +25,21 @@ async function ensureDirectories(): Promise<void> {
   await mkdir(UPLOADS_DIR, { recursive: true });
 }
 
+async function showRevenueStatus(): Promise<void> {
+  try {
+    const status = await getRevenueStatus();
+    console.log("=== Revenue Status ===");
+    console.log(status);
+    console.log("======================");
+  } catch {
+    console.log("[revenue] Not initialized yet. Use /revenue set <amount> to set monthly target.");
+  }
+}
+
 async function main(): Promise<void> {
   validateConfig();
   await ensureDirectories();
+  await showRevenueStatus();
 
   const locked = await acquireLock();
   if (!locked) {
