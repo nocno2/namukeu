@@ -605,7 +605,9 @@ export async function createBot(): Promise<Client> {
           const uniqueId = message.id;
           const fileName = attachment.name || `file_${uniqueId}`;
           const filePath = join(UPLOADS_DIR, `${uniqueId}_${fileName}`);
-          await unlink(filePath).catch(() => {}); // Best effort deletion
+          await unlink(filePath).catch((err) => {
+            console.warn(`[cleanup] Failed to delete attachment file ${filePath}:`, err);
+          });
         }
 
         await sendResponse(message.channel as TextBasedChannel, cleanResponse);
