@@ -67,6 +67,7 @@ const CHANNEL_PROJECT_MAP: Record<string, { project: string; codename: string; d
   "1472220670497788147": { project: "dashboard", codename: "DASH", dir: "dashboard/", description: "개인 대시보드 (React + FastAPI :8002)" },
   "1472819862123446345": { project: "api-gateway", codename: "GATE", dir: "api-gateway/", description: "API 게이트웨이 (Python FastAPI :8080)" },
   "1472820038607306804": { project: "content-pipeline", codename: "PIPE", dir: "content-pipeline/", description: "스케줄러 + 콘텐츠 파이프라인 (React + FastAPI :8003)" },
+  "1473730339460485172": { project: "coin-auto-trade", codename: "COIN", dir: "coin-auto-trade/", description: "Upbit 자동매매 서버 (Python FastAPI :8001)" },
 };
 
 let profileContext = "";
@@ -302,12 +303,22 @@ export async function createBot(): Promise<Client> {
             console.log(`[scheduler] Task "${task.name}" done — $${result.costUsd?.toFixed(4) || "?"}`);
           } else {
             console.error(`[scheduler] Task "${task.name}" Claude error:`, result.error);
+            // Send error notification to channel
+            await sendResponse(
+              textChannel,
+              `⚠️ 예약 작업 "${task.name}" 실패\n\`\`\`\n${result.error?.slice(0, 500) || "알 수 없는 오류"}\n\`\`\``
+            ).catch(() => {});
           }
         } finally {
           stopTyping();
         }
       } catch (err) {
         console.error(`[scheduler] Task "${task.name}" failed:`, err);
+        // Send error notification to channel
+        await sendResponse(
+          textChannel,
+          `⚠️ 예약 작업 "${task.name}" 실패\n\`\`\`\n${String(err).slice(0, 500)}\n\`\`\``
+        ).catch(() => {});
       }
     });
   });
