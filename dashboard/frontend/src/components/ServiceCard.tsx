@@ -298,14 +298,14 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
           )}
 
           {/* Actions */}
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 grid grid-cols-3 gap-2">
             {service.dashboard_url && isRunning && (
               <a
                 href={service.dashboard_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="flex-1 flex items-center justify-center gap-1.5 text-xs text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl py-2.5 transition-colors font-medium"
+                className="flex items-center justify-center gap-1.5 text-xs text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl py-2 transition-colors font-medium"
               >
                 대시보드
                 <ArrowRight size={12} />
@@ -313,7 +313,7 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
             )}
             <button
               onClick={(e) => { e.stopPropagation(); onShowLogs(); }}
-              className="flex items-center justify-center gap-1.5 text-xs text-text-muted bg-surface-hover hover:bg-border/50 border border-border/50 rounded-xl py-2.5 transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-1.5 text-xs text-text-muted bg-surface-hover hover:bg-border/50 border border-border/50 rounded-xl py-2 transition-colors cursor-pointer"
             >
               <FileText size={14} />
               로그
@@ -322,7 +322,7 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
               <button
                 onClick={handleRestart}
                 disabled={restarting}
-                className="flex items-center justify-center gap-1.5 text-xs text-warning bg-warning/10 hover:bg-warning/20 disabled:opacity-50 border border-warning/20 rounded-xl py-2.5 transition-colors cursor-pointer font-medium"
+                className="flex items-center justify-center gap-1.5 text-xs text-warning bg-warning/10 hover:bg-warning/20 disabled:opacity-50 border border-warning/20 rounded-xl py-2 transition-colors cursor-pointer font-medium"
               >
                 <RefreshCw size={14} className={restarting ? "animate-spin" : ""} />
                 {restarting ? "재시작 중..." : "재시작"}
