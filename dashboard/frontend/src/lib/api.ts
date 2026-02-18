@@ -71,6 +71,17 @@ export const api = {
     return request<ClaudeUsage>("/api/claude/usage");
   },
 
+  claudeModel() {
+    return request<{ model: string; display: string }>("/api/claude/model");
+  },
+
+  setClaudeModel(model: "claude" | "minimax") {
+    return request<{ ok: boolean; model: string }>("/api/claude/model", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    });
+  },
+
   cardPreferences() {
     return request<{ preferences: Record<string, CardPreference> }>("/api/cards/preferences");
   },

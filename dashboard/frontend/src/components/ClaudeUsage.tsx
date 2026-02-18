@@ -69,6 +69,8 @@ function CompactUsage({ label, utilization }: { label: string; utilization: numb
 export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
   const [usage, setUsage] = useState<ClaudeUsageData | null>(null);
   const [error, setError] = useState(false);
+  const [currentModel, setCurrentModel] = useState<"claude" | "minimax">("claude");
+  const [switching, setSwitching] = useState(false);
 
   const fetchUsage = useCallback(async () => {
     try {
@@ -80,14 +82,39 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
     }
   }, []);
 
+  const fetchModel = useCallback(async () => {
+    try {
+      const data = await api.claudeModel();
+      setCurrentModel(data.model as "claude" | "minimax");
+    } catch {
+      // ignore
+    }
+  }, []);
+
   useEffect(() => {
     fetchUsage();
+    fetchModel();
     const interval = setInterval(fetchUsage, 60_000);
     return () => clearInterval(interval);
-  }, [fetchUsage]);
+  }, [fetchUsage, fetchModel]);
+
+  const handleModelSwitch = async () => {
+    const next = currentModel === "claude" ? "minimax" : "claude";
+    setSwitching(true);
+    try {
+      await api.setClaudeModel(next);
+      setCurrentModel(next);
+    } catch {
+      // ignore
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   if (error) return null;
   if (!usage) return null;
+
+  const isMinimax = currentModel === "minimax";
 
   return (
     <div className={`bg-surface border rounded-xl ${pinned ? "border-primary/40" : "border-border"} ${collapsed ? "p-3" : "p-5"}`}>
@@ -95,6 +122,29 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-sm">Claude Code</h3>
         <div className="flex items-center gap-1 shrink-0">
+          {/* Model switch button */}
+          <button
+            onClick={handleModelSwitch}
+            disabled={switching}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono transition-colors ${
+              isMinimax
+                ? "bg-violet-500/20 text-violet-400 hover:bg-violet-500/30"
+                : "bg-primary/10 text-primary hover:bg-primary/20"
+            } disabled:opacity-50`}
+            title={isMinimax ? "Claude로 전환" : "MiniMax M2.5로 전환"}
+          >
+            {switching ? (
+              <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity=".25"/>
+                <path d="M21 12a9 9 0 01-9-9"/>
+              </svg>
+            ) : (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
+              </svg>
+            )}
+            {isMinimax ? "M2.5" : "Claude"}
+          </button>
           <button
             onClick={onTogglePin}
             className={`p-1 rounded transition-colors ${
@@ -126,6 +176,9 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
         <div className="flex items-center gap-3 mt-1.5">
           {usage.five_hour && <CompactUsage label="5h" utilization={usage.five_hour.utilization} />}
           {usage.seven_day && <CompactUsage label="7d" utilization={usage.seven_day.utilization} />}
+          {isMinimax && (
+            <span className="text-[10px] text-violet-400 font-mono">M2.5</span>
+          )}
         </div>
       ) : (
         <div className="space-y-4 mt-4">
@@ -142,6 +195,11 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
               utilization={usage.seven_day.utilization}
               resetsAt={usage.seven_day.resets_at}
             />
+          )}
+          {isMinimax && (
+            <div className="text-[10px] text-violet-400/70 pt-1 border-t border-border">
+              현재 MiniMax M2.5 사용 중 — 새 Claude Code 세션부터 적용됩니다
+            </div>
           )}
         </div>
       )}

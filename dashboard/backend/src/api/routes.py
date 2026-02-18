@@ -257,6 +257,73 @@ def _get_claude_token() -> str | None:
         return None
 
 
+CLAUDE_SETTINGS_PATH = Path.home() / ".claude" / "settings.json"
+MINIMAX_API_KEY = __import__("os").environ.get("MINIMAX_API_KEY", "")
+
+
+def _read_claude_settings() -> dict:
+    if CLAUDE_SETTINGS_PATH.exists():
+        try:
+            return json.loads(CLAUDE_SETTINGS_PATH.read_text())
+        except Exception:
+            pass
+    return {}
+
+
+def _write_claude_settings(settings: dict) -> None:
+    CLAUDE_SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CLAUDE_SETTINGS_PATH.write_text(json.dumps(settings, indent=2))
+
+
+@router.get("/claude/model")
+def get_claude_model(_=Depends(verify_session)):
+    settings = _read_claude_settings()
+    env = settings.get("env", {})
+    base_url = env.get("ANTHROPIC_BASE_URL", "")
+    if "minimax" in base_url:
+        return {"model": "minimax", "display": "MiniMax M2.5"}
+    return {"model": "claude", "display": "Claude"}
+
+
+class ModelSwitchBody(BaseModel):
+    model: str  # "claude" or "minimax"
+
+
+@router.post("/claude/model")
+def set_claude_model(body: ModelSwitchBody, _=Depends(verify_session)):
+    settings = _read_claude_settings()
+    env = settings.get("env", {})
+
+    if body.model == "minimax":
+        env["ANTHROPIC_BASE_URL"] = "https://api.minimax.io/anthropic"
+        env["ANTHROPIC_AUTH_TOKEN"] = MINIMAX_API_KEY
+        env["API_TIMEOUT_MS"] = "3000000"
+        env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = 1
+        env["ANTHROPIC_MODEL"] = "MiniMax-M2.5"
+        env["ANTHROPIC_SMALL_FAST_MODEL"] = "MiniMax-M2.5"
+        env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = "MiniMax-M2.5"
+        env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = "MiniMax-M2.5"
+        env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = "MiniMax-M2.5"
+    elif body.model == "claude":
+        for key in [
+            "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "API_TIMEOUT_MS",
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "ANTHROPIC_MODEL",
+            "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
+            "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+        ]:
+            env.pop(key, None)
+    else:
+        raise HTTPException(status_code=400, detail="Invalid model. Use 'claude' or 'minimax'")
+
+    if env:
+        settings["env"] = env
+    elif "env" in settings:
+        del settings["env"]
+
+    _write_claude_settings(settings)
+    return {"ok": True, "model": body.model}
+
+
 @router.get("/claude/usage")
 async def claude_usage(_=Depends(verify_session)):
     token = _get_claude_token()
