@@ -28,7 +28,7 @@ export async function sendResponse(
 
 /**
  * Convert Markdown-style formatting to Telegram HTML.
- * Handles: code blocks, inline code, bold, italic.
+ * Supports: code blocks, inline code, bold, italic, strikethrough, links, headers, lists.
  */
 export function markdownToHtml(text: string): string {
   // First, extract code blocks to protect them from other transformations
@@ -62,6 +62,30 @@ export function markdownToHtml(text: string): string {
   // Italic: *text* or _text_ (but not mid-word underscores like file_name)
   result = result.replace(/(?<!\w)\*([^*\n]+?)\*(?!\w)/g, "<i>$1</i>");
   result = result.replace(/(?<!\w)_([^_\n]+?)_(?!\w)/g, "<i>$1</i>");
+
+  // Strikethrough: ~~text~~
+  result = result.replace(/~~(.+?)~~/g, "<s>$1</s>");
+
+  // Underline: __text__ (already used for bold, but check for specific pattern)
+  // Using <u> for underlined text - Telegram supports this
+  result = result.replace(/<\s*u\s*>([^<]+)<\s*\/u\s*>/gi, "<u>$1</u>");
+
+  // Links: [text](url) -> <a href="url">text</a>
+  result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, label, url) => {
+    const safeUrl = escapeHtml(url).replace(/&amp;/g, "&");
+    return `<a href="${safeUrl}">${label}</a>`;
+  });
+
+  // Headers: ### H3, ## H2, # H1
+  result = result.replace(/^### (.+)$/gm, "<b>$1</b>");
+  result = result.replace(/^## (.+)$/gm, "<b>$1</b>");
+  result = result.replace(/^# (.+)$/gm, "<b>$1</b>");
+
+  // Unordered lists: - item or * item
+  result = result.replace(/^[\-\*] (.+)$/gm, "• $1");
+
+  // Ordered lists: 1. item
+  result = result.replace(/^\d+\. (.+)$/gm, "▫️ $1");
 
   // Restore inline code
   result = result.replace(/\x00INLINE_(\d+)\x00/g, (_m, idx) => inlineCodes[parseInt(idx)]);
