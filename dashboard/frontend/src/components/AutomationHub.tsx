@@ -3,7 +3,6 @@ import {
   Bot,
   ChevronDown,
   ChevronUp,
-  Clock,
   Pin,
   PinOff,
   Target,
@@ -11,9 +10,13 @@ import {
   XCircle,
   AlertCircle,
   Zap,
-  RefreshCw,
-  Play,
   Star,
+  Plus,
+  Pause,
+  Play,
+  Trash2,
+  X,
+  Clock,
 } from "lucide-react";
 import { api, type AgentStatus, type AgentTask, type AgentGoal, type ScheduledTask } from "../lib/api";
 
@@ -28,84 +31,85 @@ interface TaskItem {
   id: string;
   title: string;
   project: string;
-  type: "one-time" | "recurring" | "event";
-  status: "pending" | "running" | "completed" | "failed" | "paused";
-  prompt: string;
-  scheduleCron: string | null;
-  scheduleNext: string | null;
-  eventTrigger: string | null;
-  lastRunAt: string | null;
-  lastResult: string | null;
+  type: string;
+  status: string;
+  prompt?: string;
+  scheduleCron?: string;
+  scheduleNext?: string;
+  eventTrigger?: string;
+  lastRunAt?: string;
+  lastResult?: string;
   runCount: number;
-  maxRuns: number | null;
+  maxRuns?: number;
   requiresApproval: boolean;
   createdAt: string;
 }
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
-  recurring: <RefreshCw size={10} className="rotate-180" />,
-  "one-time": <Zap size={10} />,
-  event: <Play size={10} />,
+  recurring: <Zap size={12} />,
+  one_time: <Clock size={12} />,
+  event: <AlertCircle size={12} />,
 };
 
 const STATUS_STYLES: Record<string, string> = {
-  pending: "bg-warning/15 text-warning border-warning/20",
-  running: "bg-primary/15 text-primary border-primary/20",
-  completed: "bg-success/15 text-success border-success/20",
-  failed: "bg-danger/15 text-danger border-danger/20",
-  paused: "bg-text-muted/15 text-text-muted border-border",
+  running: "bg-success/10 text-success border-success/20",
+  pending: "bg-warning/10 text-warning border-warning/20",
+  paused: "bg-text-muted/10 text-text-muted border-text-muted/20",
+  completed: "bg-primary/10 text-primary border-primary/20",
+  failed: "bg-danger/10 text-danger border-danger/20",
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending: "대기",
-  running: "실행 중",
+  running: "실행중",
+  pending: "대기중",
+  paused: "일시중단",
   completed: "완료",
   failed: "실패",
-  paused: "일시정지",
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  recurring: "반복",
-  "one-time": "1회",
+  recurring: "주기적",
+  one_time: "一次性",
   event: "이벤트",
 };
 
-// 상세 페이지 컴포넌트
 function TaskDetail({
   task,
   onBack,
   onApprove,
   onCancel,
   onUpdate,
+  onPause,
+  onResume,
+  onDelete,
   actionLoading,
 }: {
   task: TaskItem;
   onBack: () => void;
   onApprove: (id: string) => void;
   onCancel: (id: string) => void;
-  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string; status?: string }) => Promise<void>;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => Promise<void>;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
+  onDelete: (id: string) => void;
   actionLoading: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
-  const [editPrompt, setEditPrompt] = useState(task.prompt);
   const [editProject, setEditProject] = useState(task.project);
+  const [editPrompt, setEditPrompt] = useState(task.prompt || "");
   const [editScheduleCron, setEditScheduleCron] = useState(task.scheduleCron || "");
   const [saving, setSaving] = useState(false);
-
-  const isSentinel = task.prompt.startsWith("__") && task.prompt.endsWith("__");
 
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string } = {};
-      if (editTitle !== task.title) updates.title = editTitle;
-      if (editPrompt !== task.prompt) updates.prompt = editPrompt;
-      if (editProject !== task.project) updates.project = editProject;
-      if (editScheduleCron !== (task.scheduleCron || "")) updates.schedule_cron = editScheduleCron;
-      if (Object.keys(updates).length > 0) {
-        await onUpdate(task.id, updates);
-      }
+      await onUpdate(task.id, {
+        title: editTitle,
+        project: editProject,
+        prompt: editPrompt,
+        schedule_cron: editScheduleCron,
+      });
       setEditing(false);
     } finally {
       setSaving(false);
@@ -113,27 +117,18 @@ function TaskDetail({
   };
 
   return (
-    <>
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border shrink-0">
         <div className="flex items-center gap-2">
-          <button onClick={onBack} className="text-text-muted hover:text-text text-sm cursor-pointer">
-            ← 목록
-          </button>
+          <button onClick={onBack} className="text-text-muted hover:text-text text-sm">← 목록</button>
           <span className="text-text-muted/30">|</span>
           <h2 className="font-semibold text-sm truncate">{task.title}</h2>
         </div>
         <div className="flex items-center gap-2">
           {!editing && (
-            <button
-              onClick={() => setEditing(true)}
-              className="text-[11px] text-primary hover:text-primary/80 cursor-pointer"
-            >
-              편집
-            </button>
+            <button onClick={() => setEditing(true)} className="text-[11px] text-primary hover:text-primary/80">편집</button>
           )}
-          <button onClick={onBack} className="text-text-muted hover:text-text text-lg leading-none cursor-pointer">
-            ×
-          </button>
+          <button onClick={onBack} className="text-text-muted hover:text-text text-lg">×</button>
         </div>
       </div>
 
@@ -162,7 +157,7 @@ function TaskDetail({
             <div>
               <span className="text-xs text-text-muted block mb-1.5">제목</span>
               <input
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text"
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
               />
@@ -170,36 +165,25 @@ function TaskDetail({
             <div>
               <span className="text-xs text-text-muted block mb-1.5">프로젝트</span>
               <input
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none font-mono"
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text"
                 value={editProject}
                 onChange={(e) => setEditProject(e.target.value)}
               />
             </div>
             {task.type === "recurring" && (
               <div>
-                <span className="text-xs text-text-muted block mb-1.5">
-                  스케줄 (Cron)
-                  <a href="https://crontab.guru/" target="_blank" rel="noopener noreferrer" className="ml-1 text-primary hover:underline">
-                    도움말
-                  </a>
-                </span>
+                <span className="text-xs text-text-muted block mb-1.5">Cron</span>
                 <input
-                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none font-mono"
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text font-mono"
                   value={editScheduleCron}
                   onChange={(e) => setEditScheduleCron(e.target.value)}
-                  placeholder="*/15 * * * *"
                 />
               </div>
             )}
             <div>
               <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
-              {isSentinel && (
-                <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 mb-2 text-xs text-primary">
-                  이 프롬프트는 내부 센티넬입니다. 실행 시 동적으로 생성되는 프롬프트로 대체됩니다.
-                </div>
-              )}
               <textarea
-                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-xs font-mono leading-relaxed focus:border-primary outline-none resize-y min-h-[120px]"
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text"
                 value={editPrompt}
                 onChange={(e) => setEditPrompt(e.target.value)}
                 rows={8}
@@ -209,19 +193,13 @@ function TaskDetail({
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="text-sm text-white bg-primary hover:bg-primary/80 disabled:opacity-50 rounded-lg px-4 py-1.5 cursor-pointer"
+                className="flex-1 text-sm text-white bg-primary hover:bg-primary/80 disabled:opacity-50 rounded-lg py-2"
               >
                 {saving ? "저장 중..." : "저장"}
               </button>
               <button
-                onClick={() => {
-                  setEditTitle(task.title);
-                  setEditPrompt(task.prompt);
-                  setEditProject(task.project);
-                  setEditScheduleCron(task.scheduleCron || "");
-                  setEditing(false);
-                }}
-                className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-4 py-1.5 cursor-pointer"
+                onClick={() => setEditing(false)}
+                className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-4 py-2"
               >
                 취소
               </button>
@@ -232,26 +210,17 @@ function TaskDetail({
             {/* 프롬프트 */}
             <div>
               <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
-              {isSentinel ? (
-                <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
-                  <div className="flex items-center gap-1.5 mb-1">
-                    <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded font-mono">동적 프롬프트</span>
-                  </div>
-                  <p className="text-xs leading-relaxed">{task.prompt}</p>
-                </div>
-              ) : (
-                <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
-                  <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.prompt}</pre>
-                </div>
-              )}
+              <div className="text-xs text-text bg-bg rounded-lg p-3 border border-border whitespace-pre-wrap">
+                {task.prompt || "-"}
+              </div>
             </div>
 
             {/* 마지막 결과 */}
             {task.lastResult && (
               <div>
                 <span className="text-xs text-text-muted block mb-1.5">마지막 결과</span>
-                <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
-                  <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.lastResult}</pre>
+                <div className="text-xs text-text bg-bg rounded-lg p-3 border border-border max-h-32 overflow-y-auto whitespace-pre-wrap">
+                  {task.lastResult}
                 </div>
               </div>
             )}
@@ -276,33 +245,61 @@ function TaskDetail({
               <span>{new Date(task.scheduleNext).toLocaleString("ko-KR")}</span>
             </div>
           )}
-          <div className="flex justify-between">
-            <span className="text-text-muted">마지막 실행</span>
-            <span>{task.lastRunAt ? new Date(task.lastRunAt).toLocaleString("ko-KR") : "없음"}</span>
-          </div>
+          {task.lastRunAt && (
+            <div className="flex justify-between">
+              <span className="text-text-muted">마지막 실행</span>
+              <span>{new Date(task.lastRunAt).toLocaleString("ko-KR")}</span>
+            </div>
+          )}
         </div>
 
-        {/* 승인/거부 버튼 */}
-        {task.requiresApproval && (task.status === "pending" || task.status === "paused") && (
-          <div className="flex gap-2 pt-2 border-t border-border">
+        {/* 작업 버튼 */}
+        <div className="flex gap-2 pt-2 border-t border-border">
+          {task.status === "running" || task.status === "pending" ? (
             <button
-              onClick={() => onApprove(task.id)}
+              onClick={() => onPause(task.id)}
               disabled={actionLoading}
-              className="flex-1 text-sm text-success bg-success/10 hover:bg-success/20 disabled:opacity-50 border border-success/20 rounded-lg py-2 transition-colors cursor-pointer"
+              className="flex-1 text-sm text-warning bg-warning/10 hover:bg-warning/20 disabled:opacity-50 rounded-lg py-2 flex items-center justify-center gap-1"
             >
-              승인
+              <Pause size={14} /> 일시중단
             </button>
+          ) : task.status === "paused" ? (
             <button
-              onClick={() => onCancel(task.id)}
+              onClick={() => onResume(task.id)}
               disabled={actionLoading}
-              className="flex-1 text-sm text-danger bg-danger/10 hover:bg-danger/20 disabled:opacity-50 border border-danger/20 rounded-lg py-2 transition-colors cursor-pointer"
+              className="flex-1 text-sm text-success bg-success/10 hover:bg-success/20 disabled:opacity-50 rounded-lg py-2 flex items-center justify-center gap-1"
             >
-              거부
+              <Play size={14} /> 재개
             </button>
-          </div>
-        )}
+          ) : null}
+          {task.requiresApproval && (task.status === "pending" || task.status === "paused") && (
+            <>
+              <button
+                onClick={() => onApprove(task.id)}
+                disabled={actionLoading}
+                className="flex-1 text-sm text-success bg-success/10 hover:bg-success/20 disabled:opacity-50 rounded-lg py-2"
+              >
+                승인
+              </button>
+              <button
+                onClick={() => onCancel(task.id)}
+                disabled={actionLoading}
+                className="flex-1 text-sm text-danger bg-danger/10 hover:bg-danger/20 disabled:opacity-50 rounded-lg py-2"
+              >
+                거부
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => onDelete(task.id)}
+            disabled={actionLoading}
+            className="text-sm text-danger hover:text-danger/80 disabled:opacity-50 rounded-lg py-2 px-3"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -322,50 +319,27 @@ function AgentTasksModal({
   onClose: () => void;
   onApprove: (id: string) => void;
   onCancel: (id: string) => void;
-  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string; status?: string }) => Promise<void>;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => Promise<void>;
   onDelete: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   actionLoading: boolean;
 }) {
-  const [filter, setFilter] = useState<"all" | "completed" | "failed" | "running" | "pending" | "paused">("all");
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
 
-  const filteredTasks = tasks.filter((t) => {
-    if (filter === "all") return true;
-    if (filter === "completed") return t.status === "completed";
-    if (filter === "failed") return t.status === "failed";
-    if (filter === "running") return t.status === "running";
-    if (filter === "pending") return t.status === "pending";
-    return true;
-  });
-
-  const byType = {
-    recurring: tasks.filter((t) => t.type === "recurring").length,
-    oneTime: tasks.filter((t) => t.type === "one-time").length,
-    event: tasks.filter((t) => t.type === "event").length,
-  };
-
-  const pendingTasks = tasks.filter((t) => t.requiresApproval && t.status === "pending");
-
-  const handleApproveAll = async () => {
-    for (const t of pendingTasks) {
-      await onApprove(t.id);
-    }
-  };
-
-  // 상세 페이지로 이동
   if (selectedTask) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-        <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-        <div className="relative bg-surface border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-surface rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden border border-border shadow-xl">
           <TaskDetail
             task={selectedTask}
             onBack={() => setSelectedTask(null)}
             onApprove={onApprove}
             onCancel={onCancel}
             onUpdate={onUpdate}
+            onPause={onPause}
+            onResume={onResume}
+            onDelete={onDelete}
             actionLoading={actionLoading}
           />
         </div>
@@ -374,159 +348,100 @@ function AgentTasksModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
-
-      <div className="relative bg-surface border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-        {/* Header */}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface rounded-2xl w-full max-w-3xl max-h-[80vh] overflow-hidden border border-border shadow-xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-sm">에이전트 작업</h2>
-            <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border">
-              {tasks.length}건
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {pendingTasks.length > 0 && (
-              <button
-                onClick={handleApproveAll}
-                disabled={actionLoading}
-                className="text-[11px] text-success bg-success/10 hover:bg-success/20 disabled:opacity-50 border border-success/20 rounded-lg px-2.5 py-1 transition-colors cursor-pointer"
-              >
-                전체 승인 ({pendingTasks.length})
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="text-text-muted hover:text-text text-lg leading-none cursor-pointer"
-            >
-              ×
-            </button>
-          </div>
+          <h2 className="font-semibold text-text">전체 에이전트 작업</h2>
+          <button onClick={onClose} className="text-text-muted hover:text-text">
+            <X size={20} />
+          </button>
         </div>
-
-        {/* 타입별 요약 */}
-        <div className="px-5 py-3 border-b border-border">
-          <div className="flex gap-4">
-            <div className="flex items-center gap-1.5">
-              <RefreshCw size={12} className="rotate-180 text-primary" />
-              <span className="text-xs text-text-muted">반복</span>
-              <span className="text-sm font-medium text-text">{byType.recurring}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Zap size={12} className="text-warning" />
-              <span className="text-xs text-text-muted">1회</span>
-              <span className="text-sm font-medium text-text">{byType.oneTime}</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Play size={12} className="text-success" />
-              <span className="text-xs text-text-muted">이벤트</span>
-              <span className="text-sm font-medium text-text">{byType.event}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 필터 */}
-        <div className="px-5 py-2 border-b border-border flex gap-2">
-          {(["all", "pending", "running", "completed", "failed", "paused"] as const).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={`text-xs px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
-                filter === f
-                  ? "bg-primary text-white"
-                  : "text-text-muted hover:text-text hover:bg-surface-hover"
-              }`}
-            >
-              {f === "all" ? "전체" : f === "pending" ? "대기" : f === "running" ? "실행중" : f === "completed" ? "완료" : f === "failed" ? "실패" : "정지"}
-            </button>
-          ))}
-        </div>
-
-        {/* 목록 */}
-        <div className="overflow-y-auto px-5 py-3 flex-1">
-          {filteredTasks.length === 0 ? (
-            <div className="text-center text-text-muted py-8 text-sm">작업이 없습니다</div>
+        <div className="overflow-y-auto max-h-[calc(80vh-60px)]">
+          {tasks.length === 0 ? (
+            <div className="text-center text-text-muted py-8">작업이 없습니다</div>
           ) : (
-            <div className="space-y-2">
-              {filteredTasks.map((task) => (
+            <div className="divide-y divide-border">
+              {tasks.map((task) => (
                 <div
                   key={task.id}
+                  className="px-5 py-3 hover:bg-surface-hover cursor-pointer"
                   onClick={() => setSelectedTask(task)}
-                  className="bg-surface-hover/50 border border-border/50 rounded-xl p-3 cursor-pointer hover:bg-surface-hover transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">
-                        {task.project}
-                      </span>
-                      <span className="text-xs text-text-muted shrink-0">
-                        {TYPE_ICONS[task.type]}
-                      </span>
-                      <span className="text-sm truncate">{task.title}</span>
-                      {task.scheduleCron && (
-                        <span className="text-[10px] text-text-muted font-mono shrink-0">
-                          {task.scheduleCron}
-                        </span>
-                      )}
+                      {TYPE_ICONS[task.type]}
+                      <span className="text-sm font-medium text-text truncate">{task.title}</span>
+                      <span className="text-xs text-text-muted shrink-0">{task.project}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      {task.status === "pending" && task.scheduleCron && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onPause(task.id); }}
-                          disabled={actionLoading}
-                          className="text-[10px] text-text-muted hover:text-warning cursor-pointer disabled:opacity-50"
-                          title="일시중단"
-                        >
-                          ⏸
-                        </button>
-                      )}
-                      {task.status === "paused" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onResume(task.id); }}
-                          disabled={actionLoading}
-                          className="text-[10px] text-text-muted hover:text-success cursor-pointer disabled:opacity-50"
-                          title="재개"
-                        >
-                          ▶
-                        </button>
-                      )}
-                      {task.status !== "running" && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
-                          disabled={actionLoading}
-                          className="text-[10px] text-text-muted hover:text-danger cursor-pointer disabled:opacity-50"
-                          title="삭제"
-                        >
-                          🗑
-                        </button>
-                      )}
-                      {task.requiresApproval && task.status === "pending" && (
-                        <span className="text-[10px] bg-warning/15 text-warning px-1.5 py-0.5 rounded border border-warning/20">
-                          승인
-                        </span>
-                      )}
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_STYLES[task.status] || ""}`}>
                         {STATUS_LABELS[task.status] || task.status}
                       </span>
+                      {task.scheduleCron && (
+                        <span className="text-[10px] text-text-muted font-mono">{task.scheduleCron}</span>
+                      )}
                     </div>
-                  </div>
-                  <div className="flex gap-3 mt-1.5 text-[10px] text-text-muted">
-                    <span>
-                      {task.lastRunAt
-                        ? `마지막: ${new Date(task.lastRunAt).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
-                        : "미실행"}
-                    </span>
-                    <span>실행 {task.runCount}회</span>
-                    {task.scheduleNext && (
-                      <span>다음: {new Date(task.scheduleNext).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
-                    )}
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// 목표 생성 폼
+function GoalForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (data: { title: string; description: string; priority: string }) => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [priority, setPriority] = useState("medium");
+
+  return (
+    <div className="bg-bg rounded-xl p-4 border border-border space-y-3">
+      <input
+        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
+        placeholder="목표 제목"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <textarea
+        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
+        placeholder="설명 (선택)"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        rows={2}
+      />
+      <div className="flex items-center gap-2">
+        <select
+          className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+        >
+          <option value="low">낮은 우선순위</option>
+          <option value="medium">중간 우선순위</option>
+          <option value="high">높은 우선순위</option>
+        </select>
+        <button
+          onClick={() => onSubmit({ title, description, priority })}
+          disabled={!title.trim()}
+          className="flex-1 text-sm text-white bg-primary hover:bg-primary/80 disabled:opacity-50 rounded-lg py-2"
+        >
+          추가
+        </button>
+        <button
+          onClick={onCancel}
+          className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-3 py-2"
+        >
+          취소
+        </button>
       </div>
     </div>
   );
@@ -542,10 +457,8 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
   const [goalsFilter, setGoalsFilter] = useState<"all" | "active" | "proposed" | "completed">("active");
-  const [goalForm, setGoalForm] = useState({ title: "", description: "", projects: [] as string[], priority: "medium" as string, deadline: "" });
   const [error, setError] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [toggling, setToggling] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -553,7 +466,7 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
         api.agentStatus(),
         api.scheduledTasks(),
         api.agentGoals(),
-        api.agentTasks(false), // 전체 태스크
+        api.agentTasks(false),
       ]);
 
       setAgentStatus(statusData);
@@ -561,21 +474,20 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
       setGoals(Array.isArray(goalsData) ? goalsData : []);
       setPendingTasks(allTasks.filter((t) => t.requires_approval && (t.status === "pending" || t.status === "paused")));
 
-      // 전체 작업 매핑 (시간 제한 없음)
       const taskItems: TaskItem[] = allTasks.map((t) => ({
         id: t.id,
         title: t.title,
         project: t.project,
         type: t.type,
         status: t.status,
-        prompt: t.prompt,
-        scheduleCron: t.schedule_cron,
-        scheduleNext: t.schedule_next,
-        eventTrigger: t.event_trigger,
-        lastRunAt: t.last_run_at,
-        lastResult: t.last_result,
+        prompt: t.prompt || undefined,
+        scheduleCron: t.schedule_cron || undefined,
+        scheduleNext: t.schedule_next || undefined,
+        eventTrigger: t.event_trigger || undefined,
+        lastRunAt: t.last_run_at || undefined,
+        lastResult: t.last_result || undefined,
         runCount: t.run_count,
-        maxRuns: t.max_runs,
+        maxRuns: t.max_runs || undefined,
         requiresApproval: t.requires_approval,
         createdAt: t.created_at,
       }));
@@ -592,16 +504,6 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     const interval = setInterval(fetchAll, 15_000);
     return () => clearInterval(interval);
   }, [fetchAll]);
-
-  const handleToggleScheduled = async (taskId: string, enabled: boolean) => {
-    setToggling(taskId);
-    try {
-      await api.toggleScheduledTask(taskId, enabled);
-      await fetchAll();
-    } finally {
-      setToggling(null);
-    }
-  };
 
   const handleApproveTask = async (taskId: string) => {
     setActionLoading(true);
@@ -623,25 +525,9 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     }
   };
 
-  const handleUpdateTask = async (taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string; status?: string }) => {
-    setActionLoading(true);
-    try {
-      await api.agentUpdateTask(taskId, updates);
-      fetchAll();
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDeleteTask = async (taskId: string) => {
-    if (!confirm("이 작업을 삭제하시겠습니까?")) return;
-    setActionLoading(true);
-    try {
-      await api.agentDeleteTask(taskId);
-      fetchAll();
-    } finally {
-      setActionLoading(false);
-    }
+  const handleUpdateTask = async (taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => {
+    await api.agentUpdateTask(taskId, updates);
+    fetchAll();
   };
 
   const handlePauseTask = async (taskId: string) => {
@@ -657,25 +543,64 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
   const handleResumeTask = async (taskId: string) => {
     setActionLoading(true);
     try {
-      await api.agentUpdateTask(taskId, { status: "pending" });
+      await api.agentUpdateTask(taskId, { status: "running" });
       fetchAll();
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleCreateGoal = async () => {
-    if (!goalForm.title || goalForm.projects.length === 0) return;
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+    setActionLoading(true);
+    try {
+      await api.agentDeleteTask(taskId);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApproveGoal = async (goalId: string) => {
+    setActionLoading(true);
+    try {
+      await api.agentUpdateGoal(goalId, { status: "active" });
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCompleteGoal = async (goalId: string) => {
+    setActionLoading(true);
+    try {
+      await api.agentUpdateGoal(goalId, { status: "completed" });
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteGoal = async (goalId: string) => {
+    if (!confirm("정말 삭제하시겠습니까?")) return;
+    setActionLoading(true);
+    try {
+      await api.agentDeleteGoal(goalId);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCreateGoal = async (data: { title: string; description: string; priority: string }) => {
     setActionLoading(true);
     try {
       await api.agentCreateGoal({
-        title: goalForm.title,
-        description: goalForm.description || goalForm.title,
-        projects: goalForm.projects,
-        priority: goalForm.priority,
-        deadline: goalForm.deadline || undefined,
+        title: data.title,
+        description: data.description,
+        projects: [],
+        priority: data.priority as "low" | "medium" | "high",
       });
-      setGoalForm({ title: "", description: "", projects: [], priority: "medium", deadline: "" });
       setShowGoalForm(false);
       fetchAll();
     } finally {
@@ -683,99 +608,34 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     }
   };
 
-  const handleCompleteGoal = async (id: string) => {
-    setActionLoading(true);
-    try {
-      await api.agentUpdateGoal(id, { status: "completed" } as any);
-      fetchAll();
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleDeleteGoal = async (id: string) => {
-    setActionLoading(true);
-    try {
-      await api.agentDeleteGoal(id);
-      fetchAll();
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleApproveGoal = async (id: string) => {
-    setActionLoading(true);
-    try {
-      await api.agentApproveGoal(id);
-      fetchAll();
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const toggleGoalProject = (p: string) => {
-    setGoalForm((f) => ({
-      ...f,
-      projects: f.projects.includes(p) ? f.projects.filter((x) => x !== p) : [...f.projects, p],
-    }));
-  };
-
-  const isExecuting = (agentStatus?.runningTasks?.length ?? 0) > 0;
-
-  // Goals 분리
-  const proposedGoals = goals.filter((g) => g.status === "proposed");
+  // 통계
+  const todayTaskCount = agentStatus?.todayTaskCount || 0;
   const activeGoals = goals.filter((g) => g.status === "active");
+  const proposedGoals = goals.filter((g) => g.status === "proposed");
   const completedGoals = goals.filter((g) => g.status === "completed");
 
-  // 필터링된 Goals
   const filteredGoals = goalsFilter === "all" ? goals :
-    goalsFilter === "proposed" ? proposedGoals :
-    goalsFilter === "completed" ? completedGoals :
-    activeGoals;
+    goalsFilter === "active" ? activeGoals :
+    goalsFilter === "proposed" ? proposedGoals : completedGoals;
 
-  // 오늘 작업 통계
-  const todayCompleted = tasks.filter((t) => t.status === "completed").length;
-  const todayFailed = tasks.filter((t) => t.status === "failed").length;
-
-  const borderClass = pinned ? "border-primary/50" : "border-border/60";
+  const borderClass = pinned ? "border-primary/30" : "border-border";
 
   if (collapsed) {
     return (
-      <div
-        className={`bg-surface border ${borderClass} rounded-2xl p-3 flex items-center justify-between card-glow card-transition`}
-      >
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${isExecuting ? "bg-warning animate-pulse" : agentStatus?.running ? "bg-success" : error ? "bg-danger" : "bg-text-muted"}`} />
-          <Bot size={14} className="text-primary" />
-          <span className="text-sm font-medium text-text">Automation</span>
-          {agentStatus && (
-            <span className="text-[10px] text-text-muted">
-              {isExecuting
-                ? `실행 중 ${agentStatus.runningTasks.length}건`
-                : `idle · 오늘 ${agentStatus.todayTaskCount}건 · $${agentStatus.todayCost.toFixed(2)}`}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-0.5">
-          {pendingTasks.length > 0 && (
-            <span className="text-[10px] bg-warning/15 text-warning px-1.5 py-0.5 rounded border border-warning/20 mr-1">
-              {pendingTasks.length}
-            </span>
-          )}
-          <button
-            onClick={onTogglePin}
-            className={`p-1.5 rounded-lg transition-colors ${
-              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
-            }`}
-          >
-            {pinned ? <Pin size={14} /> : <PinOff size={14} />}
-          </button>
-          <button
-            onClick={onToggleCollapse}
-            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
-          >
-            <ChevronDown size={14} />
-          </button>
+      <div className={`bg-surface border ${borderClass} rounded-2xl p-4 card-transition`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Bot size={16} className="text-primary" />
+            <span className="font-semibold text-sm text-text">Automation Hub</span>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <button onClick={onTogglePin} className={`p-1.5 rounded-lg ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`}>
+              {pinned ? <Pin size={14} /> : <PinOff size={14} />}
+            </button>
+            <button onClick={onToggleCollapse} className="p-1.5 text-text-muted/40 hover:text-text-muted rounded-lg">
+              <ChevronDown size={14} />
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -809,180 +669,135 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
 
         {error ? (
           <p className="text-sm text-danger">API 연결 불가</p>
-        ) : !agentStatus ? (
-          <p className="text-sm text-text-muted">Loading...</p>
         ) : (
           <div className="space-y-4">
-            {/* 상태 요약 - 클릭 가능 */}
-            <div
-              onClick={() => setShowModal(true)}
-              className="bg-surface-hover/50 border border-border/50 rounded-xl p-4 cursor-pointer hover:bg-surface-hover transition-colors"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full ${isExecuting ? "bg-warning animate-pulse" : agentStatus.running ? "bg-success" : "bg-text-muted"}`} />
-                  <span className="text-sm font-medium text-text">
-                    {isExecuting ? `${agentStatus.runningTasks.length}건 실행 중` : agentStatus.running ? "대기 중" : "중지됨"}
-                  </span>
+            {/* 에이전트 상태 요약 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                className="bg-bg rounded-xl p-3 border border-border cursor-pointer hover:border-primary/30 transition-colors"
+                onClick={() => setShowModal(true)}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Zap size={14} className="text-primary" />
+                  <span className="text-xs text-text-muted">오늘 작업</span>
                 </div>
-                <span className="text-[10px] text-text-muted">자세히 →</span>
+                <div className="text-xl font-bold text-text">
+                  {todayTaskCount}
+                  <span className="text-xs font-normal text-text-muted">회</span>
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <span className="text-[10px] text-text-muted">총 실행</span>
+                </div>
               </div>
 
-              {/* 오늘 통계 */}
-              <div className="flex items-center gap-4">
-                <div>
-                  <span className="text-lg font-bold text-text">{agentStatus.todayTaskCount}</span>
-                  <span className="text-xs text-text-muted ml-1">건</span>
+              <div
+                className="bg-bg rounded-xl p-3 border border-border cursor-pointer hover:border-primary/30 transition-colors"
+                onClick={() => setShowGoalsModal(true)}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Target size={14} className="text-warning" />
+                  <span className="text-xs text-text-muted">진행중 목표</span>
                 </div>
-                <div>
-                  <span className="text-lg font-bold text-success">${agentStatus.todayCost.toFixed(2)}</span>
+                <div className="text-xl font-bold text-text">{activeGoals.length}</div>
+                <div className="flex gap-2 mt-1">
+                  <span className="text-[10px] text-text-muted">제안 {proposedGoals.length}</span>
                 </div>
-                {todayCompleted > 0 && (
-                  <div className="flex items-center gap-1 text-xs text-success">
-                    <CheckCircle size={10} />
-                    {todayCompleted}
-                  </div>
-                )}
-                {todayFailed > 0 && (
-                  <div className="flex items-center gap-1 text-xs text-danger">
-                    <XCircle size={10} />
-                    {todayFailed}
-                  </div>
-                )}
               </div>
-
-              {/* 실행 중 작업 */}
-              {agentStatus.runningTasks.length > 0 && (
-                <div className="mt-2 pt-2 border-t border-border/30">
-                  <div className="flex gap-2 overflow-x-auto">
-                    {agentStatus.runningTasks.map((task, i) => (
-                      <div key={i} className="bg-warning/10 border border-warning/20 rounded-lg px-2 py-1 shrink-0">
-                        <span className="text-[10px] text-warning">{task.project}</span>
-                        <span className="text-[10px] text-text-muted ml-1 truncate max-w-[100px]">{task.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
-            {/* 승인 대기 배너 */}
+            {/* 승인 대기 */}
             {pendingTasks.length > 0 && (
-              <div
-                onClick={() => setShowModal(true)}
-                className="bg-warning/10 border border-warning/20 rounded-xl px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-warning/15 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <AlertCircle size={14} className="text-warning" />
-                  <span className="text-sm text-warning">승인 대기 {pendingTasks.length}건</span>
+              <div className="bg-warning/5 border border-warning/20 rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-warning">승인 대기 ({pendingTasks.length})</span>
                 </div>
-                <span className="text-[10px] text-warning">보기 →</span>
+                <div className="space-y-2">
+                  {pendingTasks.slice(0, 3).map((t) => (
+                    <div key={t.id} className="flex items-center justify-between text-xs">
+                      <span className="text-text truncate">{t.title}</span>
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          onClick={() => handleApproveTask(t.id)}
+                          disabled={actionLoading}
+                          className="text-success hover:text-success/80 disabled:opacity-50"
+                        >
+                          <CheckCircle size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleCancelTask(t.id)}
+                          disabled={actionLoading}
+                          className="text-danger hover:text-danger/80 disabled:opacity-50"
+                        >
+                          <XCircle size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {pendingTasks.length > 3 && (
+                    <button
+                      onClick={() => setShowModal(true)}
+                      className="text-[10px] text-primary hover:text-primary/80"
+                    >
+                      +{pendingTasks.length - 3}개 더보기
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 실행중 작업 */}
+            {agentStatus && agentStatus.runningTasks.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-xs text-text-muted">실행중</span>
+                {agentStatus.runningTasks.slice(0, 3).map((t, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs bg-bg rounded-lg px-3 py-2 border border-border">
+                    <div className="w-1.5 h-1.5 bg-success rounded-full animate-pulse" />
+                    <span className="text-text truncate">{t.title}</span>
+                  </div>
+                ))}
               </div>
             )}
 
             {/* 예약 작업 */}
-            <div>
-              <div className="flex items-center gap-1 mb-2">
-                <Clock size={12} className="text-primary" />
-                <span className="text-xs font-medium text-text-muted">예약 작업 ({scheduledTasks.length}개)</span>
-              </div>
-              <div className="space-y-1.5">
+            {scheduledTasks.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-xs text-text-muted">예약됨 ({scheduledTasks.length})</span>
                 {scheduledTasks.slice(0, 3).map((t) => (
-                  <div key={t.id} className="flex items-center justify-between bg-surface-hover/30 border border-border/30 rounded-lg px-2.5 py-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <button
-                        onClick={() => handleToggleScheduled(t.id, !t.enabled)}
-                        disabled={toggling === t.id}
-                        className={`relative inline-flex h-3.5 w-6 items-center rounded-full transition-colors shrink-0 ${
-                          t.enabled ? "bg-primary" : "bg-border"
-                        } ${toggling === t.id ? "opacity-50" : ""}`}
-                      >
-                        <span
-                          className={`inline-block h-2.5 w-2.5 transform rounded-full bg-white transition-transform ${
-                            t.enabled ? "translate-x-3" : "translate-x-0.5"
-                          }`}
-                        />
-                      </button>
-                      <span className={`text-xs truncate ${!t.enabled ? "text-text-muted" : "text-text"}`}>
-                        {t.display_name}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-mono text-text-muted shrink-0 ml-2">{t.schedule}</span>
+                  <div key={t.id} className="flex items-center justify-between text-xs bg-bg rounded-lg px-3 py-2 border border-border">
+                    <span className="text-text truncate">{t.display_name}</span>
+                    <span className="text-text-muted font-mono shrink-0">{t.schedule}</span>
                   </div>
                 ))}
                 {scheduledTasks.length > 3 && (
-                  <div className="text-[10px] text-text-muted text-center">+{scheduledTasks.length - 3}개 더보기</div>
+                  <button onClick={() => setShowModal(true)} className="text-[10px] text-primary hover:text-primary/80">
+                    +{scheduledTasks.length - 3}개 더보기
+                  </button>
                 )}
               </div>
-            </div>
+            )}
 
-            {/* Goals */}
-            <div>
-              <div className="flex items-center gap-1 mb-2">
-                <Target size={12} className="text-primary" />
-                <span className="text-xs font-medium text-text-muted">
-                  Goals ({activeGoals.length} active{proposedGoals.length > 0 && ` · ${proposedGoals.length} proposed`})
-                </span>
+            {/* 최근 목표 */}
+            {activeGoals.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-text-muted">진행중 목표</span>
+                  <button onClick={() => setShowGoalsModal(true)} className="text-[10px] text-primary hover:text-primary/80">
+                    전체 보기
+                  </button>
+                </div>
+                {activeGoals.slice(0, 2).map((g) => (
+                  <div key={g.id} className="flex items-center gap-2 text-xs bg-bg rounded-lg px-3 py-2 border border-border">
+                    {g.priority === "high" && <Star size={10} className="text-warning shrink-0" />}
+                    <span className="text-text truncate">{g.title}</span>
+                  </div>
+                ))}
               </div>
-              {proposedGoals.length > 0 && (
-                <div className="space-y-1 mb-2">
-                  {proposedGoals.slice(0, 2).map((g) => (
-                    <div key={g.id} className="bg-warning/5 border border-warning/20 rounded-lg px-2.5 py-2 flex items-center justify-between">
-                      <div className="min-w-0">
-                        <span className="text-xs truncate block">{g.title}</span>
-                        <span className="text-[10px] text-text-muted">{g.projects.join(", ")}</span>
-                      </div>
-                      <div className="flex gap-1 shrink-0 ml-2">
-                        <button
-                          onClick={() => {
-                            api.agentApproveGoal(g.id).then(fetchAll);
-                          }}
-                          className="text-[10px] bg-success/20 text-success hover:bg-success/30 rounded px-1.5 py-0.5 cursor-pointer"
-                        >
-                          Approve
-                        </button>
-                        <button
-                          onClick={() => {
-                            api.agentDeleteGoal(g.id).then(fetchAll);
-                          }}
-                          className="text-[10px] bg-danger/20 text-danger hover:bg-danger/30 rounded px-1.5 py-0.5 cursor-pointer"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {activeGoals.length > 0 && (
-                <div className="space-y-1">
-                  {activeGoals.slice(0, 2).map((g) => (
-                    <div key={g.id} className="bg-surface-hover/30 border border-border/30 rounded-lg px-2.5 py-2 flex items-center justify-between">
-                      <div className="min-w-0">
-                        <span className="text-xs truncate block">{g.title}</span>
-                        <span className="text-[10px] text-text-muted">{g.projects.join(", ")}</span>
-                      </div>
-                      {g.priority === "high" && <Star size={10} className="text-warning shrink-0" />}
-                    </div>
-                  ))}
-                </div>
-              )}
-              {goals.length === 0 && (
-                <div className="text-xs text-text-muted text-center py-2">No active goals</div>
-              )}
-              {/* 더보기 버튼 */}
-              <button
-                onClick={() => setShowGoalsModal(true)}
-                className="w-full mt-2 text-xs text-primary hover:text-primary/80 text-center py-1.5 cursor-pointer"
-              >
-                전체 보기 →
-              </button>
-            </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* 상세 모달 */}
+      {/* 전체 작업 모달 */}
       {showModal && (
         <AgentTasksModal
           tasks={tasks}
@@ -997,96 +812,34 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
         />
       )}
 
-      {/* Goals 모달 */}
+      {/* 목표 모달 */}
       {showGoalsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowGoalsModal(false)} />
-          <div className="relative bg-surface border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-            {/* Header */}
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden border border-border shadow-xl">
             <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-              <div className="flex items-center gap-2">
-                <Target size={16} className="text-primary" />
-                <h2 className="font-semibold text-sm">Project Goals</h2>
-                <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border">
-                  {goals.length}개
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowGoalForm(!showGoalForm)}
-                  className="text-[11px] text-primary hover:bg-primary/10 border border-primary/20 rounded-lg px-2.5 py-1 transition-colors cursor-pointer"
-                >
-                  {showGoalForm ? "취소" : "+ 추가"}
-                </button>
-                <button
-                  onClick={() => setShowGoalsModal(false)}
-                  className="text-text-muted hover:text-text text-lg leading-none cursor-pointer"
-                >
-                  ×
-                </button>
-              </div>
+              <h2 className="font-semibold text-text">프로젝트 목표</h2>
+              <button onClick={() => setShowGoalsModal(false)} className="text-text-muted hover:text-text">
+                <X size={20} />
+              </button>
             </div>
 
-            {/* 추가 formulário */}
-            {showGoalForm && (
-              <div className="px-5 py-3 border-b border-border bg-surface-hover/30">
-                <div className="space-y-2">
-                  <input
-                    className="w-full bg-surface border border-border/50 rounded-lg px-3 py-2 text-sm focus:border-primary outline-none text-text"
-                    placeholder="Goal title"
-                    value={goalForm.title}
-                    onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
-                  />
-                  <input
-                    className="w-full bg-surface border border-border/50 rounded-lg px-3 py-2 text-sm focus:border-primary outline-none text-text"
-                    placeholder="Description (optional)"
-                    value={goalForm.description}
-                    onChange={(e) => setGoalForm({ ...goalForm, description: e.target.value })}
-                  />
-                  <div className="flex flex-wrap gap-1">
-                    {["COIN", "BLOG", "DASH", "TRAIN", "TGBOT", "DCBOT"].map((p) => (
-                      <button
-                        key={p}
-                        onClick={() => toggleGoalProject(p)}
-                        className={`text-xs px-2.5 py-1 rounded-lg border cursor-pointer transition-colors ${
-                          goalForm.projects.includes(p) ? "bg-primary/20 border-primary text-primary" : "border-border/50 text-text-muted hover:bg-surface-hover"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
-                    <select
-                      className="bg-surface border border-border/50 rounded-lg px-2 py-2 text-sm text-text"
-                      value={goalForm.priority}
-                      onChange={(e) => setGoalForm({ ...goalForm, priority: e.target.value })}
-                    >
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
-                    <input
-                      type="date"
-                      className="bg-surface border border-border/50 rounded-lg px-2 py-2 text-sm flex-1 focus:border-primary outline-none text-text"
-                      value={goalForm.deadline}
-                      onChange={(e) => setGoalForm({ ...goalForm, deadline: e.target.value })}
-                    />
-                    <button
-                      onClick={handleCreateGoal}
-                      disabled={actionLoading || !goalForm.title || goalForm.projects.length === 0}
-                      className="text-xs bg-primary hover:bg-primary/80 disabled:opacity-50 text-white rounded-lg px-4 py-2 cursor-pointer font-medium"
-                    >
-                      생성
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="p-4 border-b border-border">
+              {!showGoalForm ? (
+                <button
+                  onClick={() => setShowGoalForm(true)}
+                  className="w-full text-sm text-primary border border-primary/30 hover:bg-primary/5 rounded-lg py-2 flex items-center justify-center gap-1"
+                >
+                  <Plus size={14} /> 목표 추가
+                </button>
+              ) : (
+                <GoalForm
+                  onSubmit={handleCreateGoal}
+                  onCancel={() => setShowGoalForm(false)}
+                />
+              )}
+            </div>
 
-            {/* Goals 목록 */}
-            <div className="overflow-y-auto px-5 py-3 flex-1">
-              {/* 필터 탭 */}
+            <div className="overflow-y-auto px-5 py-3 max-h-[50vh]">
               <div className="flex gap-1 mb-3">
                 {(["active", "proposed", "completed", "all"] as const).map((f) => (
                   <button
@@ -1106,7 +859,6 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
                 ))}
               </div>
 
-              {/* 필터링된 Goals */}
               {filteredGoals.length === 0 ? (
                 <div className="text-center text-text-muted py-8 text-sm">
                   {goalsFilter === "active" && "진행 중인 목표가 없습니다"}
@@ -1131,10 +883,11 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
                           {g.description && g.description !== g.title && (
                             <div className="text-xs text-text-muted mt-1">{g.description}</div>
                           )}
-                          <div className="text-[10px] text-text-muted mt-1 flex gap-2">
-                            <span>{g.projects.join(", ")}</span>
-                            {g.deadline && <span>by {g.deadline}</span>}
-                          </div>
+                          {g.deadline && (
+                            <div className="text-xs text-text-muted mt-1">
+                              <span>by {g.deadline}</span>
+                            </div>
+                          )}
                           {g.progress && <div className="text-xs text-text-muted mt-1">{g.progress}</div>}
                         </div>
                         <div className="flex gap-1 ml-2 shrink-0">
@@ -1196,4 +949,3 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     </>
   );
 }
-

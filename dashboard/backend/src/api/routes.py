@@ -957,6 +957,22 @@ async def agent_tasks(active_only: bool = True, _=Depends(verify_session)):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
+@router.post("/agent/tasks")
+async def agent_create_task(body: dict, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/agent-tasks",
+                json=body,
+                headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code == 422:
+                raise HTTPException(status_code=422, detail=r.json())
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
 @router.post("/agent/tasks/approve-all")
 async def agent_approve_all_tasks(_=Depends(verify_session)):
     async with httpx.AsyncClient() as client:
@@ -1030,6 +1046,21 @@ async def agent_cancel_task(task_id: str, _=Depends(verify_session)):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
+@router.delete("/agent/tasks/{task_id}")
+async def agent_delete_task(task_id: str, _=Depends(verify_session)):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.delete(
+                f"{AGENT_API_BASE}/api/agent-tasks/{task_id}",
+                headers=_agent_headers(), timeout=5.0,
+            )
+            if r.status_code == 404:
+                raise HTTPException(status_code=404, detail="Task not found")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
 # --- n8n Status ---
 
 N8N_BASE_URL = "https://n8n.namukeu.com"
@@ -1046,14 +1077,19 @@ def _get_n8n_headers() -> dict:
 @router.get("/n8n/status")
 async def n8n_status(_=Depends(verify_session)):
     """n8n 상태 및 실행 통계 조회"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     async with httpx.AsyncClient(verify=False) as client:
         # 1. Health check
         health_status = "down"
         try:
             resp = await client.get(f"{N8N_BASE_URL}/health", timeout=5.0)
+            logger.info(f"n8n health response: {resp.status_code}, body: {resp.text[:100]}")
             if resp.status_code == 200:
                 health_status = "running"
-        except (httpx.ConnectError, httpx.TimeoutException):
+        except (httpx.ConnectError, httpx.TimeoutException) as e:
+            logger.error(f"n8n health error: {e}")
             health_status = "down"
 
         if health_status == "down":
@@ -1068,13 +1104,15 @@ async def n8n_status(_=Depends(verify_session)):
                 headers=_get_n8n_headers(),
                 timeout=5.0,
             )
+            logger.info(f"n8n workflows response: {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
+                logger.info(f"n8n workflows data: {data}")
                 # n8n v1.x returns {"data": [...]}
                 workflows = data.get("data", [])
                 active_workflows = len(workflows)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"n8n workflows error: {e}")
 
         # 3. Get today's executions
         today = datetime.now().strftime("%Y-%m-%d")

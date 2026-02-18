@@ -166,6 +166,7 @@ class TaskUpdate(BaseModel):
     prompt: str | None = None
     project: str | None = None
     schedule_cron: str | None = None
+    status: str | None = None  # for pause/resume: "paused", "pending"
 
 
 @router.get("/agent-tasks/{task_id}", dependencies=[Depends(verify_agent_token)])
@@ -191,11 +192,26 @@ def update_agent_task(
     updates = body.model_dump(exclude_none=True)
     if not updates:
         return task
+    # Handle status change (pause/resume)
+    if "status" in updates:
+        new_status = updates.pop("status")
+        if new_status == "paused":
+            ts.update_task(task_id, {"status": "paused"})
+        elif new_status == "pending":
+            # Resume: reset to pending, recalculate schedule_next for recurring
+            from datetime import datetime
+            if task.get("schedule_cron"):
+                from src.agent.cron import get_next_cron_time
+                next_time = get_next_cron_time(task["schedule_cron"])
+                ts.update_task(task_id, {"status": "pending", "schedule_next": next_time.isoformat()})
+            else:
+                ts.update_task(task_id, {"status": "pending"})
     # Recalculate schedule_next if cron changed
     if "schedule_cron" in updates and updates["schedule_cron"]:
         from src.agent.cron import get_next_cron_time
         updates["schedule_next"] = get_next_cron_time(updates["schedule_cron"]).isoformat()
-    ts.update_task(task_id, updates)
+    if updates:
+        ts.update_task(task_id, updates)
     return ts.get_by_id(task_id)
 
 

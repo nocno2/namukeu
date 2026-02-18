@@ -173,7 +173,7 @@ export const api = {
   agentTasks(activeOnly = true) {
     return request<AgentTask[]>(`/api/agent/tasks?active_only=${activeOnly}`);
   },
-  agentUpdateTask(taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) {
+  agentUpdateTask(taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string; status?: string }) {
     return request<AgentTask>(`/api/agent/tasks/${taskId}`, {
       method: "PUT",
       body: JSON.stringify(updates),
@@ -187,6 +187,27 @@ export const api = {
   agentCancelTask(taskId: string) {
     return request<{ ok: boolean }>(`/api/agent/tasks/${taskId}/cancel`, {
       method: "POST",
+    });
+  },
+  agentDeleteTask(taskId: string) {
+    return request<{ ok: boolean }>(`/api/agent/tasks/${taskId}`, {
+      method: "DELETE",
+    });
+  },
+  agentCreateTask(task: {
+    title: string;
+    prompt: string;
+    project: string;
+    type: "one-time" | "recurring" | "event";
+    schedule_cron?: string;
+    schedule_at?: string;
+    event_trigger?: string;
+    requires_approval?: boolean;
+    max_runs?: number;
+  }) {
+    return request<AgentTask>("/api/agent/tasks", {
+      method: "POST",
+      body: JSON.stringify(task),
     });
   },
   agentApproveAllTasks() {
