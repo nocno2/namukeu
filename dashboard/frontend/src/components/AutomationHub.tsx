@@ -1047,7 +1047,7 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
               ) : (
                 <div className="space-y-2">
                   {filteredGoals.map((g) => (
-                    <div key={g.id} className={`rounded-xl px-3 py-2.5 ${
+                    <div key={g.id} className={`group rounded-xl px-3 py-2.5 ${
                       g.status === "proposed" ? "bg-warning/5 border border-warning/20" :
                       g.status === "completed" ? "bg-success/5 border border-success/20" :
                       "bg-surface-hover/50 border border-border/50"
