@@ -15,6 +15,10 @@ import {
   setMonthlyTarget,
   addRevenue,
   getRevenueHistory,
+  addCost,
+  getCostStatus,
+  getCostHistory,
+  getProfitSummary,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -269,6 +273,11 @@ export async function createBot(): Promise<Bot> {
         "/revenue set <amount> — Set monthly target\n" +
         "/revenue add <amount> <source> — Add revenue\n" +
         "/revenue history — Show history\n\n" +
+        "Cost Tracking:\n" +
+        "/cost — Show cost status\n" +
+        "/cost add <amount> <category> — Add cost\n" +
+        "/cost history — Show cost history\n" +
+        "/cost profit — Show profit summary\n\n" +
         "Agent Commands:\n" +
         "/tasks — View autonomous tasks\n" +
         "/cancel <id> — Cancel a task\n" +
@@ -488,6 +497,52 @@ export async function createBot(): Promise<Bot> {
         );
       } else {
         await ctx.reply("알 수 없는 명령어입니다. /revenue help 를 입력하세요.");
+      }
+    } catch (err) {
+      await ctx.reply(`오류: ${err}`);
+    }
+  });
+
+  // Cost tracking
+  bot.command("cost", async (ctx) => {
+    const args = ctx.match?.trim() || "";
+    const parts = args.split(" ");
+    const subcommand = parts[0].toLowerCase();
+
+    try {
+      if (!subcommand || subcommand === "status") {
+        const status = await getCostStatus();
+        await sendResponse(ctx, status);
+      } else if (subcommand === "add") {
+        // /cost add 5000 server - add cost
+        const amount = parseInt(parts[1]?.replace(/[^0-9]/g, "") || "0", 10);
+        const category = parts[2] || "general";
+        const description = parts.slice(3).join(" ") || undefined;
+        if (!amount || amount <= 0) {
+          await ctx.reply("사용법: /cost add <금액> <카테고리> [설명]\n예: /cost add 5000 server");
+          return;
+        }
+        const msg = await addCost(amount, category, description);
+        await ctx.reply(msg);
+      } else if (subcommand === "history") {
+        const months = parseInt(parts[1] || "6", 10);
+        const history = await getCostHistory(months);
+        await sendResponse(ctx, history);
+      } else if (subcommand === "profit") {
+        const months = parseInt(parts[1] || "6", 10);
+        const summary = await getProfitSummary(months);
+        await sendResponse(ctx, summary);
+      } else if (subcommand === "help") {
+        await ctx.reply(
+          "비용 추적 명령어:\n\n" +
+            "/cost — 현재 비용 확인\n" +
+            "/cost add 5000 server — 비용 추가\n" +
+            "/cost history — 월별 비용 이력\n" +
+            "/cost profit — 손익 요약\n" +
+            "/cost help — 도움말"
+        );
+      } else {
+        await ctx.reply("알 수 없는 명령어입니다. /cost help 를 입력하세요.");
       }
     } catch (err) {
       await ctx.reply(`오류: ${err}`);
