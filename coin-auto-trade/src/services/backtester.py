@@ -27,6 +27,7 @@ class BacktestConfig:
     leverage: int = 1
     enable_short: bool = False
     trailing_stop_pct: float | None = None
+    partial_profit_take_pct: float | None = None  # 부분 익절 목표 수익률
     stop_loss_pct: float = 5.0
 
 
@@ -114,6 +115,7 @@ class Backtester:
         position_volume = 0.0
         entry_price = 0.0
         high_price = 0.0  # Track peak price for trailing stop
+        partial_taken = False  # Track if partial profit take was executed
         trades: list[BacktestTrade] = []
         equity_curve: list[dict] = []
         peak_equity = capital
@@ -141,6 +143,13 @@ class Backtester:
                 if loss_pct >= config.stop_loss_pct:
                     stop_triggered = True
 
+            # Check partial profit take (before trailing stop)
+            partial_triggered = False
+            if position_volume > 0 and config.partial_profit_take_pct and not partial_taken:
+                profit_pct = ((current_price - entry_price) / entry_price) * 100
+                if profit_pct >= config.partial_profit_take_pct:
+                    partial_triggered = True
+
             signal = strategy.analyze(window, config.strategy_params)
 
             if signal.signal == Signal.BUY and position_volume == 0 and capital > 0:
@@ -151,6 +160,7 @@ class Backtester:
                 position_volume = volume
                 entry_price = buy_price
                 high_price = buy_price
+                partial_taken = False
                 capital = 0
                 trades.append(BacktestTrade(timestamp, "buy", buy_price, volume, fee, signal.reason))
 
@@ -169,6 +179,22 @@ class Backtester:
                 position_volume = 0
                 entry_price = 0.0
                 high_price = 0.0
+                partial_taken = False
+
+            elif position_volume > 0 and partial_triggered:
+                # Execute 50% sell for partial profit take
+                sell_price = current_price * (1 - config.slippage_rate)
+                sell_volume = position_volume * 0.5
+                proceeds = sell_volume * sell_price
+                fee = proceeds * config.fee_rate
+                capital = capital + proceeds - fee
+                profit_pct = ((current_price - entry_price) / entry_price) * 100
+                trades.append(BacktestTrade(timestamp, "partial_sell", sell_price, sell_volume, fee,
+                                           f"부분 익절: {profit_pct:.1f}% 수익에서 50% 청산"))
+                position_volume = position_volume * 0.5  # Keep 50%
+                partial_taken = True
+                # Update high_price to current (reset trailing stop base)
+                high_price = current_price
 
             equity = capital + (position_volume * current_price)
             peak_equity = max(peak_equity, equity)
@@ -202,6 +228,7 @@ class Backtester:
         entry_price = 0.0
         high_price = 0.0  # Peak price for trailing stop (lowest for shorts)
         margin_used = 0.0  # margin locked in position
+        partial_taken = False  # Track if partial profit take was executed
         trades: list[BacktestTrade] = []
         equity_curve: list[dict] = []
         peak_equity = capital
@@ -209,8 +236,8 @@ class Backtester:
         daily_returns: list[float] = []
         prev_equity = capital
 
-        def _close_position(close_price: float, reason: str, timestamp: str):
-            nonlocal capital, position_side, position_volume, margin_used, entry_price, high_price
+        def _close_position(close_price: float, reason: str, timestamp: str, close_all: bool = True):
+            nonlocal capital, position_side, position_volume, margin_used, entry_price, high_price, partial_taken
             if position_side == "long":
                 pnl = (close_price - entry_price) * position_volume
                 side_label = "close_long"
@@ -225,6 +252,23 @@ class Backtester:
             margin_used = 0.0
             entry_price = 0.0
             high_price = 0.0
+            partial_taken = False
+
+        def _partial_take_profit(close_price: float, timestamp: str):
+            nonlocal capital, position_volume, margin_used, partial_taken
+            if position_side == "long":
+                pnl = (close_price - entry_price) * position_volume
+            else:
+                pnl = (entry_price - close_price) * position_volume
+            sell_volume = position_volume * 0.5
+            fee = close_price * sell_volume * config.fee_rate
+            realized_pnl = pnl * 0.5  # Only realize 50% of PnL
+            capital = capital + realized_pnl - fee
+            margin_used = margin_used * 0.5  # Release half the margin
+            trades.append(BacktestTrade(timestamp, "partial_close", close_price, sell_volume, fee,
+                                       f"부분 익절: 50% 청산"))
+            position_volume = position_volume * 0.5  # Keep 50%
+            partial_taken = True
 
         for i in range(strategy.required_candle_count, len(df)):
             window = df.iloc[:i + 1]
@@ -237,15 +281,24 @@ class Backtester:
                 if position_side == "long":
                     high_price = max(high_price, current_price)
                     loss_pct = ((entry_price - current_price) / entry_price) * 100
+                    profit_pct = ((current_price - entry_price) / entry_price) * 100
                 else:
                     high_price = min(high_price, current_price) if high_price > 0 else current_price
                     loss_pct = ((current_price - entry_price) / entry_price) * 100
+                    profit_pct = ((entry_price - current_price) / entry_price) * 100
 
                 # Hard stop-loss
                 if loss_pct >= config.stop_loss_pct:
                     effective_loss = loss_pct * leverage
                     close_price = current_price * (1 + config.slippage_rate if position_side == "short" else 1 - config.slippage_rate)
                     _close_position(close_price, f"스탑로스: {loss_pct:.1f}% (실효 {effective_loss:.1f}%)", timestamp)
+                # Partial profit take (before trailing stop)
+                elif config.partial_profit_take_pct and not partial_taken:
+                    effective_profit = profit_pct * leverage
+                    if effective_profit >= config.partial_profit_take_pct:
+                        close_price = current_price * (1 - config.slippage_rate if position_side == "long" else 1 + config.slippage_rate)
+                        _partial_take_profit(close_price, timestamp)
+                        high_price = current_price  # Reset trailing stop base
                 # Trailing stop
                 elif config.trailing_stop_pct and high_price > 0:
                     if position_side == "long":

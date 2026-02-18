@@ -15,6 +15,7 @@ class RiskLimits:
     max_total_loss_pct: float = 5.0
     stop_loss_pct: float = 5.0
     trailing_stop_pct: float | None = None
+    partial_profit_take_pct: float | None = None  # 부분 익절 목표 수익률 (예: 5.0 = 5%)
     min_order_value: float = 5000  # KRW for Upbit, USDT for Binance
 
 
@@ -127,3 +128,21 @@ class RiskManager:
             drop_pct = ((high_price - current_price) / high_price) * 100
             effective_drop = drop_pct * leverage
             return effective_drop >= self.limits.trailing_stop_pct, drop_pct
+
+    def check_partial_profit_take(self, entry_price: float, current_price: float,
+                                   side: str = "long", leverage: int = 1) -> tuple[bool, float]:
+        """Check if partial profit taking target is reached.
+
+        Returns (triggered, profit_pct) where profit_pct is the current profit percentage.
+        """
+        if not self.limits.partial_profit_take_pct or entry_price <= 0:
+            return False, 0.0
+
+        if side == "short":
+            profit_pct = ((entry_price - current_price) / entry_price) * 100
+        else:
+            profit_pct = ((current_price - entry_price) / entry_price) * 100
+
+        effective_profit = profit_pct * leverage
+        triggered = effective_profit >= self.limits.partial_profit_take_pct
+        return triggered, profit_pct

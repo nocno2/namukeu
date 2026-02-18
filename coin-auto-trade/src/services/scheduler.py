@@ -293,6 +293,48 @@ class TradingScheduler:
                 )
                 continue
 
+            # Check partial profit take (before trailing stop)
+            triggered, profit_pct = self.risk_manager.check_partial_profit_take(entry_price, current_price)
+            partial_taken = p.get("partial_taken", False)
+            if triggered and not partial_taken:
+                logger.info(f"부분 익절 발동: {p['ticker']} (진입: {entry_price:,.0f}, 현재: {current_price:,.0f}, 수익: {profit_pct:.1f}%)")
+
+                # Sell 50% of position
+                volume = p["volume"]
+                sell_volume = volume * 0.5
+
+                from src.strategies.base import TradeSignal, Signal as Sig
+                signal = TradeSignal(
+                    signal=Sig.SELL, ticker=p["ticker"], confidence=1.0,
+                    reason=f"부분 익절: {profit_pct:.1f}% 수익에서 50% 청산",
+                    indicators={"entry_price": entry_price, "current_price": current_price,
+                                "profit_pct": profit_pct, "sell_ratio": 0.5},
+                )
+
+                # Execute 50% sell
+                result = await self.exchange.sell_market_order(p["ticker"], sell_volume)
+                if result or self.exchange.dry_run:
+                    remaining_volume = volume - sell_volume
+                    if remaining_volume > 0:
+                        # Update position with remaining volume
+                        self.db.upsert_position(
+                            ticker=p["ticker"],
+                            volume=remaining_volume,
+                            avg_entry_price=entry_price,
+                            current_price=current_price,
+                            strategy_id=p.get("strategy_id"),
+                            exchange=p.get("exchange", "upbit"),
+                        )
+                    else:
+                        self.db.delete_position(p["ticker"])
+
+                    await self.notifier.send_message(
+                        f"💰 *부분 익절* `{p['ticker']}`\n"
+                        f"진입: {entry_price:,.0f} | 현재: {current_price:,.0f}\n"
+                        f"수익: {profit_pct:.1f}% | 청산: 50%"
+                    )
+                continue
+
             # Check trailing stop
             triggered, drop_pct = self.risk_manager.check_trailing_stop(high_price, current_price)
             if triggered:
@@ -514,6 +556,66 @@ class TradingScheduler:
                     f"진입: {entry_price:,.2f} -> 현재: {current_price:,.2f}\n"
                     f"손실: {effective_loss:.1f}%"
                 )
+                continue
+
+            # Check partial profit take (before trailing stop)
+            triggered, profit_pct = self.risk_manager.check_partial_profit_take(
+                entry_price, current_price, side, leverage
+            )
+            partial_taken = p.get("partial_taken", False)
+            if triggered and not partial_taken:
+                logger.info(f"선물 부분 익절 발동: {p['ticker']} {side} {leverage}x "
+                           f"(진입: {entry_price:,.2f}, 현재: {current_price:,.2f}, 수익: {profit_pct:.1f}%)")
+
+                # Sell 50% of position
+                volume = p["volume"]
+                sell_volume = volume * 0.5
+
+                from src.strategies.base import TradeSignal, Signal as Sig
+                close_signal = Sig.SELL if side == "long" else Sig.BUY
+                signal = TradeSignal(
+                    signal=close_signal, ticker=p["ticker"], confidence=1.0,
+                    reason=f"부분 익절: {profit_pct:.1f}% 수익에서 50% 청산",
+                    indicators={"entry_price": entry_price, "current_price": current_price,
+                                "profit_pct": profit_pct, "sell_ratio": 0.5,
+                                "leverage": leverage, "side": side},
+                )
+
+                fee_rate = self.exchange.info.fee_rate
+                min_order = self.exchange.info.min_order_value
+                quote = self.exchange.info.quote_currency
+
+                # Execute 50% sell
+                try:
+                    if side == "long":
+                        result = await self.exchange.sell_market_order(p["ticker"], sell_volume)
+                    else:
+                        result = await self.exchange.buy_market_order(p["ticker"], sell_volume * current_price)
+
+                    if result or self.exchange.dry_run:
+                        remaining_volume = volume - sell_volume
+                        if remaining_volume > 0:
+                            # Update position with remaining volume
+                            self.db.upsert_position(
+                                ticker=p["ticker"],
+                                volume=remaining_volume,
+                                avg_entry_price=entry_price,
+                                current_price=current_price,
+                                strategy_id=p.get("strategy_id"),
+                                exchange=p.get("exchange", "binance_futures"),
+                                side=side,
+                                leverage=leverage,
+                            )
+                        else:
+                            self.db.delete_position(p["ticker"])
+
+                        await self.notifier.send_message(
+                            f"💰 *선물 부분 익절* `{p['ticker']}` ({side} {leverage}x)\n"
+                            f"진입: {entry_price:,.2f} | 현재: {current_price:,.2f}\n"
+                            f"수익: {profit_pct:.1f}% | 청산: 50%"
+                        )
+                except Exception as e:
+                    logger.error(f"선물 부분 익절 실패: {p['ticker']}: {e}")
                 continue
 
             # Check trailing stop
