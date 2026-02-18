@@ -2,7 +2,7 @@ import { db, schema } from "@/lib/db";
 import { eq, and, ne, desc, sql, inArray, count } from "drizzle-orm";
 import { notFound } from "next/navigation";
 import { markdownToHtml } from "@/lib/markdown";
-import { generatePostMetadata, generateJsonLd } from "@/lib/seo";
+import { generatePostMetadata, generateJsonLd, generateBreadcrumbJsonLd } from "@/lib/seo";
 import { getPostTags } from "@/lib/tags";
 import PostContent from "@/components/PostContent";
 import ViewTracker from "@/components/ViewTracker";
@@ -64,6 +64,13 @@ export default async function PostPage({ params }: Props) {
     updatedAt: post.updatedAt,
   });
 
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd({
+    title: post.title,
+    slug: post.slug,
+    categoryName: post.categoryName,
+    categorySlug: post.categorySlug,
+  });
+
   const siteName = process.env.NEXT_PUBLIC_SITE_NAME || "AI Blog";
 
   // 관련 글: 같은 태그를 공유하는 글을 공통 태그 수 기준으로 정렬
@@ -115,6 +122,10 @@ export default async function PostPage({ params }: Props) {
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
       <ViewTracker slug={post.slug} />
       <article className="mx-auto max-w-3xl px-6 py-12">

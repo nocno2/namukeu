@@ -57,6 +57,45 @@ export function generateWebSiteJsonLd() {
   };
 }
 
+export function generateBreadcrumbJsonLd(post: {
+  title: string;
+  slug: string;
+  categoryName?: string | null;
+  categorySlug?: string | null;
+}) {
+  const items = [
+    { "@type": "ListItem", position: 1, name: "홈", item: SITE_URL },
+  ];
+
+  if (post.categoryName && post.categorySlug) {
+    items.push({
+      "@type": "ListItem",
+      position: 2,
+      name: post.categoryName,
+      item: `${SITE_URL}/category/${post.categorySlug}`,
+    });
+    items.push({
+      "@type": "ListItem",
+      position: 3,
+      name: post.title,
+      item: `${SITE_URL}/posts/${post.slug}`,
+    });
+  } else {
+    items.push({
+      "@type": "ListItem",
+      position: 2,
+      name: post.title,
+      item: `${SITE_URL}/posts/${post.slug}`,
+    });
+  }
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items,
+  };
+}
+
 export function generateJsonLd(post: {
   title: string;
   excerpt?: string | null;
