@@ -4,6 +4,7 @@ import {
   ChevronUp,
   Pin,
   PinOff,
+  RefreshCw,
   Train,
   X,
 } from "lucide-react";
@@ -14,6 +15,7 @@ interface Props {
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onRefresh?: () => void;
 }
 
 const STATUS_MAP: Record<string, { label: string; cls: string }> = {
@@ -197,11 +199,12 @@ function AllReservationsModal({ reservations, activeIds, onClose, onCancel, canc
   );
 }
 
-export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
+export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [data, setData] = useState<TrainSummary | null>(null);
   const [error, setError] = useState(false);
   const [showAllModal, setShowAllModal] = useState(false);
   const [cancelingId, setCancelingId] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -217,6 +220,14 @@ export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }
     const interval = setInterval(fetchData, 30_000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+    onRefresh?.();
+  };
 
   const handleCancel = async (reservationId: number) => {
     setCancelingId(reservationId);
@@ -256,6 +267,13 @@ export function TrainStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }
             )}
           </div>
           <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={handleRefresh}
+              className={`p-1.5 rounded-lg transition-colors text-text-muted/40 hover:text-text-muted hover:bg-surface-hover ${refreshing ? "animate-spin" : ""}`}
+              title="새로고침"
+            >
+              <RefreshCw size={14} />
+            </button>
             <button
               onClick={onTogglePin}
               className={`p-1.5 rounded-lg transition-colors ${

@@ -7,6 +7,7 @@ import {
   Pin,
   PinOff,
   Play,
+  RefreshCw,
   Workflow,
 } from "lucide-react";
 import { api, type N8nStatus as N8nStatusData } from "../lib/api";
@@ -16,6 +17,7 @@ interface Props {
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onRefresh?: () => void;
 }
 
 function timeAgo(dateStr: string | null): string {
@@ -38,9 +40,10 @@ function CompactStat({ label, value }: { label: string; value: string | number }
   );
 }
 
-export function N8nStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
+export function N8nStatus({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [data, setData] = useState<N8nStatusData | null>(null);
   const [error, setError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -57,6 +60,14 @@ export function N8nStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }: 
     const interval = setInterval(fetchData, 30_000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+    onRefresh?.();
+  };
 
   if (error && !data) return null;
   if (!data) return null;
@@ -78,6 +89,13 @@ export function N8nStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }: 
           <h3 className="font-semibold text-sm text-text">n8n</h3>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={handleRefresh}
+            className={`p-1.5 rounded-lg transition-colors text-text-muted/40 hover:text-text-muted hover:bg-surface-hover ${refreshing ? "animate-spin" : ""}`}
+            title="새로고침"
+          >
+            <RefreshCw size={14} />
+          </button>
           <button
             onClick={onTogglePin}
             className={`p-1.5 rounded-lg transition-colors ${
@@ -145,7 +163,7 @@ export function N8nStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }: 
 
           {/* n8n link */}
           <a
-            href="http://127.0.0.1:5678"
+            href="https://n8n.namukeu.com"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center justify-center gap-1.5 text-xs text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl py-2.5 transition-colors font-medium"

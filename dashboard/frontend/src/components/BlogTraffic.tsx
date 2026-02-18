@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, Globe, Pin, PinOff, TrendingUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Globe, Pin, PinOff, RefreshCw, TrendingUp } from "lucide-react";
 import { api, type BlogTraffic as BlogTrafficData } from "../lib/api";
 
 interface Props {
@@ -7,12 +7,14 @@ interface Props {
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onRefresh?: () => void;
 }
 
-export function BlogTraffic({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
+export function BlogTraffic({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [data, setData] = useState<BlogTrafficData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     setError(null);
@@ -31,6 +33,14 @@ export function BlogTraffic({ collapsed, pinned, onToggleCollapse, onTogglePin }
     const interval = setInterval(fetchData, 60_000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+    onRefresh?.();
+  };
 
   if (loading) {
     return (
@@ -78,6 +88,13 @@ export function BlogTraffic({ collapsed, pinned, onToggleCollapse, onTogglePin }
           <h3 className="font-semibold text-sm text-text">Blog</h3>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={handleRefresh}
+            className={`p-1.5 rounded-lg transition-colors text-text-muted/40 hover:text-text-muted hover:bg-surface-hover ${refreshing ? "animate-spin" : ""}`}
+            title="새로고침"
+          >
+            <RefreshCw size={14} />
+          </button>
           <button
             onClick={onTogglePin}
             className={`p-1.5 rounded-lg transition-colors ${

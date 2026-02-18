@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, HardDrive, MemoryStick, Pin, PinOff, Server } from "lucide-react";
+import { ChevronDown, ChevronUp, HardDrive, MemoryStick, Pin, PinOff, RefreshCw, Server } from "lucide-react";
 import { api, type SystemResources as SystemResourcesData } from "../lib/api";
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onRefresh?: () => void;
 }
 
 function ResourceBar({ label, percent, detail, icon }: { label: string; percent: number; detail: string; icon: React.ReactNode }) {
@@ -37,10 +38,11 @@ function CompactStat({ label, percent }: { label: string; percent: number }) {
   );
 }
 
-export function SystemResources({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
+export function SystemResources({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [data, setData] = useState<SystemResourcesData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     setError(null);
@@ -59,6 +61,14 @@ export function SystemResources({ collapsed, pinned, onToggleCollapse, onToggleP
     const interval = setInterval(fetchData, 10_000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    await fetchData();
+    setRefreshing(false);
+    onRefresh?.();
+  };
 
   if (loading) {
     return (
@@ -104,6 +114,13 @@ export function SystemResources({ collapsed, pinned, onToggleCollapse, onToggleP
           <h3 className="font-semibold text-sm text-text">System</h3>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={handleRefresh}
+            className={`p-1.5 rounded-lg transition-colors text-text-muted/40 hover:text-text-muted hover:bg-surface-hover ${refreshing ? "animate-spin" : ""}`}
+            title="새로고침"
+          >
+            <RefreshCw size={14} />
+          </button>
           <button
             onClick={onTogglePin}
             className={`p-1.5 rounded-lg transition-colors ${

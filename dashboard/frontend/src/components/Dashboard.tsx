@@ -154,6 +154,7 @@ export function Dashboard({ username, onLogout }: Props) {
     pinned: isPinned(id),
     onToggleCollapse: () => toggleCollapse(id),
     onTogglePin: () => togglePin(id),
+    onRefresh: fetchServices,
   });
 
   const tabs = [

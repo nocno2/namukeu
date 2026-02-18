@@ -16,6 +16,7 @@ interface Props {
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onRefresh?: () => void;
 }
 
 function timeUntil(dateStr: string): string {
@@ -82,13 +83,14 @@ function CompactUsage({ label, utilization }: { label: string; utilization: numb
   );
 }
 
-export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
+export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [usage, setUsage] = useState<ClaudeUsageData | null>(null);
   const [minimaxUsage, setMinimaxUsage] = useState<MiniMaxUsage | null>(null);
   const [error, setError] = useState(false);
   const [minimaxError, setMinimaxError] = useState(false);
   const [currentModel, setCurrentModel] = useState<"claude" | "minimax">("claude");
   const [switching, setSwitching] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchUsage = useCallback(async () => {
     try {
@@ -119,6 +121,13 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
     }
   }, []);
 
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([fetchUsage(), fetchMinimaxUsage(), fetchModel()]);
+    setRefreshing(false);
+    onRefresh?.();
+  }, [fetchUsage, fetchMinimaxUsage, fetchModel, onRefresh]);
+
   useEffect(() => {
     fetchUsage();
     fetchModel();
@@ -146,8 +155,66 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
     }
   };
 
-  if (error && !minimaxUsage) return null;
-  if (!usage && !minimaxUsage) return null;
+  const showError = error && !usage;
+  const showLoading = !usage && !minimaxUsage && !showError;
+
+  if (showError) {
+    return (
+      <div
+        className={`bg-surface border border-border rounded-2xl transition-all card-glow card-transition ${
+          pinned ? "border-primary/50" : "border-border/60"
+        } ${collapsed ? "p-3" : "p-5"}`}
+        style={{ animation: 'slideUp 0.3s ease-out' }}
+      >
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Coins size={16} className="text-danger" />
+            <h3 className="font-semibold text-sm text-text">모델 사용량</h3>
+          </div>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={handleRefresh}
+              className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+              title="새로고침"
+            >
+              <RefreshCw size={14} />
+            </button>
+            <button
+              onClick={onTogglePin}
+              className={`p-1.5 rounded-lg transition-colors ${
+                pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
+              }`}
+              title={pinned ? "고정 해제" : "상단 고정"}
+            >
+              {pinned ? <Pin size={14} /> : <PinOff size={14} />}
+            </button>
+            <button
+              onClick={onToggleCollapse}
+              className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
+              title={collapsed ? "펼치기" : "접기"}
+            >
+              {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </button>
+          </div>
+        </div>
+        {collapsed ? (
+          <div className="mt-2 text-xs text-danger">데이터 로드 실패</div>
+        ) : (
+          <div className="mt-4">
+            <div className="text-xs text-danger mb-2">Claude/MiniMax 사용량 조회 실패</div>
+            <button
+              onClick={handleRefresh}
+              className="text-xs text-primary hover:underline"
+            >
+              재시도
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (showLoading) return null;
 
   const isMinimax = currentModel === "minimax";
 
@@ -176,6 +243,14 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
           <h3 className="font-semibold text-sm text-text">모델 사용량</h3>
         </div>
         <div className="flex items-center gap-0.5 shrink-0">
+          {/* Refresh button */}
+          <button
+            onClick={handleRefresh}
+            className={`p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors ${refreshing ? "animate-spin" : ""}`}
+            title="새로고침"
+          >
+            <RefreshCw size={14} />
+          </button>
           {/* Model switch button */}
           <button
             onClick={handleModelSwitch}
