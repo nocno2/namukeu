@@ -295,9 +295,9 @@ def set_claude_model(body: ModelSwitchBody, _=Depends(verify_session)):
     env = settings.get("env", {})
 
     if body.model == "minimax":
+        # ANTHROPIC_AUTH_TOKEN은 설정하지 않음 — OAuth 인증과 충돌 방지
         env["ANTHROPIC_BASE_URL"] = "https://api.minimax.io/anthropic"
         env["ANTHROPIC_API_KEY"] = MINIMAX_API_KEY
-        env["ANTHROPIC_AUTH_TOKEN"] = MINIMAX_API_KEY
         env["API_TIMEOUT_MS"] = "3000000"
         env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = 1
         env["ANTHROPIC_MODEL"] = "MiniMax-M2.5"
