@@ -126,16 +126,12 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
     return () => clearInterval(interval);
   }, [fetchUsage, fetchModel]);
 
-  // Fetch MiniMax usage when model is minimax
+  // Always fetch MiniMax usage regardless of current model
   useEffect(() => {
-    if (currentModel === "minimax") {
-      fetchMinimaxUsage();
-      const interval = setInterval(fetchMinimaxUsage, 60_000);
-      return () => clearInterval(interval);
-    } else {
-      setMinimaxUsage(null);
-    }
-  }, [currentModel, fetchMinimaxUsage]);
+    fetchMinimaxUsage();
+    const interval = setInterval(fetchMinimaxUsage, 60_000);
+    return () => clearInterval(interval);
+  }, [fetchMinimaxUsage]);
 
   const handleModelSwitch = async () => {
     const next = currentModel === "claude" ? "minimax" : "claude";
@@ -155,10 +151,11 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
 
   const isMinimax = currentModel === "minimax";
 
-  // Calculate MiniMax utilization
-  const minimaxUtil = minimaxUsage?.model_remains?.[0] ? Math.round(
-    (minimaxUsage.model_remains[0].current_interval_usage_count /
-      minimaxUsage.model_remains[0].current_interval_total_count) * 100
+  // Calculate MiniMax utilization (usage = total - remains)
+  const minimaxData = minimaxUsage?.model_remains?.[0];
+  const minimaxUtil = minimaxData ? Math.round(
+    ((minimaxData.current_interval_total_count - minimaxData.current_interval_usage_count) /
+      minimaxData.current_interval_total_count) * 100
   ) : 0;
 
   const minimaxResetsAt = minimaxUsage?.model_remains?.[0]
@@ -220,45 +217,37 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
 
       {collapsed ? (
         <div className="flex items-center gap-3 mt-2">
-          {isMinimax && minimaxUtil > 0 ? (
-            <CompactUsage label="M2.5" utilization={minimaxUtil} />
-          ) : (
-            <>
-              {usage.five_hour && <CompactUsage label="5h" utilization={usage.five_hour.utilization} />}
-              {usage.seven_day && <CompactUsage label="7d" utilization={usage.seven_day.utilization} />}
-            </>
-          )}
+          {usage?.five_hour && <CompactUsage label="5h" utilization={usage.five_hour.utilization} />}
+          {usage?.seven_day && <CompactUsage label="7d" utilization={usage.seven_day.utilization} />}
+          {minimaxData && <CompactUsage label="M2.5" utilization={minimaxUtil} />}
         </div>
       ) : (
         <div className="space-y-4 mt-4">
-          {isMinimax && minimaxUtil > 0 ? (
+          {usage?.five_hour && (
+            <UsageBar
+              label="5시간"
+              utilization={usage.five_hour.utilization}
+              resetsAt={usage.five_hour.resets_at}
+              icon={<Coins size={12} />}
+            />
+          )}
+          {usage?.seven_day && (
+            <UsageBar
+              label="7일"
+              utilization={usage.seven_day.utilization}
+              resetsAt={usage.seven_day.resets_at}
+              icon={<Coins size={12} />}
+            />
+          )}
+          {minimaxData && (
             <UsageBar
               label="MiniMax M2.5"
               utilization={minimaxUtil}
               resetsAt={minimaxResetsAt}
               icon={<Sparkles size={12} className="text-violet-400" />}
             />
-          ) : (
-            <>
-              {usage.five_hour && (
-                <UsageBar
-                  label="5시간"
-                  utilization={usage.five_hour.utilization}
-                  resetsAt={usage.five_hour.resets_at}
-                  icon={<Coins size={12} />}
-                />
-              )}
-              {usage.seven_day && (
-                <UsageBar
-                  label="7일"
-                  utilization={usage.seven_day.utilization}
-                  resetsAt={usage.seven_day.resets_at}
-                  icon={<Coins size={12} />}
-                />
-              )}
-            </>
           )}
-          {isMinimax && minimaxError && (
+          {minimaxError && (
             <div className="text-[10px] text-danger/70 pt-2 border-t border-border/60 flex items-center gap-1">
               MiniMax 사용량 조회 실패
             </div>
