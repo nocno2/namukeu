@@ -633,19 +633,26 @@ async function gateLogin(): Promise<string> {
   return gateToken;
 }
 
-async function gateApi(path: string): Promise<any> {
+async function gateApi(path: string, retryCount: number = 0): Promise<any> {
   if (!gateToken) await gateLogin();
 
   let resp = await fetch(`${GATE_URL}${path}`, {
     headers: { Authorization: `Bearer ${gateToken}` },
   });
 
-  // Token expired — re-login once
-  if (resp.status === 401) {
+  // Token expired — re-login and retry once
+  if (resp.status === 401 && retryCount === 0) {
     await gateLogin();
     resp = await fetch(`${GATE_URL}${path}`, {
       headers: { Authorization: `Bearer ${gateToken}` },
     });
+  }
+
+  // Service unavailable — exponential backoff retry (max 2 retries)
+  if (resp.status >= 500 && retryCount < 2) {
+    const delay = Math.pow(2, retryCount) * 1000;
+    await new Promise((r) => setTimeout(r, delay));
+    return gateApi(path, retryCount + 1);
   }
 
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
