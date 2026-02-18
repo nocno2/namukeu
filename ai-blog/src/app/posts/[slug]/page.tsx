@@ -152,7 +152,7 @@ export default async function PostPage({ params }: Props) {
         <AdBanner slot="article-top" format="auto" className="my-6" />
 
         <section className="article-body">
-          <PostContent html={html} />
+          <PostContent html={html} showInArticleAd={true} />
         </section>
 
         <AdBanner slot="article-bottom" format="rectangle" className="my-8" />
