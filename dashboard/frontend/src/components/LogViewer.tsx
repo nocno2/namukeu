@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../lib/api";
 
 interface Props {
@@ -24,8 +24,9 @@ export function LogViewer({ serviceName, onClose }: Props) {
   const [totalSize, setTotalSize] = useState(0);
   const [loading, setLoading] = useState(true);
   const [lineCount, setLineCount] = useState(50);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
+  const fetchLogs = useCallback(() => {
     setLoading(true);
     api.serviceLogs(serviceName, lineCount).then((data) => {
       setLines(data.lines);
@@ -36,6 +37,10 @@ export function LogViewer({ serviceName, onClose }: Props) {
       setLoading(false);
     });
   }, [serviceName, lineCount]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs, refreshKey]);
 
   useEffect(() => {
     const el = document.getElementById("log-bottom");
@@ -65,7 +70,7 @@ export function LogViewer({ serviceName, onClose }: Props) {
               <option value={200}>200줄</option>
             </select>
             <button
-              onClick={() => setLineCount((n) => n)}
+              onClick={() => setRefreshKey((k) => k + 1)}
               className="text-xs text-text-muted hover:text-text border border-border rounded px-2 py-1"
             >
               새로고침

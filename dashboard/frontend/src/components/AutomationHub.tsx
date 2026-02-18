@@ -83,7 +83,7 @@ function TaskDetail({
   onBack: () => void;
   onApprove: (id: string) => void;
   onCancel: (id: string) => void;
-  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => Promise<void>;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string; status?: string }) => Promise<void>;
   actionLoading: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -313,16 +313,22 @@ function AgentTasksModal({
   onApprove,
   onCancel,
   onUpdate,
+  onDelete,
+  onPause,
+  onResume,
   actionLoading,
 }: {
   tasks: TaskItem[];
   onClose: () => void;
   onApprove: (id: string) => void;
   onCancel: (id: string) => void;
-  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => Promise<void>;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string; status?: string }) => Promise<void>;
+  onDelete: (id: string) => void;
+  onPause: (id: string) => void;
+  onResume: (id: string) => void;
   actionLoading: boolean;
 }) {
-  const [filter, setFilter] = useState<"all" | "completed" | "failed" | "running" | "pending">("all");
+  const [filter, setFilter] = useState<"all" | "completed" | "failed" | "running" | "pending" | "paused">("all");
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
 
   const filteredTasks = tasks.filter((t) => {
@@ -422,7 +428,7 @@ function AgentTasksModal({
 
         {/* 필터 */}
         <div className="px-5 py-2 border-b border-border flex gap-2">
-          {(["all", "pending", "running", "completed", "failed"] as const).map((f) => (
+          {(["all", "pending", "running", "completed", "failed", "paused"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -432,7 +438,7 @@ function AgentTasksModal({
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
               }`}
             >
-              {f === "all" ? "전체" : f === "pending" ? "대기" : f === "running" ? "실행중" : f === "completed" ? "완료" : "실패"}
+              {f === "all" ? "전체" : f === "pending" ? "대기" : f === "running" ? "실행중" : f === "completed" ? "완료" : f === "failed" ? "실패" : "정지"}
             </button>
           ))}
         </div>
@@ -465,6 +471,36 @@ function AgentTasksModal({
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      {task.status === "pending" && task.scheduleCron && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onPause(task.id); }}
+                          disabled={actionLoading}
+                          className="text-[10px] text-text-muted hover:text-warning cursor-pointer disabled:opacity-50"
+                          title="일시중단"
+                        >
+                          ⏸
+                        </button>
+                      )}
+                      {task.status === "paused" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onResume(task.id); }}
+                          disabled={actionLoading}
+                          className="text-[10px] text-text-muted hover:text-success cursor-pointer disabled:opacity-50"
+                          title="재개"
+                        >
+                          ▶
+                        </button>
+                      )}
+                      {task.status !== "running" && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDelete(task.id); }}
+                          disabled={actionLoading}
+                          className="text-[10px] text-text-muted hover:text-danger cursor-pointer disabled:opacity-50"
+                          title="삭제"
+                        >
+                          🗑
+                        </button>
+                      )}
                       {task.requiresApproval && task.status === "pending" && (
                         <span className="text-[10px] bg-warning/15 text-warning px-1.5 py-0.5 rounded border border-warning/20">
                           승인
@@ -587,10 +623,41 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     }
   };
 
-  const handleUpdateTask = async (taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => {
+  const handleUpdateTask = async (taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string; status?: string }) => {
     setActionLoading(true);
     try {
       await api.agentUpdateTask(taskId, updates);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("이 작업을 삭제하시겠습니까?")) return;
+    setActionLoading(true);
+    try {
+      await api.agentDeleteTask(taskId);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handlePauseTask = async (taskId: string) => {
+    setActionLoading(true);
+    try {
+      await api.agentUpdateTask(taskId, { status: "paused" });
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleResumeTask = async (taskId: string) => {
+    setActionLoading(true);
+    try {
+      await api.agentUpdateTask(taskId, { status: "pending" });
       fetchAll();
     } finally {
       setActionLoading(false);
@@ -923,6 +990,9 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
           onApprove={handleApproveTask}
           onCancel={handleCancelTask}
           onUpdate={handleUpdateTask}
+          onDelete={handleDeleteTask}
+          onPause={handlePauseTask}
+          onResume={handleResumeTask}
           actionLoading={actionLoading}
         />
       )}
