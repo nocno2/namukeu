@@ -296,6 +296,7 @@ def set_claude_model(body: ModelSwitchBody, _=Depends(verify_session)):
 
     if body.model == "minimax":
         env["ANTHROPIC_BASE_URL"] = "https://api.minimax.io/anthropic"
+        env["ANTHROPIC_API_KEY"] = MINIMAX_API_KEY
         env["ANTHROPIC_AUTH_TOKEN"] = MINIMAX_API_KEY
         env["API_TIMEOUT_MS"] = "3000000"
         env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = 1
@@ -306,7 +307,7 @@ def set_claude_model(body: ModelSwitchBody, _=Depends(verify_session)):
         env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = "MiniMax-M2.5"
     elif body.model == "claude":
         for key in [
-            "ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN", "API_TIMEOUT_MS",
+            "ANTHROPIC_BASE_URL", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "API_TIMEOUT_MS",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "ANTHROPIC_MODEL",
             "ANTHROPIC_SMALL_FAST_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
             "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL",
