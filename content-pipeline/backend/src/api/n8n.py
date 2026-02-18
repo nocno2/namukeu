@@ -188,6 +188,8 @@ async def discover_keywords(config: Config = Depends(get_config)):
             collect_google_related_queries,
             collect_reddit_trends,
             collect_naver_news_trends,
+            collect_naver_realtime_keywords,
+            collect_daum_realtime_keywords,
         )
 
         # Check if ai-blog DB exists to filter out already published keywords
@@ -207,6 +209,17 @@ async def discover_keywords(config: Config = Depends(get_config)):
         # Collect keywords from multiple sources
         all_keywords = await collect_google_trends()
         logger.info(f"[discover-keywords] Collected {len(all_keywords)} Google Trends keywords")
+
+        # Google Trends가 비어있으면 대안 소스 사용
+        if not all_keywords:
+            # Naver/Daum 실시간 검색어
+            naver_realtime = await collect_naver_realtime_keywords()
+            all_keywords.extend(naver_realtime)
+            logger.info(f"[discover-keywords] Collected {len(naver_realtime)} Naver realtime keywords")
+
+            daum_realtime = await collect_daum_realtime_keywords()
+            all_keywords.extend(daum_realtime)
+            logger.info(f"[discover-keywords] Collected {len(daum_realtime)} Daum realtime keywords")
 
         # Collect related queries from top keywords
         top_keywords = [kw["keyword"] for kw in all_keywords[:10]]

@@ -199,38 +199,129 @@ async def collect_youtube_trends(region: str = "KR", category: int | None = None
     return []
 
 
-async def collect_naver_news_trends() -> list[dict]:
-    """Collect trending keywords from Naver News."""
+async def collect_naver_realtime_keywords() -> list[dict]:
+    """Collect real-time trending keywords from Naver."""
     import httpx
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            # Naver 뉴스 RSS 피드에서 가져오기 (간단한 방법)
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            # Naver 실시간 검색어 API
             resp = await client.get(
-                "https://news.naver.com/main/ranking/popularMemo.naver",
-                headers={"User-Agent": "Mozilla/5.0"},
+                "https://www.naver.com/srchrank?frm=tab",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
             )
 
             if resp.status_code == 200:
-                # 간단한 파싱 - 뉴스 헤드라인에서 키워드 추출
                 import re
-
-                headlines = re.findall(r'<strong class="ranking_title">([^<]+)</strong>', resp.text)
+                # XML 파싱
+                keywords = re.findall(r'<keyword>([^<]+)</keyword>', resp.text)
 
                 results = []
-                for headline in headlines[:15]:
-                    # cleaning
-                    clean = headline.strip()
-                    if len(clean) > 5:
+                for kw in keywords[:30]:
+                    if kw and len(kw) > 1:
                         results.append({
-                            "keyword": clean,
-                            "source": "naver_news",
+                            "keyword": kw,
+                            "source": "naver_realtime",
                         })
 
                 return results
 
     except Exception as e:
-        logger.error(f"Naver News error: {e}")
+        logger.warning(f"Naver realtime error: {e}")
+
+    return []
+
+
+async def collect_daum_realtime_keywords() -> list[dict]:
+    """Collect real-time trending keywords from Daum (Kakao)."""
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            resp = await client.get(
+                "https://search.daum.net/search?w=tab",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+
+            if resp.status_code == 200:
+                import re
+                # Daum 실시간 검색어
+                keywords = re.findall(r'"keyword":"([^"]+)"', resp.text)[:30]
+
+                results = []
+                for kw in keywords:
+                    if kw and len(kw) > 1:
+                        results.append({
+                            "keyword": kw,
+                            "source": "daum_realtime",
+                        })
+
+                return results
+
+    except Exception as e:
+        logger.warning(f"Daum realtime error: {e}")
+
+    return []
+
+
+async def collect_trendza_alternative() -> list[dict]:
+    """Collect trending keywords from alternative sources when Google Trends fails."""
+    results = []
+
+    # Naver 실시간 검색어
+    naver = await collect_naver_realtime_keywords()
+    results.extend(naver)
+
+    # Daum 실시간 검색어
+    daum = await collect_daum_realtime_keywords()
+    results.extend(daum)
+
+    return results
+
+
+async def collect_naver_news_trends() -> list[dict]:
+    """Collect trending keywords from Naver News."""
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+            # Naver 뉴스 실시간 급상승 검색어
+            resp = await client.get(
+                "https://search.naver.com/ssearch/clk.naver?where=nexearch&sm=tab_jum&query=%EC%8B%9C%EC%8E%84+%ED%8A%B8%EB%A0%8C%EB%93%9C",
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
+
+            if resp.status_code == 200:
+                # 간단한 파싱
+                import re
+
+                # 뉴스 헤드라인 추출 시도
+                titles = re.findall(r'title":"([^"]+)"', resp.text)[:20]
+
+                results = []
+                for title in titles:
+                    clean = title.strip()
+                    if len(clean) > 5 and len(clean) < 100:
+                        results.append({
+                            "keyword": clean,
+                            "source": "naver_news",
+                        })
+
+                # 대안: Ranking 뉴스
+                if not results:
+                    ranking_titles = re.findall(r'<div class="news_tit">([^<]+)</div>', resp.text)
+                    for title in ranking_titles[:15]:
+                        clean = title.strip()
+                        if len(clean) > 5:
+                            results.append({
+                                "keyword": clean,
+                                "source": "naver_news",
+                            })
+
+                return results
+
+    except Exception as e:
+        logger.warning(f"Naver News error: {e}")
 
     return []
 
