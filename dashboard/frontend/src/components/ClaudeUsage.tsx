@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { api, type ClaudeUsage as ClaudeUsageData } from "../lib/api";
+import { api, type ClaudeUsage as ClaudeUsageData, type MiniMaxUsage } from "../lib/api";
 
 interface Props {
   collapsed: boolean;
@@ -84,7 +84,9 @@ function CompactUsage({ label, utilization }: { label: string; utilization: numb
 
 export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
   const [usage, setUsage] = useState<ClaudeUsageData | null>(null);
+  const [minimaxUsage, setMinimaxUsage] = useState<MiniMaxUsage | null>(null);
   const [error, setError] = useState(false);
+  const [minimaxError, setMinimaxError] = useState(false);
   const [currentModel, setCurrentModel] = useState<"claude" | "minimax">("claude");
   const [switching, setSwitching] = useState(false);
 
@@ -95,6 +97,16 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
       setError(false);
     } catch {
       setError(true);
+    }
+  }, []);
+
+  const fetchMinimaxUsage = useCallback(async () => {
+    try {
+      const data = await api.minimaxUsage();
+      setMinimaxUsage(data);
+      setMinimaxError(false);
+    } catch {
+      setMinimaxError(true);
     }
   }, []);
 
@@ -114,6 +126,17 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
     return () => clearInterval(interval);
   }, [fetchUsage, fetchModel]);
 
+  // Fetch MiniMax usage when model is minimax
+  useEffect(() => {
+    if (currentModel === "minimax") {
+      fetchMinimaxUsage();
+      const interval = setInterval(fetchMinimaxUsage, 60_000);
+      return () => clearInterval(interval);
+    } else {
+      setMinimaxUsage(null);
+    }
+  }, [currentModel, fetchMinimaxUsage]);
+
   const handleModelSwitch = async () => {
     const next = currentModel === "claude" ? "minimax" : "claude";
     setSwitching(true);
@@ -127,10 +150,20 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
     }
   };
 
-  if (error) return null;
-  if (!usage) return null;
+  if (error && !minimaxUsage) return null;
+  if (!usage && !minimaxUsage) return null;
 
   const isMinimax = currentModel === "minimax";
+
+  // Calculate MiniMax utilization
+  const minimaxUtil = minimaxUsage?.model_remains?.[0] ? Math.round(
+    (minimaxUsage.model_remains[0].current_interval_usage_count /
+      minimaxUsage.model_remains[0].current_interval_total_count) * 100
+  ) : 0;
+
+  const minimaxResetsAt = minimaxUsage?.model_remains?.[0]
+    ? new Date(minimaxUsage.model_remains[0].end_time).toISOString()
+    : "";
 
   return (
     <div
@@ -187,34 +220,47 @@ export function ClaudeUsage({ collapsed, pinned, onToggleCollapse, onTogglePin }
 
       {collapsed ? (
         <div className="flex items-center gap-3 mt-2">
-          {usage.five_hour && <CompactUsage label="5h" utilization={usage.five_hour.utilization} />}
-          {usage.seven_day && <CompactUsage label="7d" utilization={usage.seven_day.utilization} />}
-          {isMinimax && (
-            <span className="text-[10px] text-violet-400 font-mono">M2.5</span>
+          {isMinimax && minimaxUtil > 0 ? (
+            <CompactUsage label="M2.5" utilization={minimaxUtil} />
+          ) : (
+            <>
+              {usage.five_hour && <CompactUsage label="5h" utilization={usage.five_hour.utilization} />}
+              {usage.seven_day && <CompactUsage label="7d" utilization={usage.seven_day.utilization} />}
+            </>
           )}
         </div>
       ) : (
         <div className="space-y-4 mt-4">
-          {usage.five_hour && (
+          {isMinimax && minimaxUtil > 0 ? (
             <UsageBar
-              label="5시간"
-              utilization={usage.five_hour.utilization}
-              resetsAt={usage.five_hour.resets_at}
-              icon={<Coins size={12} />}
+              label="MiniMax M2.5"
+              utilization={minimaxUtil}
+              resetsAt={minimaxResetsAt}
+              icon={<Sparkles size={12} className="text-violet-400" />}
             />
+          ) : (
+            <>
+              {usage.five_hour && (
+                <UsageBar
+                  label="5시간"
+                  utilization={usage.five_hour.utilization}
+                  resetsAt={usage.five_hour.resets_at}
+                  icon={<Coins size={12} />}
+                />
+              )}
+              {usage.seven_day && (
+                <UsageBar
+                  label="7일"
+                  utilization={usage.seven_day.utilization}
+                  resetsAt={usage.seven_day.resets_at}
+                  icon={<Coins size={12} />}
+                />
+              )}
+            </>
           )}
-          {usage.seven_day && (
-            <UsageBar
-              label="7일"
-              utilization={usage.seven_day.utilization}
-              resetsAt={usage.seven_day.resets_at}
-              icon={<Coins size={12} />}
-            />
-          )}
-          {isMinimax && (
-            <div className="text-[10px] text-violet-400/70 pt-2 border-t border-border/60 flex items-center gap-1">
-              <Sparkles size={10} />
-              현재 MiniMax M2.5 사용 중 — 새 Claude Code 세션부터 적용됩니다
+          {isMinimax && minimaxError && (
+            <div className="text-[10px] text-danger/70 pt-2 border-t border-border/60 flex items-center gap-1">
+              MiniMax 사용량 조회 실패
             </div>
           )}
         </div>

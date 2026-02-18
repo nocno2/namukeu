@@ -358,6 +358,33 @@ async def claude_usage(_=Depends(verify_session)):
         raise HTTPException(status_code=502, detail="Claude API timed out")
 
 
+@router.get("/minimax/usage")
+async def minimax_usage(_=Depends(verify_session)):
+    api_key = _get_minimax_api_key()
+    if not api_key:
+        raise HTTPException(status_code=500, detail="MiniMax API key not found")
+
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.minimax.io/v1/api/openplatform/coding_plan/remains",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                timeout=10.0,
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502, detail="MiniMax API error")
+
+            data = resp.json()
+            return data
+    except httpx.ConnectError:
+        raise HTTPException(status_code=502, detail="MiniMax API unreachable")
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=502, detail="MiniMax API timed out")
+
+
 # --- System Resources ---
 
 # Prime cpu_percent on import so first call returns real value

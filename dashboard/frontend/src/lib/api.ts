@@ -71,6 +71,10 @@ export const api = {
     return request<ClaudeUsage>("/api/claude/usage");
   },
 
+  minimaxUsage() {
+    return request<MiniMaxUsage>("/api/minimax/usage");
+  },
+
   claudeModel() {
     return request<{ model: string; display: string }>("/api/claude/model");
   },
@@ -233,6 +237,20 @@ export interface ClaudeUsage {
   five_hour: ClaudeUsageItem | null;
   seven_day: ClaudeUsageItem | null;
   [key: string]: unknown;
+}
+
+export interface MiniMaxUsage {
+  model_remains: MiniMaxModelRemain[];
+  base_resp: { status_code: number; status_msg: string };
+}
+
+export interface MiniMaxModelRemain {
+  start_time: number;
+  end_time: number;
+  remains_time: number;
+  current_interval_total_count: number;
+  current_interval_usage_count: number;
+  model_name: string;
 }
 
 export interface CardPreference {
