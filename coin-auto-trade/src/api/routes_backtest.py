@@ -1,3 +1,4 @@
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -197,10 +198,15 @@ def validate_for_trading(
         checklist=checklist,
     )
 
+    # params 파싱
+    params = json.loads(result["params"]) if isinstance(result["params"], str) else result["params"]
+
     return {
         "result_id": result_id,
         "strategy_name": result["strategy_name"],
         "ticker": result["ticker"],
+        "interval": result["interval"],
+        "params": params,
         "backtest_metrics": {
             "total_return_pct": result["total_return_pct"],
             "win_rate": result["win_rate"],
@@ -214,6 +220,194 @@ def validate_for_trading(
             "min_trades": checklist.min_backtest_trades,
         },
         "eligibility": {
+            "can_live_trade": eligibility.eligible,
+            "can_paper_trade": eligibility.can_paper_trade,
+            "reasons": eligibility.reasons,
+        },
+    }
+
+
+@router.post("/results/{result_id}/start-paper")
+async def start_paper_trading(
+    result_id: int,
+    exchange: str = "upbit",
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """백테스트 결과를 기반으로 페이퍼 트레이딩 시작 (dry_run=True).
+
+    - 백테스트 결과 검증 수행
+    - strategy config 생성 후 활성화
+    - dry_run 모드로 trading 시작
+    """
+    from src.services.risk_manager import RiskManager, RiskLimits, TradingChecklist
+    from src.models.strategy import StrategyConfigCreate
+
+    result = db.get_backtest_result(result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="백테스트 결과를 찾을 수 없습니다")
+
+    # params 파싱
+    params = json.loads(result["params"]) if isinstance(result["params"], str) else result["params"]
+
+    # 검증 수행
+    limits = RiskLimits()
+    risk_manager = RiskManager(db, limits)
+    checklist = TradingChecklist(
+        min_backtest_return_pct=0.0,
+        min_backtest_win_rate_pct=50.0,
+        max_backtest_drawdown_pct=10.0,
+        min_backtest_trades=10,
+    )
+    eligibility = risk_manager.validate_trading_eligibility(
+        backtest_return_pct=result["total_return_pct"],
+        backtest_win_rate_pct=result["win_rate"],
+        backtest_drawdown_pct=result["max_drawdown_pct"],
+        backtest_total_trades=result["total_trades"],
+        checklist=checklist,
+    )
+
+    # 페이퍼 트레이딩은 거래 횟수만 충족하면 가능
+    if not eligibility.can_paper_trade:
+        raise HTTPException(
+            status_code=400,
+            detail=f"페이퍼 트레이딩 불가: {eligibility.reasons[0] if eligibility.reasons else '조건 미충족'}",
+        )
+
+    # strategy config 생성
+    strategy = StrategyConfigCreate(
+        name=result["strategy_name"],
+        ticker=result["ticker"],
+        params=params,
+        interval=result["interval"],
+        exchange=exchange,
+    )
+    strategy_id = db.create_strategy(
+        strategy.name,
+        strategy.ticker,
+        strategy.params,
+        strategy.interval,
+        exchange=strategy.exchange,
+    )
+
+    # 활성화
+    db.set_strategy_enabled(strategy_id, True)
+
+    # dry_run 모드로 설정
+    if not runtime.config:
+        raise HTTPException(status_code=503, detail="서버 초기화 중")
+    runtime.config.dry_run = True
+    for exc in runtime.exchanges.values():
+        exc.dry_run = True
+
+    # trading 시작
+    sched = runtime.schedulers.get(exchange)
+    if not sched:
+        raise HTTPException(status_code=503, detail=f"{exchange} 거래소가 초기화되지 않았습니다")
+
+    sched.start_trading(result["ticker"], result["strategy_name"], params, strategy_id)
+
+    return {
+        "message": f"페이퍼 트레이딩 시작: {result['strategy_name']} on {result['ticker']}",
+        "result_id": result_id,
+        "strategy_id": strategy_id,
+        "exchange": exchange,
+        "dry_run": True,
+        "validation": {
+            "can_live_trade": eligibility.eligible,
+            "can_paper_trade": eligibility.can_paper_trade,
+            "reasons": eligibility.reasons,
+        },
+    }
+
+
+@router.post("/results/{result_id}/start-live")
+async def start_live_trading(
+    result_id: int,
+    exchange: str = "upbit",
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """백테스트 결과를 기반으로 라이브 트레이딩 시작 (dry_run=False).
+
+    - 백테스트 결과 검증 수행 (모든 조건 충족 필요)
+    - strategy config 생성 후 활성화
+    - live 모드로 trading 시작
+    """
+    from src.services.risk_manager import RiskManager, RiskLimits, TradingChecklist
+    from src.models.strategy import StrategyConfigCreate
+
+    result = db.get_backtest_result(result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="백테스트 결과를 찾을 수 없습니다")
+
+    # params 파싱
+    params = json.loads(result["params"]) if isinstance(result["params"], str) else result["params"]
+
+    # 검증 수행
+    limits = RiskLimits()
+    risk_manager = RiskManager(db, limits)
+    checklist = TradingChecklist(
+        min_backtest_return_pct=0.0,
+        min_backtest_win_rate_pct=50.0,
+        max_backtest_drawdown_pct=10.0,
+        min_backtest_trades=10,
+    )
+    eligibility = risk_manager.validate_trading_eligibility(
+        backtest_return_pct=result["total_return_pct"],
+        backtest_win_rate_pct=result["win_rate"],
+        backtest_drawdown_pct=result["max_drawdown_pct"],
+        backtest_total_trades=result["total_trades"],
+        checklist=checklist,
+    )
+
+    # 라이브 트레이딩은 모든 조건 충족 필요
+    if not eligibility.eligible:
+        raise HTTPException(
+            status_code=400,
+            detail=f"라이브 트레이딩 불가: {eligibility.reasons[0] if eligibility.reasons else '조건 미충족'}",
+        )
+
+    # strategy config 생성
+    strategy = StrategyConfigCreate(
+        name=result["strategy_name"],
+        ticker=result["ticker"],
+        params=params,
+        interval=result["interval"],
+        exchange=exchange,
+    )
+    strategy_id = db.create_strategy(
+        strategy.name,
+        strategy.ticker,
+        strategy.params,
+        strategy.interval,
+        exchange=strategy.exchange,
+    )
+
+    # 활성화
+    db.set_strategy_enabled(strategy_id, True)
+
+    # live 모드로 설정 (dry_run=False)
+    if not runtime.config:
+        raise HTTPException(status_code=503, detail="서버 초기화 중")
+    runtime.config.dry_run = False
+    for exc in runtime.exchanges.values():
+        exc.dry_run = False
+
+    # trading 시작
+    sched = runtime.schedulers.get(exchange)
+    if not sched:
+        raise HTTPException(status_code=503, detail=f"{exchange} 거래소가 초기화되지 않았습니다")
+
+    sched.start_trading(result["ticker"], result["strategy_name"], params, strategy_id)
+
+    return {
+        "message": f"라이브 트레이딩 시작: {result['strategy_name']} on {result['ticker']}",
+        "result_id": result_id,
+        "strategy_id": strategy_id,
+        "exchange": exchange,
+        "dry_run": False,
+        "validation": {
             "can_live_trade": eligibility.eligible,
             "can_paper_trade": eligibility.can_paper_trade,
             "reasons": eligibility.reasons,
