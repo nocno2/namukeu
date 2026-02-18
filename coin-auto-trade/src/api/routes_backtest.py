@@ -162,3 +162,60 @@ def get_result(
     if not result:
         raise HTTPException(status_code=404, detail="Backtest result not found")
     return result
+
+
+@router.get("/results/{result_id}/validate")
+def validate_for_trading(
+    result_id: int,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """백테스트 결과를 기반으로 라이브/페이퍼 트레이딩 전환 가능 여부 검증."""
+    from src.services.risk_manager import RiskManager, RiskLimits, TradingChecklist
+
+    result = db.get_backtest_result(result_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="백테스트 결과를 찾을 수 없습니다")
+
+    # 기본값으로 RiskManager 생성 (limits는 사용 안 함)
+    limits = RiskLimits()
+    risk_manager = RiskManager(db, limits)
+
+    # 체크리스트 조건으로 검증
+    checklist = TradingChecklist(
+        min_backtest_return_pct=0.0,
+        min_backtest_win_rate_pct=50.0,
+        max_backtest_drawdown_pct=10.0,
+        min_backtest_trades=10,
+    )
+
+    eligibility = risk_manager.validate_trading_eligibility(
+        backtest_return_pct=result["total_return_pct"],
+        backtest_win_rate_pct=result["win_rate"],
+        backtest_drawdown_pct=result["max_drawdown_pct"],
+        backtest_total_trades=result["total_trades"],
+        checklist=checklist,
+    )
+
+    return {
+        "result_id": result_id,
+        "strategy_name": result["strategy_name"],
+        "ticker": result["ticker"],
+        "backtest_metrics": {
+            "total_return_pct": result["total_return_pct"],
+            "win_rate": result["win_rate"],
+            "max_drawdown_pct": result["max_drawdown_pct"],
+            "total_trades": result["total_trades"],
+        },
+        "checklist": {
+            "min_return_pct": checklist.min_backtest_return_pct,
+            "min_win_rate_pct": checklist.min_backtest_win_rate_pct,
+            "max_drawdown_pct": checklist.max_backtest_drawdown_pct,
+            "min_trades": checklist.min_backtest_trades,
+        },
+        "eligibility": {
+            "can_live_trade": eligibility.eligible,
+            "can_paper_trade": eligibility.can_paper_trade,
+            "reasons": eligibility.reasons,
+        },
+    }

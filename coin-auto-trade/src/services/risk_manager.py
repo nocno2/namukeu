@@ -1,10 +1,27 @@
 import logging
 from dataclasses import dataclass
 from datetime import datetime
+from typing import NamedTuple
 
 from src.core.database import Database
 
 logger = logging.getLogger(__name__)
+
+
+class EligibilityResult(NamedTuple):
+    """라이브 트레이딩 전환 가능 여부 결과"""
+    eligible: bool
+    can_paper_trade: bool  # 페이퍼트레이딩 가능 여부
+    reasons: list[str]  # 불가능한 이유 목록
+
+
+@dataclass
+class TradingChecklist:
+    """전환 체크리스트 조건"""
+    min_backtest_return_pct: float = 0.0  # 백테스트 최소 수익률
+    min_backtest_win_rate_pct: float = 50.0  # 백테스트 최소 승률
+    max_backtest_drawdown_pct: float = 10.0  # 백테스트 최대 낙폭
+    min_backtest_trades: int = 10  # 최소 백테스트 거래 횟수
 
 
 @dataclass
@@ -146,3 +163,79 @@ class RiskManager:
         effective_profit = profit_pct * leverage
         triggered = effective_profit >= self.limits.partial_profit_take_pct
         return triggered, profit_pct
+
+    def validate_trading_eligibility(
+        self,
+        backtest_return_pct: float,
+        backtest_win_rate_pct: float,
+        backtest_drawdown_pct: float,
+        backtest_total_trades: int,
+        checklist: TradingChecklist | None = None,
+    ) -> EligibilityResult:
+        """백테스트 결과를 기반으로 라이브 트레이딩 전환 가능 여부 검증.
+
+        Args:
+            backtest_return_pct: 백테스트 수익률 (%)
+            backtest_win_rate_pct: 백테스트 승률 (%)
+            backtest_drawdown_pct: 백테스트 최대 낙폭 (%)
+            backtest_total_trades: 백테스트 총 거래 횟수
+            checklist: 검증 조건 (기본값: TradingChecklist)
+
+        Returns:
+            EligibilityResult: 전환 가능 여부 및 이유
+        """
+        if checklist is None:
+            checklist = TradingChecklist()
+
+        reasons = []
+
+        # 1. 최소 거래 횟수 체크
+        if backtest_total_trades < checklist.min_backtest_trades:
+            reasons.append(
+                f"백테스트 거래 횟수 부족: {backtest_total_trades}회 < {checklist.min_backtest_trades}회"
+            )
+
+        # 2. 수익률 체크 (라이브만)
+        if backtest_return_pct <= checklist.min_backtest_return_pct:
+            reasons.append(
+                f"백테스트 수익률 미달: {backtest_return_pct:.2f}% <= {checklist.min_backtest_return_pct}%"
+            )
+
+        # 3. 승률 체크 (라이브만)
+        if backtest_win_rate_pct < checklist.min_backtest_win_rate_pct:
+            reasons.append(
+                f"백테스트 승률 미달: {backtest_win_rate_pct:.2f}% < {checklist.min_backtest_win_rate_pct}%"
+            )
+
+        # 4. 최대 낙폭 체크 (라이브만)
+        if backtest_drawdown_pct > checklist.max_backtest_drawdown_pct:
+            reasons.append(
+                f"백테스트 낙폭 초과: {backtest_drawdown_pct:.2f}% > {checklist.max_backtest_drawdown_pct}%"
+            )
+
+        # 라이브 전환 가능: 거래 횟수 충족 + 모든 조건 충족
+        live_eligible = (
+            backtest_total_trades >= checklist.min_backtest_trades
+            and backtest_return_pct > checklist.min_backtest_return_pct
+            and backtest_win_rate_pct >= checklist.min_backtest_win_rate_pct
+            and backtest_drawdown_pct <= checklist.max_backtest_drawdown_pct
+        )
+
+        # 페이퍼트레이딩 가능: 거래 횟수 충족만 만족
+        paper_eligible = backtest_total_trades >= checklist.min_backtest_trades
+
+        if not paper_eligible:
+            reasons.append(f"페이퍼트레이딩 불가: 거래 횟수 {backtest_total_trades}회 < {checklist.min_backtest_trades}회")
+
+        logger.info(
+            f"트레이딩 전환 검증: "
+            f"수익률={backtest_return_pct:.2f}%, 승률={backtest_win_rate_pct:.2f}%, "
+            f"낙폭={backtest_drawdown_pct:.2f}%, 거래={backtest_total_trades}회 → "
+            f"라이브={live_eligible}, 페이퍼={paper_eligible}"
+        )
+
+        return EligibilityResult(
+            eligible=live_eligible,
+            can_paper_trade=paper_eligible,
+            reasons=reasons if reasons else ["모든 조건 충족"],
+        )
