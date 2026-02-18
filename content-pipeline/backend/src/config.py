@@ -17,6 +17,7 @@ class Config:
     # ai-blog
     blog_api_url: str = "http://localhost:3100"
     blog_db_path: str = ""
+    blog_uploads_path: str = ""
     blog_jwt_secret: str = ""
 
     # Agent API (dashboard integration)
@@ -56,6 +57,7 @@ class Config:
             session_expire_hours=int(os.getenv("SESSION_EXPIRE_HOURS", "24")),
             blog_api_url=os.getenv("BLOG_API_URL", "http://localhost:3100"),
             blog_db_path=os.getenv("BLOG_DB_PATH", ""),
+            blog_uploads_path=os.getenv("BLOG_UPLOADS_PATH", ""),
             blog_jwt_secret=os.getenv("BLOG_JWT_SECRET", ""),
             agent_api_token=os.getenv("AGENT_API_TOKEN", "agent-api-token"),
             naver_client_id=os.getenv("NAVER_CLIENT_ID", ""),

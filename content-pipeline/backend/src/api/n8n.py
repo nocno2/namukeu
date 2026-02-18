@@ -6,7 +6,9 @@ n8n 연동용 API 엔드포인트.
 import asyncio
 import json
 import logging
+import os
 import re
+import time
 
 import httpx
 
@@ -715,6 +717,58 @@ async def _validate_and_clean_links(content: str, blog_db_path: str | None) -> t
     return content, removed
 
 
+async def _download_and_replace_images(content: str, uploads_dir: str) -> str:
+    """
+    마크다운 본문에서 DALL-E 임시 URL 이미지를 찾아 로컬에 다운로드하고
+    /uploads/... 경로로 교체한다.
+    """
+    dalle_pattern = re.compile(
+        r'(!\[[^\]]*\])\((https://oaidalleapiprodscus[^)]+)\)'
+    )
+
+    os.makedirs(uploads_dir, exist_ok=True)
+
+    async def download_image(url: str) -> str | None:
+        try:
+            async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    return None
+                content_type = resp.headers.get("content-type", "")
+                ext = "webp" if "webp" in content_type else "png" if "png" in content_type else "jpg"
+                filename = f"{int(time.time() * 1000)}-{os.urandom(3).hex()}.{ext}"
+                filepath = os.path.join(uploads_dir, filename)
+                with open(filepath, "wb") as f:
+                    f.write(resp.content)
+                return f"/uploads/{filename}"
+        except Exception as e:
+            logger.warning(f"[image-download] Failed to download {url[:80]}...: {e}")
+            return None
+
+    matches = list(dalle_pattern.finditer(content))
+    if not matches:
+        return content
+
+    tasks = [download_image(m.group(2)) for m in matches]
+    local_paths = await asyncio.gather(*tasks)
+
+    # 역순으로 교체 (인덱스 꼬임 방지)
+    for match, local_path in zip(reversed(matches), reversed(local_paths)):
+        if local_path:
+            replacement = f"{match.group(1)}({local_path})"
+        else:
+            # 다운로드 실패 시 이미지 마크다운 자체를 제거
+            replacement = ""
+        content = content[:match.start()] + replacement + content[match.end():]
+
+    downloaded = sum(1 for p in local_paths if p)
+    failed = len(local_paths) - downloaded
+    if downloaded or failed:
+        logger.info(f"[image-download] {downloaded} downloaded, {failed} failed/removed")
+
+    return content
+
+
 async def _send_telegram(bot_token: str, chat_id: str, text: str) -> None:
     """텔레그램 메시지 전송 (실패해도 무시)."""
     try:
@@ -734,9 +788,16 @@ async def save_draft(body: SaveDraftRequest, config: Config = Depends(get_config
     - reviewed 상태로 저장 → 관리자 페이지에서 승인/반려 가능
     """
     try:
+        content = body.content
+
+        # DALL-E 임시 URL 이미지를 로컬에 다운로드하여 교체
+        uploads_path = getattr(config, "blog_uploads_path", "")
+        if uploads_path and "oaidalleapiprodscus" in content:
+            content = await _download_and_replace_images(content, uploads_path)
+
         # 링크 검증 및 정제
         blog_db_path = config.blog_db_path if hasattr(config, "blog_db_path") else None
-        cleaned_content, removed_links = await _validate_and_clean_links(body.content, blog_db_path)
+        cleaned_content, removed_links = await _validate_and_clean_links(content, blog_db_path)
         if removed_links:
             logger.warning(f"[n8n/save-draft] Removed {len(removed_links)} invalid links: {removed_links}")
 
