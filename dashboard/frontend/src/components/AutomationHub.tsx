@@ -24,33 +24,22 @@ interface Props {
   onTogglePin: () => void;
 }
 
-interface TodayTask {
+interface TaskItem {
   id: string;
   title: string;
   project: string;
   type: "one-time" | "recurring" | "event";
   status: "pending" | "running" | "completed" | "failed" | "paused";
-  executedAt: string | null;
+  prompt: string;
+  scheduleCron: string | null;
+  scheduleNext: string | null;
+  eventTrigger: string | null;
+  lastRunAt: string | null;
+  lastResult: string | null;
+  runCount: number;
+  maxRuns: number | null;
   requiresApproval: boolean;
-  duration: number | null;
-  cost: number | null;
-}
-
-function formatTime(isoString: string | null): string {
-  if (!isoString) return "-";
-  return new Date(isoString).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
-}
-
-function formatDuration(ms: number | null): string {
-  if (ms === null) return "-";
-  const sec = Math.floor(ms / 1000);
-  if (sec < 60) return `${sec}초`;
-  const min = Math.floor(sec / 60);
-  const remainSec = sec % 60;
-  if (min < 60) return `${min}분 ${remainSec}초`;
-  const hr = Math.floor(min / 60);
-  const remainMin = min % 60;
-  return `${hr}시간 ${remainMin}분`;
+  createdAt: string;
 }
 
 const TYPE_ICONS: Record<string, React.ReactNode> = {
@@ -75,27 +64,273 @@ const STATUS_LABELS: Record<string, string> = {
   paused: "일시정지",
 };
 
-// 상세 모달 컴포넌트
-function TodayTasksModal({
+const TYPE_LABELS: Record<string, string> = {
+  recurring: "반복",
+  "one-time": "1회",
+  event: "이벤트",
+};
+
+// 상세 페이지 컴포넌트
+function TaskDetail({
+  task,
+  onBack,
+  onApprove,
+  onCancel,
+  onUpdate,
+  actionLoading,
+}: {
+  task: TaskItem;
+  onBack: () => void;
+  onApprove: (id: string) => void;
+  onCancel: (id: string) => void;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => Promise<void>;
+  actionLoading: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const [editPrompt, setEditPrompt] = useState(task.prompt);
+  const [editProject, setEditProject] = useState(task.project);
+  const [editScheduleCron, setEditScheduleCron] = useState(task.scheduleCron || "");
+  const [saving, setSaving] = useState(false);
+
+  const isSentinel = task.prompt.startsWith("__") && task.prompt.endsWith("__");
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string } = {};
+      if (editTitle !== task.title) updates.title = editTitle;
+      if (editPrompt !== task.prompt) updates.prompt = editPrompt;
+      if (editProject !== task.project) updates.project = editProject;
+      if (editScheduleCron !== (task.scheduleCron || "")) updates.schedule_cron = editScheduleCron;
+      if (Object.keys(updates).length > 0) {
+        await onUpdate(task.id, updates);
+      }
+      setEditing(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+        <div className="flex items-center gap-2">
+          <button onClick={onBack} className="text-text-muted hover:text-text text-sm cursor-pointer">
+            ← 목록
+          </button>
+          <span className="text-text-muted/30">|</span>
+          <h2 className="font-semibold text-sm truncate">{task.title}</h2>
+        </div>
+        <div className="flex items-center gap-2">
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="text-[11px] text-primary hover:text-primary/80 cursor-pointer"
+            >
+              편집
+            </button>
+          )}
+          <button onClick={onBack} className="text-text-muted hover:text-text text-lg leading-none cursor-pointer">
+            ×
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-y-auto px-5 py-4 flex-1 space-y-4">
+        {/* 배지 */}
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
+            {task.project}
+          </span>
+          <span className="text-[10px] bg-bg text-text-muted px-1.5 py-0.5 rounded border border-border">
+            {TYPE_LABELS[task.type] || task.type}
+          </span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_STYLES[task.status] || ""}`}>
+            {STATUS_LABELS[task.status] || task.status}
+          </span>
+          {task.requiresApproval && (
+            <span className="text-[10px] bg-warning/15 text-warning px-1.5 py-0.5 rounded border border-warning/20">
+              승인 필요
+            </span>
+          )}
+        </div>
+
+        {/* 편집 폼 */}
+        {editing ? (
+          <div className="space-y-3">
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">제목</span>
+              <input
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">프로젝트</span>
+              <input
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none font-mono"
+                value={editProject}
+                onChange={(e) => setEditProject(e.target.value)}
+              />
+            </div>
+            {task.type === "recurring" && (
+              <div>
+                <span className="text-xs text-text-muted block mb-1.5">
+                  스케줄 (Cron)
+                  <a href="https://crontab.guru/" target="_blank" rel="noopener noreferrer" className="ml-1 text-primary hover:underline">
+                    도움말
+                  </a>
+                </span>
+                <input
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none font-mono"
+                  value={editScheduleCron}
+                  onChange={(e) => setEditScheduleCron(e.target.value)}
+                  placeholder="*/15 * * * *"
+                />
+              </div>
+            )}
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
+              {isSentinel && (
+                <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2 mb-2 text-xs text-primary">
+                  이 프롬프트는 내부 센티넬입니다. 실행 시 동적으로 생성되는 프롬프트로 대체됩니다.
+                </div>
+              )}
+              <textarea
+                className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-xs font-mono leading-relaxed focus:border-primary outline-none resize-y min-h-[120px]"
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                rows={8}
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="text-sm text-white bg-primary hover:bg-primary/80 disabled:opacity-50 rounded-lg px-4 py-1.5 cursor-pointer"
+              >
+                {saving ? "저장 중..." : "저장"}
+              </button>
+              <button
+                onClick={() => {
+                  setEditTitle(task.title);
+                  setEditPrompt(task.prompt);
+                  setEditProject(task.project);
+                  setEditScheduleCron(task.scheduleCron || "");
+                  setEditing(false);
+                }}
+                className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-4 py-1.5 cursor-pointer"
+              >
+                취소
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* 프롬프트 */}
+            <div>
+              <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
+              {isSentinel ? (
+                <div className="bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <span className="text-[10px] bg-primary/15 text-primary px-1.5 py-0.5 rounded font-mono">동적 프롬프트</span>
+                  </div>
+                  <p className="text-xs leading-relaxed">{task.prompt}</p>
+                </div>
+              ) : (
+                <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.prompt}</pre>
+                </div>
+              )}
+            </div>
+
+            {/* 마지막 결과 */}
+            {task.lastResult && (
+              <div>
+                <span className="text-xs text-text-muted block mb-1.5">마지막 결과</span>
+                <div className="bg-bg border border-border rounded-lg p-3 max-h-48 overflow-y-auto">
+                  <pre className="text-xs whitespace-pre-wrap break-words leading-relaxed">{task.lastResult}</pre>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* 메타 정보 */}
+        <div className="space-y-1.5 text-xs">
+          <div className="flex justify-between">
+            <span className="text-text-muted">실행 횟수</span>
+            <span>{task.runCount}{task.maxRuns ? ` / ${task.maxRuns}` : ""}</span>
+          </div>
+          {task.scheduleCron && (
+            <div className="flex justify-between">
+              <span className="text-text-muted">스케줄</span>
+              <span className="font-mono">{task.scheduleCron}</span>
+            </div>
+          )}
+          {task.scheduleNext && (
+            <div className="flex justify-between">
+              <span className="text-text-muted">다음 실행</span>
+              <span>{new Date(task.scheduleNext).toLocaleString("ko-KR")}</span>
+            </div>
+          )}
+          <div className="flex justify-between">
+            <span className="text-text-muted">마지막 실행</span>
+            <span>{task.lastRunAt ? new Date(task.lastRunAt).toLocaleString("ko-KR") : "없음"}</span>
+          </div>
+        </div>
+
+        {/* 승인/거부 버튼 */}
+        {task.requiresApproval && (task.status === "pending" || task.status === "paused") && (
+          <div className="flex gap-2 pt-2 border-t border-border">
+            <button
+              onClick={() => onApprove(task.id)}
+              disabled={actionLoading}
+              className="flex-1 text-sm text-success bg-success/10 hover:bg-success/20 disabled:opacity-50 border border-success/20 rounded-lg py-2 transition-colors cursor-pointer"
+            >
+              승인
+            </button>
+            <button
+              onClick={() => onCancel(task.id)}
+              disabled={actionLoading}
+              className="flex-1 text-sm text-danger bg-danger/10 hover:bg-danger/20 disabled:opacity-50 border border-danger/20 rounded-lg py-2 transition-colors cursor-pointer"
+            >
+              거부
+            </button>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// 전체 작업 관리 모달
+function AgentTasksModal({
   tasks,
   onClose,
   onApprove,
   onCancel,
+  onUpdate,
   actionLoading,
 }: {
-  tasks: TodayTask[];
+  tasks: TaskItem[];
   onClose: () => void;
   onApprove: (id: string) => void;
   onCancel: (id: string) => void;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => Promise<void>;
   actionLoading: boolean;
 }) {
-  const [filter, setFilter] = useState<"all" | "completed" | "failed" | "running">("all");
+  const [filter, setFilter] = useState<"all" | "completed" | "failed" | "running" | "pending">("all");
+  const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
 
   const filteredTasks = tasks.filter((t) => {
     if (filter === "all") return true;
     if (filter === "completed") return t.status === "completed";
     if (filter === "failed") return t.status === "failed";
     if (filter === "running") return t.status === "running";
+    if (filter === "pending") return t.status === "pending";
     return true;
   });
 
@@ -105,13 +340,32 @@ function TodayTasksModal({
     event: tasks.filter((t) => t.type === "event").length,
   };
 
-  const pendingTasks = tasks.filter((t) => t.status === "pending");
+  const pendingTasks = tasks.filter((t) => t.requiresApproval && t.status === "pending");
 
   const handleApproveAll = async () => {
     for (const t of pendingTasks) {
       await onApprove(t.id);
     }
   };
+
+  // 상세 페이지로 이동
+  if (selectedTask) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+        <div className="relative bg-surface border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+          <TaskDetail
+            task={selectedTask}
+            onBack={() => setSelectedTask(null)}
+            onApprove={onApprove}
+            onCancel={onCancel}
+            onUpdate={onUpdate}
+            actionLoading={actionLoading}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -121,7 +375,7 @@ function TodayTasksModal({
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold text-sm">오늘의 작업</h2>
+            <h2 className="font-semibold text-sm">에이전트 작업</h2>
             <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border">
               {tasks.length}건
             </span>
@@ -168,7 +422,7 @@ function TodayTasksModal({
 
         {/* 필터 */}
         <div className="px-5 py-2 border-b border-border flex gap-2">
-          {(["all", "completed", "failed", "running"] as const).map((f) => (
+          {(["all", "pending", "running", "completed", "failed"] as const).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
@@ -178,7 +432,7 @@ function TodayTasksModal({
                   : "text-text-muted hover:text-text hover:bg-surface-hover"
               }`}
             >
-              {f === "all" ? "전체" : f === "completed" ? "완료" : f === "failed" ? "실패" : "진행중"}
+              {f === "all" ? "전체" : f === "pending" ? "대기" : f === "running" ? "실행중" : f === "completed" ? "완료" : "실패"}
             </button>
           ))}
         </div>
@@ -192,7 +446,8 @@ function TodayTasksModal({
               {filteredTasks.map((task) => (
                 <div
                   key={task.id}
-                  className="bg-surface-hover/50 border border-border/50 rounded-xl p-3"
+                  onClick={() => setSelectedTask(task)}
+                  className="bg-surface-hover/50 border border-border/50 rounded-xl p-3 cursor-pointer hover:bg-surface-hover transition-colors"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 min-w-0">
@@ -203,25 +458,17 @@ function TodayTasksModal({
                         {TYPE_ICONS[task.type]}
                       </span>
                       <span className="text-sm truncate">{task.title}</span>
+                      {task.scheduleCron && (
+                        <span className="text-[10px] text-text-muted font-mono shrink-0">
+                          {task.scheduleCron}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
                       {task.requiresApproval && task.status === "pending" && (
-                        <>
-                          <button
-                            onClick={() => onApprove(task.id)}
-                            disabled={actionLoading}
-                            className="text-[10px] text-success hover:text-success/80 cursor-pointer"
-                          >
-                            승인
-                          </button>
-                          <button
-                            onClick={() => onCancel(task.id)}
-                            disabled={actionLoading}
-                            className="text-[10px] text-danger hover:text-danger/80 cursor-pointer"
-                          >
-                            거부
-                          </button>
-                        </>
+                        <span className="text-[10px] bg-warning/15 text-warning px-1.5 py-0.5 rounded border border-warning/20">
+                          승인
+                        </span>
                       )}
                       <span className={`text-[10px] px-1.5 py-0.5 rounded border ${STATUS_STYLES[task.status] || ""}`}>
                         {STATUS_LABELS[task.status] || task.status}
@@ -229,9 +476,15 @@ function TodayTasksModal({
                     </div>
                   </div>
                   <div className="flex gap-3 mt-1.5 text-[10px] text-text-muted">
-                    <span>{formatTime(task.executedAt)}</span>
-                    {task.duration !== null && <span>소요: {formatDuration(task.duration)}</span>}
-                    {task.cost !== null && <span>${task.cost.toFixed(2)}</span>}
+                    <span>
+                      {task.lastRunAt
+                        ? `마지막: ${new Date(task.lastRunAt).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                        : "미실행"}
+                    </span>
+                    <span>실행 {task.runCount}회</span>
+                    {task.scheduleNext && (
+                      <span>다음: {new Date(task.scheduleNext).toLocaleString("ko-KR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -248,10 +501,11 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
   const [goals, setGoals] = useState<AgentGoal[]>([]);
   const [pendingTasks, setPendingTasks] = useState<AgentTask[]>([]);
-  const [todayTasks, setTodayTasks] = useState<TodayTask[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
+  const [goalsFilter, setGoalsFilter] = useState<"all" | "active" | "proposed" | "completed">("active");
   const [goalForm, setGoalForm] = useState({ title: "", description: "", projects: [] as string[], priority: "medium" as string, deadline: "" });
   const [error, setError] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -271,43 +525,26 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
       setGoals(Array.isArray(goalsData) ? goalsData : []);
       setPendingTasks(allTasks.filter((t) => t.requires_approval && (t.status === "pending" || t.status === "paused")));
 
-      // 오늘 실행된 또는 생성된 태스크 필터링
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStart = today.toISOString();
+      // 전체 작업 매핑 (시간 제한 없음)
+      const taskItems: TaskItem[] = allTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        project: t.project,
+        type: t.type,
+        status: t.status,
+        prompt: t.prompt,
+        scheduleCron: t.schedule_cron,
+        scheduleNext: t.schedule_next,
+        eventTrigger: t.event_trigger,
+        lastRunAt: t.last_run_at,
+        lastResult: t.last_result,
+        runCount: t.run_count,
+        maxRuns: t.max_runs,
+        requiresApproval: t.requires_approval,
+        createdAt: t.created_at,
+      }));
 
-      // todayTaskCount와 일치시키기 위해 last_run_at 또는 created_at이 오늘인 작업 모두 포함
-      const executed: TodayTask[] = allTasks
-        .filter((t) => {
-          const lastRun = t.last_run_at ? new Date(t.last_run_at) : null;
-          const created = new Date(t.created_at);
-          const todayDate = new Date(todayStart);
-          return (lastRun && lastRun >= todayDate) || created >= todayDate;
-        })
-        .map((t) => ({
-          id: t.id,
-          title: t.title,
-          project: t.project,
-          type: t.type,
-          status: t.status,
-          executedAt: t.last_run_at,
-          requiresApproval: t.requires_approval,
-          duration: null,
-          cost: null,
-        }));
-
-      // last_result에서 비용 추출 시도
-      for (const t of allTasks.filter((t) => t.last_run_at && t.last_run_at >= todayStart && t.last_result)) {
-        const costMatch = t.last_result?.match(/\$?([\d.]+)/);
-        if (costMatch) {
-          const task = executed.find((e) => e.id === t.id);
-          if (task) {
-            task.cost = parseFloat(costMatch[1]);
-          }
-        }
-      }
-
-      setTodayTasks(executed);
+      setTasks(taskItems);
       setError(false);
     } catch {
       setError(true);
@@ -344,6 +581,16 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     setActionLoading(true);
     try {
       await api.agentCancelTask(taskId);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUpdateTask = async (taskId: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => {
+    setActionLoading(true);
+    try {
+      await api.agentUpdateTask(taskId, updates);
       fetchAll();
     } finally {
       setActionLoading(false);
@@ -411,10 +658,17 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
   // Goals 분리
   const proposedGoals = goals.filter((g) => g.status === "proposed");
   const activeGoals = goals.filter((g) => g.status === "active");
+  const completedGoals = goals.filter((g) => g.status === "completed");
+
+  // 필터링된 Goals
+  const filteredGoals = goalsFilter === "all" ? goals :
+    goalsFilter === "proposed" ? proposedGoals :
+    goalsFilter === "completed" ? completedGoals :
+    activeGoals;
 
   // 오늘 작업 통계
-  const todayCompleted = todayTasks.filter((t) => t.status === "completed").length;
-  const todayFailed = todayTasks.filter((t) => t.status === "failed").length;
+  const todayCompleted = tasks.filter((t) => t.status === "completed").length;
+  const todayFailed = tasks.filter((t) => t.status === "failed").length;
 
   const borderClass = pinned ? "border-primary/50" : "border-border/60";
 
@@ -663,11 +917,12 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
 
       {/* 상세 모달 */}
       {showModal && (
-        <TodayTasksModal
-          tasks={todayTasks}
+        <AgentTasksModal
+          tasks={tasks}
           onClose={() => setShowModal(false)}
           onApprove={handleApproveTask}
           onCancel={handleCancelTask}
+          onUpdate={handleUpdateTask}
           actionLoading={actionLoading}
         />
       )}
@@ -761,85 +1016,95 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
 
             {/* Goals 목록 */}
             <div className="overflow-y-auto px-5 py-3 flex-1">
-              {/* Proposed Goals */}
-              {proposedGoals.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-xs font-medium text-warning mb-2 flex items-center gap-1">
-                    <AlertCircle size={10} />
-                    Proposed ({proposedGoals.length})
-                  </div>
-                  <div className="space-y-2">
-                    {proposedGoals.map((g) => (
-                      <div key={g.id} className="bg-warning/5 border border-warning/20 rounded-xl px-3 py-2.5">
-                        <div className="flex items-start justify-between">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
-                              {g.priority === "high" && <Star size={10} className="text-warning" />}
-                              <span className="text-sm font-medium text-text">{g.title}</span>
-                            </div>
-                            {g.description && g.description !== g.title && (
-                              <div className="text-xs text-text-muted mt-1">{g.description}</div>
-                            )}
-                            <div className="text-[10px] text-text-muted mt-1">{g.projects.join(", ")}</div>
-                          </div>
-                          <div className="flex gap-1.5 ml-2 shrink-0">
-                            <button
-                              onClick={() => handleApproveGoal(g.id)}
-                              disabled={actionLoading}
-                              className="text-[10px] bg-success/20 text-success hover:bg-success/30 disabled:opacity-50 rounded-lg px-2 py-1 cursor-pointer"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleDeleteGoal(g.id)}
-                              disabled={actionLoading}
-                              className="text-[10px] bg-danger/20 text-danger hover:bg-danger/30 disabled:opacity-50 rounded-lg px-2 py-1 cursor-pointer"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* 필터 탭 */}
+              <div className="flex gap-1 mb-3">
+                {(["active", "proposed", "completed", "all"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setGoalsFilter(f)}
+                    className={`text-xs px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                      goalsFilter === f
+                        ? "bg-primary text-white"
+                        : "text-text-muted hover:text-text hover:bg-surface-hover"
+                    }`}
+                  >
+                    {f === "active" ? "진행중" : f === "proposed" ? "제안" : f === "completed" ? "완료" : "전체"}
+                    {f === "active" && activeGoals.length > 0 && ` (${activeGoals.length})`}
+                    {f === "proposed" && proposedGoals.length > 0 && ` (${proposedGoals.length})`}
+                    {f === "completed" && completedGoals.length > 0 && ` (${completedGoals.length})`}
+                  </button>
+                ))}
+              </div>
 
-              {/* Active Goals */}
-              <div>
-                <div className="text-xs font-medium text-text-muted mb-2 flex items-center gap-1">
-                  <Target size={10} />
-                  Active ({activeGoals.length})
+              {/* 필터링된 Goals */}
+              {filteredGoals.length === 0 ? (
+                <div className="text-center text-text-muted py-8 text-sm">
+                  {goalsFilter === "active" && "진행 중인 목표가 없습니다"}
+                  {goalsFilter === "proposed" && "제안된 목표가 없습니다"}
+                  {goalsFilter === "completed" && "완료된 목표가 없습니다"}
+                  {goalsFilter === "all" && "목표가 없습니다"}
                 </div>
-                {activeGoals.length === 0 ? (
-                  <div className="text-center text-text-muted py-8 text-sm">No active goals</div>
-                ) : (
-                  <div className="space-y-2">
-                    {activeGoals.map((g) => (
-                      <div key={g.id} className="bg-surface-hover/50 border border-border/50 rounded-xl px-3 py-2.5 group">
-                        <div className="flex items-start justify-between">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-1.5">
-                              {g.priority === "high" && <Star size={10} className="text-warning" />}
-                              <span className="text-sm truncate text-text">{g.title}</span>
-                            </div>
-                            {g.description && g.description !== g.title && (
-                              <div className="text-xs text-text-muted mt-1">{g.description}</div>
-                            )}
-                            <div className="text-[10px] text-text-muted mt-1 flex gap-2">
-                              <span>{g.projects.join(", ")}</span>
-                              {g.deadline && <span>by {g.deadline}</span>}
-                            </div>
-                            {g.progress && <div className="text-xs text-text-muted mt-1">{g.progress}</div>}
+              ) : (
+                <div className="space-y-2">
+                  {filteredGoals.map((g) => (
+                    <div key={g.id} className={`rounded-xl px-3 py-2.5 ${
+                      g.status === "proposed" ? "bg-warning/5 border border-warning/20" :
+                      g.status === "completed" ? "bg-success/5 border border-success/20" :
+                      "bg-surface-hover/50 border border-border/50"
+                    }`}>
+                      <div className="flex items-start justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            {g.priority === "high" && <Star size={10} className="text-warning" />}
+                            <span className="text-sm font-medium text-text">{g.title}</span>
                           </div>
-                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
-                            <button
-                              onClick={() => handleCompleteGoal(g.id)}
-                              disabled={actionLoading}
-                              className="text-[10px] text-success hover:text-success/80 disabled:opacity-50 cursor-pointer"
-                            >
-                              Done
-                            </button>
+                          {g.description && g.description !== g.title && (
+                            <div className="text-xs text-text-muted mt-1">{g.description}</div>
+                          )}
+                          <div className="text-[10px] text-text-muted mt-1 flex gap-2">
+                            <span>{g.projects.join(", ")}</span>
+                            {g.deadline && <span>by {g.deadline}</span>}
+                          </div>
+                          {g.progress && <div className="text-xs text-text-muted mt-1">{g.progress}</div>}
+                        </div>
+                        <div className="flex gap-1 ml-2 shrink-0">
+                          {g.status === "proposed" && (
+                            <>
+                              <button
+                                onClick={() => handleApproveGoal(g.id)}
+                                disabled={actionLoading}
+                                className="text-[10px] bg-success/20 text-success hover:bg-success/30 disabled:opacity-50 rounded-lg px-2 py-1 cursor-pointer"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGoal(g.id)}
+                                disabled={actionLoading}
+                                className="text-[10px] bg-danger/20 text-danger hover:bg-danger/30 disabled:opacity-50 rounded-lg px-2 py-1 cursor-pointer"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                          {g.status === "active" && (
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                              <button
+                                onClick={() => handleCompleteGoal(g.id)}
+                                disabled={actionLoading}
+                                className="text-[10px] text-success hover:text-success/80 disabled:opacity-50 cursor-pointer"
+                              >
+                                Done
+                              </button>
+                              <button
+                                onClick={() => handleDeleteGoal(g.id)}
+                                disabled={actionLoading}
+                                className="text-[10px] text-danger hover:text-danger/80 disabled:opacity-50 cursor-pointer"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          )}
+                          {g.status === "completed" && (
                             <button
                               onClick={() => handleDeleteGoal(g.id)}
                               disabled={actionLoading}
@@ -847,13 +1112,13 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
                             >
                               Delete
                             </button>
-                          </div>
+                          )}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
