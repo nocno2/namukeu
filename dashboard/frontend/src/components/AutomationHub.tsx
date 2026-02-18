@@ -31,6 +31,7 @@ interface TodayTask {
   type: "one-time" | "recurring" | "event";
   status: "pending" | "running" | "completed" | "failed" | "paused";
   executedAt: string | null;
+  requiresApproval: boolean;
   duration: number | null;
   cost: number | null;
 }
@@ -204,7 +205,7 @@ function TodayTasksModal({
                       <span className="text-sm truncate">{task.title}</span>
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      {task.status === "pending" && (
+                      {task.requiresApproval && task.status === "pending" && (
                         <>
                           <button
                             onClick={() => onApprove(task.id)}
@@ -249,6 +250,9 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
   const [pendingTasks, setPendingTasks] = useState<AgentTask[]>([]);
   const [todayTasks, setTodayTasks] = useState<TodayTask[]>([]);
   const [showModal, setShowModal] = useState(false);
+  const [showGoalsModal, setShowGoalsModal] = useState(false);
+  const [showGoalForm, setShowGoalForm] = useState(false);
+  const [goalForm, setGoalForm] = useState({ title: "", description: "", projects: [] as string[], priority: "medium" as string, deadline: "" });
   const [error, setError] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
@@ -267,13 +271,19 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
       setGoals(Array.isArray(goalsData) ? goalsData : []);
       setPendingTasks(allTasks.filter((t) => t.requires_approval && (t.status === "pending" || t.status === "paused")));
 
-      // 오늘 실행된 태스크만 필터링
+      // 오늘 실행된 또는 생성된 태스크 필터링
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const todayStart = today.toISOString();
 
+      // todayTaskCount와 일치시키기 위해 last_run_at 또는 created_at이 오늘인 작업 모두 포함
       const executed: TodayTask[] = allTasks
-        .filter((t) => t.last_run_at && t.last_run_at >= todayStart)
+        .filter((t) => {
+          const lastRun = t.last_run_at ? new Date(t.last_run_at) : null;
+          const created = new Date(t.created_at);
+          const todayDate = new Date(todayStart);
+          return (lastRun && lastRun >= todayDate) || created >= todayDate;
+        })
         .map((t) => ({
           id: t.id,
           title: t.title,
@@ -281,8 +291,9 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
           type: t.type,
           status: t.status,
           executedAt: t.last_run_at,
-          duration: null, // API에 duration이 없음
-          cost: null, // API에 cost가 없음
+          requiresApproval: t.requires_approval,
+          duration: null,
+          cost: null,
         }));
 
       // last_result에서 비용 추출 시도
@@ -337,6 +348,62 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleCreateGoal = async () => {
+    if (!goalForm.title || goalForm.projects.length === 0) return;
+    setActionLoading(true);
+    try {
+      await api.agentCreateGoal({
+        title: goalForm.title,
+        description: goalForm.description || goalForm.title,
+        projects: goalForm.projects,
+        priority: goalForm.priority,
+        deadline: goalForm.deadline || undefined,
+      });
+      setGoalForm({ title: "", description: "", projects: [], priority: "medium", deadline: "" });
+      setShowGoalForm(false);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCompleteGoal = async (id: string) => {
+    setActionLoading(true);
+    try {
+      await api.agentUpdateGoal(id, { status: "completed" } as any);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteGoal = async (id: string) => {
+    setActionLoading(true);
+    try {
+      await api.agentDeleteGoal(id);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleApproveGoal = async (id: string) => {
+    setActionLoading(true);
+    try {
+      await api.agentApproveGoal(id);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const toggleGoalProject = (p: string) => {
+    setGoalForm((f) => ({
+      ...f,
+      projects: f.projects.includes(p) ? f.projects.filter((x) => x !== p) : [...f.projects, p],
+    }));
   };
 
   const isExecuting = (agentStatus?.runningTasks?.length ?? 0) > 0;
@@ -582,6 +649,13 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
               {goals.length === 0 && (
                 <div className="text-xs text-text-muted text-center py-2">No active goals</div>
               )}
+              {/* 더보기 버튼 */}
+              <button
+                onClick={() => setShowGoalsModal(true)}
+                className="w-full mt-2 text-xs text-primary hover:text-primary/80 text-center py-1.5 cursor-pointer"
+              >
+                전체 보기 →
+              </button>
             </div>
           </div>
         )}
@@ -596,6 +670,193 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
           onCancel={handleCancelTask}
           actionLoading={actionLoading}
         />
+      )}
+
+      {/* Goals 모달 */}
+      {showGoalsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowGoalsModal(false)} />
+          <div className="relative bg-surface border border-border rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Target size={16} className="text-primary" />
+                <h2 className="font-semibold text-sm">Project Goals</h2>
+                <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border">
+                  {goals.length}개
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowGoalForm(!showGoalForm)}
+                  className="text-[11px] text-primary hover:bg-primary/10 border border-primary/20 rounded-lg px-2.5 py-1 transition-colors cursor-pointer"
+                >
+                  {showGoalForm ? "취소" : "+ 추가"}
+                </button>
+                <button
+                  onClick={() => setShowGoalsModal(false)}
+                  className="text-text-muted hover:text-text text-lg leading-none cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {/* 추가 formulário */}
+            {showGoalForm && (
+              <div className="px-5 py-3 border-b border-border bg-surface-hover/30">
+                <div className="space-y-2">
+                  <input
+                    className="w-full bg-surface border border-border/50 rounded-lg px-3 py-2 text-sm focus:border-primary outline-none text-text"
+                    placeholder="Goal title"
+                    value={goalForm.title}
+                    onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
+                  />
+                  <input
+                    className="w-full bg-surface border border-border/50 rounded-lg px-3 py-2 text-sm focus:border-primary outline-none text-text"
+                    placeholder="Description (optional)"
+                    value={goalForm.description}
+                    onChange={(e) => setGoalForm({ ...goalForm, description: e.target.value })}
+                  />
+                  <div className="flex flex-wrap gap-1">
+                    {["COIN", "BLOG", "DASH", "TRAIN", "TGBOT", "DCBOT"].map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => toggleGoalProject(p)}
+                        className={`text-xs px-2.5 py-1 rounded-lg border cursor-pointer transition-colors ${
+                          goalForm.projects.includes(p) ? "bg-primary/20 border-primary text-primary" : "border-border/50 text-text-muted hover:bg-surface-hover"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <select
+                      className="bg-surface border border-border/50 rounded-lg px-2 py-2 text-sm text-text"
+                      value={goalForm.priority}
+                      onChange={(e) => setGoalForm({ ...goalForm, priority: e.target.value })}
+                    >
+                      <option value="high">High</option>
+                      <option value="medium">Medium</option>
+                      <option value="low">Low</option>
+                    </select>
+                    <input
+                      type="date"
+                      className="bg-surface border border-border/50 rounded-lg px-2 py-2 text-sm flex-1 focus:border-primary outline-none text-text"
+                      value={goalForm.deadline}
+                      onChange={(e) => setGoalForm({ ...goalForm, deadline: e.target.value })}
+                    />
+                    <button
+                      onClick={handleCreateGoal}
+                      disabled={actionLoading || !goalForm.title || goalForm.projects.length === 0}
+                      className="text-xs bg-primary hover:bg-primary/80 disabled:opacity-50 text-white rounded-lg px-4 py-2 cursor-pointer font-medium"
+                    >
+                      생성
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Goals 목록 */}
+            <div className="overflow-y-auto px-5 py-3 flex-1">
+              {/* Proposed Goals */}
+              {proposedGoals.length > 0 && (
+                <div className="mb-4">
+                  <div className="text-xs font-medium text-warning mb-2 flex items-center gap-1">
+                    <AlertCircle size={10} />
+                    Proposed ({proposedGoals.length})
+                  </div>
+                  <div className="space-y-2">
+                    {proposedGoals.map((g) => (
+                      <div key={g.id} className="bg-warning/5 border border-warning/20 rounded-xl px-3 py-2.5">
+                        <div className="flex items-start justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              {g.priority === "high" && <Star size={10} className="text-warning" />}
+                              <span className="text-sm font-medium text-text">{g.title}</span>
+                            </div>
+                            {g.description && g.description !== g.title && (
+                              <div className="text-xs text-text-muted mt-1">{g.description}</div>
+                            )}
+                            <div className="text-[10px] text-text-muted mt-1">{g.projects.join(", ")}</div>
+                          </div>
+                          <div className="flex gap-1.5 ml-2 shrink-0">
+                            <button
+                              onClick={() => handleApproveGoal(g.id)}
+                              disabled={actionLoading}
+                              className="text-[10px] bg-success/20 text-success hover:bg-success/30 disabled:opacity-50 rounded-lg px-2 py-1 cursor-pointer"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGoal(g.id)}
+                              disabled={actionLoading}
+                              className="text-[10px] bg-danger/20 text-danger hover:bg-danger/30 disabled:opacity-50 rounded-lg px-2 py-1 cursor-pointer"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Active Goals */}
+              <div>
+                <div className="text-xs font-medium text-text-muted mb-2 flex items-center gap-1">
+                  <Target size={10} />
+                  Active ({activeGoals.length})
+                </div>
+                {activeGoals.length === 0 ? (
+                  <div className="text-center text-text-muted py-8 text-sm">No active goals</div>
+                ) : (
+                  <div className="space-y-2">
+                    {activeGoals.map((g) => (
+                      <div key={g.id} className="bg-surface-hover/50 border border-border/50 rounded-xl px-3 py-2.5 group">
+                        <div className="flex items-start justify-between">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5">
+                              {g.priority === "high" && <Star size={10} className="text-warning" />}
+                              <span className="text-sm truncate text-text">{g.title}</span>
+                            </div>
+                            {g.description && g.description !== g.title && (
+                              <div className="text-xs text-text-muted mt-1">{g.description}</div>
+                            )}
+                            <div className="text-[10px] text-text-muted mt-1 flex gap-2">
+                              <span>{g.projects.join(", ")}</span>
+                              {g.deadline && <span>by {g.deadline}</span>}
+                            </div>
+                            {g.progress && <div className="text-xs text-text-muted mt-1">{g.progress}</div>}
+                          </div>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-2">
+                            <button
+                              onClick={() => handleCompleteGoal(g.id)}
+                              disabled={actionLoading}
+                              className="text-[10px] text-success hover:text-success/80 disabled:opacity-50 cursor-pointer"
+                            >
+                              Done
+                            </button>
+                            <button
+                              onClick={() => handleDeleteGoal(g.id)}
+                              disabled={actionLoading}
+                              className="text-[10px] text-danger hover:text-danger/80 disabled:opacity-50 cursor-pointer"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </>
   );
