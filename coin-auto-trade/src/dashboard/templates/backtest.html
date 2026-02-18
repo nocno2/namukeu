@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block title %}백테스팅 - coin-auto-trade{% endblock %}
 
-{% set interval_labels = {"minute60": "1시간", "minute240": "4시간", "day": "일봉"} %}
+{% set interval_labels = {"minute15": "15분", "minute60": "1시간", "minute240": "4시간", "day": "일봉"} %}
 
 {% block content %}
 <div class="section" style="margin-top: 20px;">
     <div class="section-header">
-        <h2>백테스트 실행 <span style="font-size:12px;color:var(--text-dim);font-weight:normal;">(권장 타임프레임: combined_v2→1시간, rsi→1시간, ema_crossover_vol→일봉, supertrend→1시간)</span></h2>
+        <h2>백테스트 실행 <span style="font-size:12px;color:var(--text-dim);font-weight:normal;">(권장 타임프레임: combined_v2→1시간, rsi→1시간, rsi_ma_choice→15분, ema_crossover_vol→일봉, supertrend→1시간)</span></h2>
     </div>
     <div class="card">
         <form id="backtest-form" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px;">

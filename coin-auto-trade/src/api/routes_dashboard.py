@@ -167,6 +167,7 @@ def dashboard_backtest(request: Request, page: int = 1, db: Database = Depends(g
     recommended_timeframes = {
         "combined_v2": "minute60",
         "rsi": "minute60",
+        "rsi_ma_choice": "minute15",
         "ema_crossover_vol": "day",
         "trend_following": "minute60",
         "supertrend": "minute60",
