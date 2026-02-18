@@ -130,7 +130,7 @@
                 {% for r in results %}
                 <tr>
                     <td>{{ r.id }}</td>
-                    <td>{{ r.strategy_name }}</td>
+                    <td>{{ r.strategy_name }} ({{ r.interval }})</td>
                     <td>{{ r.ticker }}</td>
                     <td style="font-family:var(--font);">{{ r.start_date }}~{{ r.end_date }}</td>
                     <td>{{ "{:,.0f}".format(r.initial_capital) }}</td>
