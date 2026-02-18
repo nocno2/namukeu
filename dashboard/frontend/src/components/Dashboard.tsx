@@ -19,7 +19,25 @@ interface Props {
   onLogout: () => void;
 }
 
-const POLL_INTERVAL = 30_000;
+const POLL_INTERVAL_DEFAULT = 30_000;
+const POLL_INTERVAL_RUNNING = 60_000;
+const POLL_INTERVAL_DOWN = 10_000;
+
+// 서비스 상태에 따른 적응형 폴링 간격 계산
+function calculatePollInterval(services: ServiceStatus[]): number {
+  if (services.length === 0) return POLL_INTERVAL_DEFAULT;
+
+  const downCount = services.filter((s) => s.status === "down").length;
+  const runningCount = services.filter((s) => s.status === "running").length;
+
+  // down 서비스가 있으면 빠른 폴링
+  if (downCount > 0) return POLL_INTERVAL_DOWN;
+
+  // running 서비스가大多数면 느린 폴링
+  if (runningCount > services.length / 2) return POLL_INTERVAL_RUNNING;
+
+  return POLL_INTERVAL_DEFAULT;
+}
 
 type TabType = "all" | "services" | "tools";
 
@@ -61,12 +79,18 @@ export function Dashboard({ username, onLogout }: Props) {
     } catch { /* ignore */ }
   }, []);
 
+  // 적응형 폴링 간격
+  const pollInterval = calculatePollInterval(services);
+
   useEffect(() => {
     fetchServices();
     fetchPrefs();
-    const interval = setInterval(fetchServices, POLL_INTERVAL);
-    return () => { clearInterval(interval); };
   }, [fetchServices, fetchPrefs]);
+
+  useEffect(() => {
+    const interval = setInterval(fetchServices, pollInterval);
+    return () => { clearInterval(interval); };
+  }, [fetchServices, pollInterval]);
 
   const isCollapsed = (cardId: string) => !!prefs[cardId]?.collapsed;
   const isPinned = (cardId: string) => !!prefs[cardId]?.pinned;
@@ -156,6 +180,10 @@ export function Dashboard({ username, onLogout }: Props) {
                 <div className="w-2.5 h-2.5 rounded-full bg-danger" />
                 <span className="text-sm text-text-muted">Down</span>
                 <span className="text-lg font-bold text-danger">{downCount}</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-text-muted/60">
+                <span className="font-mono">{pollInterval / 1000}s</span>
+                <span className="text-[10px]">폴링 간격</span>
               </div>
             </div>
             <button
