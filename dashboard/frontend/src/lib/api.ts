@@ -231,7 +231,71 @@ export const api = {
   n8nStatus() {
     return request<N8nStatus>("/api/n8n/status");
   },
+
+  // COIN 백테스트 API (proxy through dashboard backend)
+  coinBacktestResults(limit = 20) {
+    return request<BacktestResult[]>(`/api/proxy/coin/api/backtest/results?limit=${limit}`);
+  },
+
+  coinBacktestValidate(resultId: number) {
+    return request<BacktestValidation>(`/api/proxy/coin/api/backtest/results/${resultId}/validate`);
+  },
+
+  coinStartPaperTrading(resultId: number, exchange = "upbit") {
+    return request<{ message: string; result_id: number; strategy_id: number; dry_run: boolean }>(
+      `/api/proxy/coin/api/backtest/results/${resultId}/start-paper?exchange=${exchange}`,
+      { method: "POST" },
+    );
+  },
+
+  coinStartLiveTrading(resultId: number, exchange = "upbit") {
+    return request<{ message: string; result_id: number; strategy_id: number; dry_run: boolean }>(
+      `/api/proxy/coin/api/backtest/results/${resultId}/start-live?exchange=${exchange}`,
+      { method: "POST" },
+    );
+  },
 };
+
+export interface BacktestResult {
+  id: number;
+  strategy_name: string;
+  ticker: string;
+  interval: string;
+  params: Record<string, unknown>;
+  total_return_pct: number;
+  max_drawdown_pct: number;
+  sharpe_ratio: number;
+  win_rate: number;
+  total_trades: number;
+  profit_factor: number;
+  final_capital: number;
+  created_at: string;
+}
+
+export interface BacktestValidation {
+  result_id: number;
+  strategy_name: string;
+  ticker: string;
+  interval: string;
+  params: Record<string, unknown>;
+  backtest_metrics: {
+    total_return_pct: number;
+    win_rate: number;
+    max_drawdown_pct: number;
+    total_trades: number;
+  };
+  checklist: {
+    min_return_pct: number;
+    min_win_rate_pct: number;
+    max_drawdown_pct: number;
+    min_trades: number;
+  };
+  eligibility: {
+    can_live_trade: boolean;
+    can_paper_trade: boolean;
+    reasons: string[];
+  };
+}
 
 export interface ServiceStatus {
   name: string;

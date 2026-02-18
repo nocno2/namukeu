@@ -4,6 +4,7 @@ import { api, type CardPreference, type ServiceStatus } from "../lib/api";
 import { AutomationHub } from "./AutomationHub";
 import { BlogTraffic } from "./BlogTraffic";
 import { ClaudeUsage } from "./ClaudeUsage";
+import { CoinBacktestStatus } from "./CoinBacktestStatus";
 import { CommitPanel } from "./CommitPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Header } from "./Header";
@@ -29,7 +30,8 @@ type CardItem =
   | { type: "blog"; id: string }
   | { type: "train"; id: string }
   | { type: "automation"; id: string }
-  | { type: "n8n"; id: string };
+  | { type: "n8n"; id: string }
+  | { type: "coin"; id: string };
 
 export function Dashboard({ username, onLogout }: Props) {
   const [services, setServices] = useState<ServiceStatus[]>([]);
@@ -92,6 +94,7 @@ export function Dashboard({ username, onLogout }: Props) {
     { type: "system", id: "system-resources" },
     ...services.map((svc): CardItem => ({ type: "service", id: svc.name, service: svc })),
     { type: "train", id: "train-status" },
+    { type: "coin", id: "coin-backtest" },
     { type: "blog", id: "blog-traffic" },
     { type: "claude", id: "claude-usage" },
     { type: "n8n", id: "n8n-status" },
@@ -222,6 +225,9 @@ export function Dashboard({ username, onLogout }: Props) {
                   break;
                 case "train":
                   content = <TrainStatus {...cardProps(card.id)} />;
+                  break;
+                case "coin":
+                  content = <CoinBacktestStatus {...cardProps(card.id)} />;
                   break;
                 case "n8n":
                   content = <N8nStatus {...cardProps(card.id)} />;
