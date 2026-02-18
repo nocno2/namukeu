@@ -47,8 +47,9 @@ class SRTService:
     ) -> dict | None:
         self._ensure_logged_in()
 
-        time_start_padded = time_range_start.replace(":", "").ljust(6, "0")
-        time_end = time_range_end.replace(":", "")
+        time_start = time_range_start.replace(":", "")[:4]  # "HHMM" (4자리)
+        time_end = time_range_end.replace(":", "")[:4]  # "HHMM" (4자리)
+        time_start_padded = time_start.ljust(6, "0")  # search_train용 6자리
 
         try:
             trains = self._client.search_train(
@@ -71,7 +72,7 @@ class SRTService:
             dep_time = train.dep_time[:4]  # "HHMM" from "HHMMSS"
             if dep_time > time_end:
                 break
-            if dep_time < time_range_start.replace(":", ""):
+            if dep_time < time_start:
                 continue
 
             try:
