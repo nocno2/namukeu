@@ -1,4 +1,19 @@
 import { useEffect, useState } from "react";
+import {
+  Activity,
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  CloudOff,
+  FileText,
+  Gauge,
+  Link,
+  Pin,
+  PinOff,
+  RefreshCw,
+  Server,
+  Terminal,
+} from "lucide-react";
 import { api, type Incident, type ServiceStatus, type UptimeBlock } from "../lib/api";
 
 interface Props {
@@ -13,6 +28,12 @@ interface Props {
   badge?: { count: number; label: string } | null;
 }
 
+const TYPE_ICONS: Record<string, React.ReactNode> = {
+  http: <Link size={12} />,
+  process: <Terminal size={12} />,
+  self: <Server size={12} />,
+};
+
 const TYPE_LABELS: Record<string, string> = {
   http: "HTTP",
   process: "Process",
@@ -23,7 +44,7 @@ function DetailItem({ label, value }: { label: string; value: string | number })
   return (
     <div className="flex justify-between text-xs">
       <span className="text-text-muted">{label}</span>
-      <span className="font-mono">{value}</span>
+      <span className="font-mono text-text">{value}</span>
     </div>
   );
 }
@@ -55,14 +76,17 @@ function UptimeBar({ blocks, uptimePercent }: { blocks: UptimeBlock[]; uptimePer
   return (
     <div className="mt-3 border-t border-border pt-3">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] text-text-muted">24h 업타임</span>
+        <span className="text-[10px] text-text-muted flex items-center gap-1">
+          <Gauge size={10} />
+          24h 업타임
+        </span>
         {uptimePercent !== null && (
-          <span className={`text-[10px] font-mono ${uptimePercent >= 99 ? "text-success" : uptimePercent >= 90 ? "text-warning" : "text-danger"}`}>
+          <span className={`text-[10px] font-mono font-medium ${uptimePercent >= 99 ? "text-success" : uptimePercent >= 90 ? "text-warning" : "text-danger"}`}>
             {uptimePercent}%
           </span>
         )}
       </div>
-      <div className="flex gap-[1px] h-2 rounded overflow-hidden">
+      <div className="flex gap-[1px] h-2 rounded-full overflow-hidden bg-border/30">
         {blocks.map((block, i) => (
           <div
             key={i}
@@ -91,7 +115,10 @@ function formatDuration(sec: number | null): string {
 function IncidentList({ incidents }: { incidents: Incident[] }) {
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <span className="text-[10px] text-text-muted mb-1.5 block">최근 인시던트</span>
+      <span className="text-[10px] text-text-muted mb-1.5 block flex items-center gap-1">
+        <Activity size={10} />
+        최근 인시던트
+      </span>
       <div className="space-y-1.5">
         {incidents.map((inc) => (
           <div key={inc.id} className="flex items-center justify-between text-[11px]">
@@ -105,11 +132,11 @@ function IncidentList({ incidents }: { incidents: Incident[] }) {
             <div className="flex items-center gap-1.5 shrink-0">
               <span className="font-mono text-text-muted">{formatDuration(inc.duration_sec)}</span>
               {inc.auto_recovered ? (
-                <span className="text-[9px] bg-success/15 text-success border border-success/20 px-1 py-0.5 rounded">자동복구</span>
+                <span className="text-[9px] bg-success/15 text-success border border-success/20 px-1.5 py-0.5 rounded-full">자동복구</span>
               ) : inc.resolved_at ? (
-                <span className="text-[9px] bg-text-muted/10 text-text-muted border border-border px-1 py-0.5 rounded">수동복구</span>
+                <span className="text-[9px] bg-text-muted/10 text-text-muted border border-border px-1.5 py-0.5 rounded-full">수동복구</span>
               ) : (
-                <span className="text-[9px] bg-danger/15 text-danger border border-danger/20 px-1 py-0.5 rounded">진행중</span>
+                <span className="text-[9px] bg-danger/15 text-danger border border-danger/20 px-1.5 py-0.5 rounded-full">진행중</span>
               )}
             </div>
           </div>
@@ -182,73 +209,70 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
   return (
     <div
       onClick={onClick}
-      className={`bg-surface border rounded-xl transition-colors cursor-pointer ${
-        pinned ? "border-primary/40" : "border-border"
+      className={`bg-surface border border-border rounded-2xl transition-all cursor-pointer card-glow card-transition ${
+        pinned ? "border-primary/50" : "border-border/60"
       } ${collapsed ? "p-3" : "p-5"} hover:bg-surface-hover`}
+      style={{ animation: 'slideUp 0.3s ease-out' }}
     >
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div
-            className={`w-2 h-2 rounded-full shrink-0 ${
-              isRunning ? "bg-success" : "bg-danger"
+            className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+              isRunning ? "bg-success status-pulse" : "bg-danger"
             }`}
           />
-          <h3 className="font-semibold text-sm truncate">{service.display_name}</h3>
+          <h3 className="font-semibold text-sm truncate text-text">{service.display_name}</h3>
           {badge && badge.count > 0 && (
-            <span className="text-[10px] bg-warning/15 text-warning border border-warning/20 px-1.5 py-0.5 rounded-full shrink-0">
+            <span className="text-[10px] bg-warning/15 text-warning border border-warning/20 px-2 py-0.5 rounded-full shrink-0 font-medium">
               {badge.count} {badge.label}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             onClick={handlePin}
-            className={`p-1 rounded transition-colors ${
-              pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"
+            className={`p-1.5 rounded-lg transition-colors ${
+              pinned ? "text-primary bg-primary/10" : "text-text-muted/40 hover:text-text-muted hover:bg-surface-hover"
             }`}
             title={pinned ? "고정 해제" : "상단 고정"}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill={pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
-              <path d="M12 2l3 9h9l-7 5 3 9-8-6-8 6 3-9-7-5h9z" />
-            </svg>
+            {pinned ? <Pin size={14} /> : <PinOff size={14} />}
           </button>
           <button
             onClick={handleCollapse}
-            className="p-1 text-text-muted/40 hover:text-text-muted rounded transition-colors"
+            className="p-1.5 text-text-muted/40 hover:text-text-muted hover:bg-surface-hover rounded-lg transition-colors"
             title={collapsed ? "펼치기" : "접기"}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              {collapsed ? (
-                <polyline points="6 9 12 15 18 9" />
-              ) : (
-                <polyline points="6 15 12 9 18 15" />
-              )}
-            </svg>
+            {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
           </button>
         </div>
       </div>
 
       {collapsed ? (
         /* Collapsed: minimal info */
-        <div className="flex items-center gap-2 mt-1.5 text-[10px] text-text-muted">
-          <span className="font-mono">{TYPE_LABELS[service.type] || service.type}</span>
+        <div className="flex items-center gap-2 mt-2 text-[10px] text-text-muted">
+          <span className="flex items-center gap-1">
+            {TYPE_ICONS[service.type] || <Server size={12} />}
+            {TYPE_LABELS[service.type] || service.type}
+          </span>
           {service.port && <span className="font-mono">:{service.port}</span>}
-          <span>·</span>
+          <span className="text-text-muted/30">•</span>
           <span>{timeAgo(service.checked_at)}</span>
         </div>
       ) : (
         /* Expanded: full view */
         <>
-          <p className="text-xs text-text-muted mt-1 ml-4">{service.description}</p>
+          <p className="text-xs text-text-muted mt-2 ml-5">{service.description}</p>
 
           {/* Meta */}
           <div className="flex gap-2 mt-3 mb-3">
-            <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border font-mono">
+            <span className="text-[10px] text-text-muted bg-surface-hover px-2.5 py-1 rounded-lg border border-border/50 flex items-center gap-1.5">
+              {TYPE_ICONS[service.type] || <Server size={12} />}
               {TYPE_LABELS[service.type] || service.type}
             </span>
             {service.port && (
-              <span className="text-[10px] text-text-muted bg-bg px-1.5 py-0.5 rounded border border-border font-mono">
+              <span className="text-[10px] text-text-muted bg-surface-hover px-2.5 py-1 rounded-lg border border-border/50 font-mono">
                 :{service.port}
               </span>
             )}
@@ -256,7 +280,7 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
 
           {/* Details */}
           {service.details && (
-            <div className="space-y-1.5 border-t border-border pt-3">
+            <div className="space-y-1.5 border-t border-border/60 pt-3">
               {formatDetails(service.details).map(([label, value]) => (
                 <DetailItem key={label} label={label} value={value} />
               ))}
@@ -274,37 +298,41 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
           )}
 
           {/* Actions */}
-          <div className="mt-3 flex gap-2">
+          <div className="mt-4 flex gap-2">
             {service.dashboard_url && isRunning && (
               <a
                 href={service.dashboard_url}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
-                className="flex-1 block text-center text-xs text-blue-400 bg-blue-400/10 hover:bg-blue-400/20 border border-blue-400/20 rounded-lg py-2 transition-colors"
+                className="flex-1 flex items-center justify-center gap-1.5 text-xs text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 rounded-xl py-2.5 transition-colors font-medium"
               >
-                대시보드 열기
+                대시보드
+                <ArrowRight size={12} />
               </a>
             )}
             <button
               onClick={(e) => { e.stopPropagation(); onShowLogs(); }}
-              className="flex-1 text-xs text-text-muted bg-bg hover:bg-surface-hover border border-border rounded-lg py-2 transition-colors cursor-pointer"
+              className="flex items-center justify-center gap-1.5 text-xs text-text-muted bg-surface-hover hover:bg-border/50 border border-border/50 rounded-xl py-2.5 transition-colors cursor-pointer"
             >
+              <FileText size={14} />
               로그
             </button>
             {canRestart && (
               <button
                 onClick={handleRestart}
                 disabled={restarting}
-                className="flex-1 text-xs text-warning bg-warning/10 hover:bg-warning/20 disabled:opacity-50 border border-warning/20 rounded-lg py-2 transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-1.5 text-xs text-warning bg-warning/10 hover:bg-warning/20 disabled:opacity-50 border border-warning/20 rounded-xl py-2.5 transition-colors cursor-pointer font-medium"
               >
+                <RefreshCw size={14} className={restarting ? "animate-spin" : ""} />
                 {restarting ? "재시작 중..." : "재시작"}
               </button>
             )}
           </div>
 
           {/* Checked at */}
-          <div className="mt-3 text-[10px] text-text-muted">
+          <div className="mt-3 text-[10px] text-text-muted/50 flex items-center gap-1">
+            <CloudOff size={10} />
             {timeAgo(service.checked_at)}
           </div>
         </>

@@ -44,6 +44,7 @@
 - **커밋 후 push도 함께** — 커밋이 완료되면 자동으로 `git push`까지 수행
 
 ## 공통 규칙
+- **한국어만 사용**: 모든 대화와 코드 주석은 한국어로 작성 (중국어/한자严禁)
 - 각 프로젝트의 세부 가이드는 해당 디렉토리의 `CLAUDE.md` 참고
 - `.env` 파일, DB 파일, `node_modules/`, `.venv/` 등은 절대 커밋하지 않음
 - Python 프로젝트는 Python 3.12 사용 (`/Users/namwook/.local/bin/python3.12`)
