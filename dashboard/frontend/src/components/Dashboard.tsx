@@ -118,7 +118,6 @@ export function Dashboard({ username, onLogout }: Props) {
   // 서비스 상태 요약
   const runningCount = services.filter((s) => s.status === "running").length;
   const downCount = services.filter((s) => s.status === "down").length;
-  const stoppedCount = services.length - runningCount - downCount;
 
   const cardProps = (id: string) => ({
     collapsed: isCollapsed(id),
@@ -151,11 +150,6 @@ export function Dashboard({ username, onLogout }: Props) {
                 <div className="w-2.5 h-2.5 rounded-full bg-danger" />
                 <span className="text-sm text-text-muted">Down</span>
                 <span className="text-lg font-bold text-danger">{downCount}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-text-muted/40" />
-                <span className="text-sm text-text-muted">Stopped</span>
-                <span className="text-lg font-bold text-text-muted">{stoppedCount}</span>
               </div>
             </div>
             <button
