@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { LayoutGrid, RefreshCw, Server, Zap } from "lucide-react";
 import { api, type AgentTask, type CardPreference, type ServiceStatus } from "../lib/api";
 import { AgentControl } from "./AgentControl";
 import { AgentTasksPanel } from "./AgentTasksPanel";
@@ -21,6 +22,8 @@ interface Props {
 
 const POLL_INTERVAL = 30_000;
 
+type TabType = "all" | "services" | "tools";
+
 type CardItem =
   | { type: "service"; id: string; service: ServiceStatus }
   | { type: "claude"; id: string }
@@ -40,6 +43,7 @@ export function Dashboard({ username, onLogout }: Props) {
   const [prefs, setPrefs] = useState<Record<string, CardPreference>>({});
   const [showAgentTasks, setShowAgentTasks] = useState(false);
   const [pendingApprovals, setPendingApprovals] = useState(0);
+  const [activeTab, setActiveTab] = useState<TabType>("all");
 
   const fetchServices = useCallback(async () => {
     try {
@@ -109,7 +113,16 @@ export function Dashboard({ username, onLogout }: Props) {
     { type: "launchagents", id: "launchagents" },
   ];
 
-  const sortedCards = [...allCards].sort((a, b) => {
+  // 탭별 필터링
+  const filteredCards = allCards.filter((card) => {
+    if (activeTab === "all") return true;
+    if (activeTab === "services") return card.type === "service";
+    if (activeTab === "tools") return card.type !== "service";
+    return true;
+  });
+
+  // pinned 카드 먼저, 그 다음 나머지
+  const sortedCards = [...filteredCards].sort((a, b) => {
     const aPinned = isPinned(a.id);
     const bPinned = isPinned(b.id);
     if (aPinned && !bPinned) return -1;
@@ -120,8 +133,10 @@ export function Dashboard({ username, onLogout }: Props) {
     return 0;
   });
 
+  // 서비스 상태 요약
   const runningCount = services.filter((s) => s.status === "running").length;
-  const totalCount = services.length;
+  const downCount = services.filter((s) => s.status === "down").length;
+  const stoppedCount = services.length - runningCount - downCount;
 
   const cardProps = (id: string) => ({
     collapsed: isCollapsed(id),
@@ -130,24 +145,63 @@ export function Dashboard({ username, onLogout }: Props) {
     onTogglePin: () => togglePin(id),
   });
 
+  const tabs = [
+    { id: "all" as TabType, label: "전체", icon: <LayoutGrid size={14} /> },
+    { id: "services" as TabType, label: "서비스", icon: <Server size={14} /> },
+    { id: "tools" as TabType, label: "도구", icon: <Zap size={14} /> },
+  ];
+
   return (
     <div className="min-h-screen">
       <Header username={username} onLogout={onLogout} />
 
       <main className="max-w-5xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-lg font-semibold">Services</h2>
-            <p className="text-sm text-text-muted">
-              {runningCount}/{totalCount} running
-            </p>
+        {/* 상단 요약 바 */}
+        <div className="bg-surface border border-border rounded-2xl p-4 mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-success status-pulse" />
+                <span className="text-sm text-text-muted">Running</span>
+                <span className="text-lg font-bold text-success">{runningCount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-danger" />
+                <span className="text-sm text-text-muted">Down</span>
+                <span className="text-lg font-bold text-danger">{downCount}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-text-muted/40" />
+                <span className="text-sm text-text-muted">Stopped</span>
+                <span className="text-lg font-bold text-text-muted">{stoppedCount}</span>
+              </div>
+            </div>
+            <button
+              onClick={fetchServices}
+              className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-3 py-1.5 transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <RefreshCw size={14} />
+              새로고침
+            </button>
           </div>
-          <button
-            onClick={fetchServices}
-            className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-3 py-1.5 transition-colors cursor-pointer"
-          >
-            새로고침
-          </button>
+        </div>
+
+        {/* 탭 */}
+        <div className="flex items-center gap-1 mb-6 bg-surface p-1 rounded-xl border border-border w-fit">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === tab.id
+                  ? "bg-primary text-white"
+                  : "text-text-muted hover:text-text hover:bg-surface-hover"
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {error && (
@@ -158,6 +212,10 @@ export function Dashboard({ username, onLogout }: Props) {
 
         {loading ? (
           <div className="text-center text-text-muted py-12">Loading...</div>
+        ) : sortedCards.length === 0 ? (
+          <div className="text-center text-text-muted py-12">
+            {activeTab === "services" ? "서비스가 없습니다" : activeTab === "tools" ? "도구가 없습니다" : "표시할 항목이 없습니다"}
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {sortedCards.map((card) => {
