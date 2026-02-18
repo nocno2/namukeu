@@ -48,6 +48,8 @@ class Database:
                 error TEXT,
                 FOREIGN KEY (reservation_id) REFERENCES reservations(id)
             );
+
+            CREATE INDEX IF NOT EXISTS idx_search_logs_reservation_id ON search_logs(reservation_id);
         """)
         self.conn.commit()
 
