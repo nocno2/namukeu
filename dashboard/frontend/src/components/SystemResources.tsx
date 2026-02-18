@@ -39,11 +39,19 @@ function CompactStat({ label, percent }: { label: string; percent: number }) {
 
 export function SystemResources({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
   const [data, setData] = useState<SystemResourcesData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
+    setError(null);
     try {
-      setData(await api.systemResources());
-    } catch { /* ignore */ }
+      const result = await api.systemResources();
+      setData(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -51,6 +59,34 @@ export function SystemResources({ collapsed, pinned, onToggleCollapse, onToggleP
     const interval = setInterval(fetchData, 10_000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  if (loading) {
+    return (
+      <div className="bg-surface border border-border rounded-2xl p-5 flex items-center justify-center min-h-[120px]">
+        <span className="text-sm text-text-muted">로딩 중...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-surface border border-danger/20 rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Server size={16} className="text-danger" />
+            <h3 className="font-semibold text-sm text-text">System</h3>
+          </div>
+          <button
+            onClick={fetchData}
+            className="text-xs text-primary hover:underline"
+          >
+            재시도
+          </button>
+        </div>
+        <div className="text-xs text-danger">{error}</div>
+      </div>
+    );
+  }
 
   if (!data) return null;
 
