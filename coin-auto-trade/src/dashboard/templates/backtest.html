@@ -43,6 +43,10 @@
                 <label>초기 자본 (KRW)</label>
                 <input type="number" name="initial_capital" value="1000000" required style="width:100%">
             </div>
+            <div class="form-group">
+                <label>파라미터 (JSON)</label>
+                <input type="text" name="params" placeholder='{"rsi_period": 10, "ma_period": 200}' style="width:100%">
+            </div>
             <div style="grid-column:span 3;">
                 <button type="button" class="btn btn-primary" onclick="runBacktest()">백테스트 실행</button>
             </div>
@@ -184,6 +188,14 @@
 async function runBacktest() {
     const form = document.getElementById('backtest-form');
     const formData = new FormData(form);
+    let params = {};
+    try {
+        const paramsStr = formData.get('params');
+        if (paramsStr) params = JSON.parse(paramsStr);
+    } catch(e) {
+        alert('파라미터 JSON 형식이 올바르지 않습니다.');
+        return;
+    }
     const data = {
         strategy_name: formData.get('strategy_name'),
         ticker: formData.get('ticker'),
@@ -191,7 +203,7 @@ async function runBacktest() {
         start_date: formData.get('start_date'),
         end_date: formData.get('end_date'),
         initial_capital: Number(formData.get('initial_capital')),
-        params: {}
+        params: params
     };
 
     const resultDiv = document.getElementById('backtest-result');
