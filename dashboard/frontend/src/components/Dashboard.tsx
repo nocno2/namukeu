@@ -1,16 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { LayoutGrid, RefreshCw, Server, Zap } from "lucide-react";
-import { api, type AgentTask, type CardPreference, type ServiceStatus } from "../lib/api";
-import { AgentControl } from "./AgentControl";
-import { AgentTasksPanel } from "./AgentTasksPanel";
+import { api, type CardPreference, type ServiceStatus } from "../lib/api";
+import { AutomationHub } from "./AutomationHub";
 import { BlogTraffic } from "./BlogTraffic";
 import { ClaudeUsage } from "./ClaudeUsage";
 import { CommitPanel } from "./CommitPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Header } from "./Header";
-import { LaunchAgents } from "./LaunchAgents";
 import { LogViewer } from "./LogViewer";
-import { ProjectGoals } from "./ProjectGoals";
 import { ServiceCard } from "./ServiceCard";
 import { SystemResources } from "./SystemResources";
 import { TrainStatus } from "./TrainStatus";
@@ -30,9 +27,7 @@ type CardItem =
   | { type: "system"; id: string }
   | { type: "blog"; id: string }
   | { type: "train"; id: string }
-  | { type: "launchagents"; id: string }
-  | { type: "agent"; id: string }
-  | { type: "goals"; id: string };
+  | { type: "automation"; id: string };
 
 export function Dashboard({ username, onLogout }: Props) {
   const [services, setServices] = useState<ServiceStatus[]>([]);
@@ -41,8 +36,6 @@ export function Dashboard({ username, onLogout }: Props) {
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [logService, setLogService] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<Record<string, CardPreference>>({});
-  const [showAgentTasks, setShowAgentTasks] = useState(false);
-  const [pendingApprovals, setPendingApprovals] = useState(0);
   const [activeTab, setActiveTab] = useState<TabType>("all");
 
   const fetchServices = useCallback(async () => {
@@ -64,21 +57,12 @@ export function Dashboard({ username, onLogout }: Props) {
     } catch { /* ignore */ }
   }, []);
 
-  const fetchPendingApprovals = useCallback(async () => {
-    try {
-      const tasks: AgentTask[] = await api.agentTasks(true);
-      setPendingApprovals(tasks.filter((t) => t.requires_approval).length);
-    } catch { /* ignore */ }
-  }, []);
-
   useEffect(() => {
     fetchServices();
     fetchPrefs();
-    fetchPendingApprovals();
     const interval = setInterval(fetchServices, POLL_INTERVAL);
-    const approvalInterval = setInterval(fetchPendingApprovals, POLL_INTERVAL);
-    return () => { clearInterval(interval); clearInterval(approvalInterval); };
-  }, [fetchServices, fetchPrefs, fetchPendingApprovals]);
+    return () => { clearInterval(interval); };
+  }, [fetchServices, fetchPrefs]);
 
   const isCollapsed = (cardId: string) => !!prefs[cardId]?.collapsed;
   const isPinned = (cardId: string) => !!prefs[cardId]?.pinned;
@@ -108,9 +92,7 @@ export function Dashboard({ username, onLogout }: Props) {
     { type: "train", id: "train-status" },
     { type: "blog", id: "blog-traffic" },
     { type: "claude", id: "claude-usage" },
-    { type: "agent", id: "agent-control" },
-    { type: "goals", id: "project-goals" },
-    { type: "launchagents", id: "launchagents" },
+    { type: "automation", id: "automation-hub" },
   ];
 
   // 탭별 필터링
@@ -226,18 +208,9 @@ export function Dashboard({ username, onLogout }: Props) {
                     <ServiceCard
                       service={card.service}
                       {...cardProps(card.id)}
-                      onClick={() => {
-                        if (card.id === "content-pipeline") {
-                          setShowAgentTasks(true);
-                        } else {
-                          setSelectedService(card.id);
-                        }
-                      }}
+                      onClick={() => setSelectedService(card.id)}
                       onRefresh={fetchServices}
                       onShowLogs={() => setLogService(card.id)}
-                      badge={card.id === "content-pipeline" && pendingApprovals > 0
-                        ? { count: pendingApprovals, label: "승인 대기" }
-                        : undefined}
                     />
                   );
                   break;
@@ -253,14 +226,8 @@ export function Dashboard({ username, onLogout }: Props) {
                 case "train":
                   content = <TrainStatus {...cardProps(card.id)} />;
                   break;
-                case "launchagents":
-                  content = <LaunchAgents {...cardProps(card.id)} />;
-                  break;
-                case "agent":
-                  content = <AgentControl {...cardProps(card.id)} />;
-                  break;
-                case "goals":
-                  content = <ProjectGoals {...cardProps(card.id)} />;
+                case "automation":
+                  content = <AutomationHub {...cardProps(card.id)} />;
                   break;
                 default:
                   content = null;
@@ -286,12 +253,6 @@ export function Dashboard({ username, onLogout }: Props) {
         <LogViewer
           serviceName={logService}
           onClose={() => setLogService(null)}
-        />
-      )}
-
-      {showAgentTasks && (
-        <AgentTasksPanel
-          onClose={() => { setShowAgentTasks(false); fetchPendingApprovals(); }}
         />
       )}
     </div>
