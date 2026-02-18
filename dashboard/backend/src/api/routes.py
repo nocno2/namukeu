@@ -1028,3 +1028,81 @@ async def agent_cancel_task(task_id: str, _=Depends(verify_session)):
             return r.json()
         except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+# --- n8n Status ---
+
+N8N_BASE_URL = "http://127.0.0.1:5678"
+N8N_API_KEY = os.environ.get("N8N_API_KEY", "")
+
+
+def _get_n8n_headers() -> dict:
+    headers = {"Content-Type": "application/json"}
+    if N8N_API_KEY:
+        headers["X-N8N-API-KEY"] = N8N_API_KEY
+    return headers
+
+
+@router.get("/n8n/status")
+async def n8n_status(_=Depends(verify_session)):
+    """n8n 상태 및 실행 통계 조회"""
+    async with httpx.AsyncClient() as client:
+        # 1. Health check
+        health_status = "down"
+        try:
+            resp = await client.get(f"{N8N_BASE_URL}/health", timeout=5.0)
+            if resp.status_code == 200:
+                health_status = "running"
+        except (httpx.ConnectError, httpx.TimeoutException):
+            health_status = "down"
+
+        if health_status == "down":
+            return {"status": "down", "active_workflows": 0, "today_executions": 0, "last_execution": None}
+
+        # 2. Get active workflows count
+        active_workflows = 0
+        try:
+            resp = await client.get(f"{N8N_BASE_URL}/rest/workflows", headers=_get_n8n_headers(), timeout=5.0)
+            if resp.status_code == 200:
+                workflows = resp.json()
+                active_workflows = sum(1 for w in workflows if w.get("active", False))
+        except Exception:
+            pass
+
+        # 3. Get today's executions
+        today = datetime.now().strftime("%Y-%m-%d")
+        today_executions = 0
+        success_count = 0
+        fail_count = 0
+        last_execution = None
+        try:
+            resp = await client.get(
+                f"{N8N_BASE_URL}/rest/executions",
+                params={"limit": 100, "include": "data"},
+                headers=_get_n8n_headers(),
+                timeout=5.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                for exec in data.get("data", []):
+                    started = exec.get("startedAt", "")
+                    if started.startswith(today):
+                        today_executions += 1
+                        status = exec.get("status", "")
+                        if status == "success":
+                            success_count += 1
+                        elif status == "error":
+                            fail_count += 1
+                        if not last_execution:
+                            last_execution = started
+        except Exception:
+            pass
+
+        return {
+            "status": health_status,
+            "active_workflows": active_workflows,
+            "today_executions": today_executions,
+            "success_count": success_count,
+            "fail_count": fail_count,
+            "last_execution": last_execution,
+        }

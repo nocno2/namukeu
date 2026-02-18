@@ -133,6 +133,15 @@ class Config:
                 git_codename="PIPE",
                 error_log_path=f"{log_base}/content-pipeline.error.log",
             ),
+            ServiceDef(
+                name="n8n",
+                display_name="n8n",
+                description="오토메이션 워크플로우 (Docker)",
+                type="http",
+                port=5678,
+                health_url="http://127.0.0.1:5678/health",
+                dashboard_url="http://127.0.0.1:5678",
+            ),
         ]
 
         return cls(

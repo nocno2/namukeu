@@ -206,6 +206,10 @@ export const api = {
       `/api/services/${name}/incidents?days=${days}`,
     );
   },
+
+  n8nStatus() {
+    return request<N8nStatus>("/api/n8n/status");
+  },
 };
 
 export interface ServiceStatus {
@@ -375,4 +379,13 @@ export interface AgentGoal {
   source?: "user" | "evolution";
   created_at: string;
   updated_at: string;
+}
+
+export interface N8nStatus {
+  status: "running" | "down";
+  active_workflows: number;
+  today_executions: number;
+  success_count: number;
+  fail_count: number;
+  last_execution: string | null;
 }

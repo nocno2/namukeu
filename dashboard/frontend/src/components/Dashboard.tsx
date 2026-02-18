@@ -8,6 +8,7 @@ import { CommitPanel } from "./CommitPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Header } from "./Header";
 import { LogViewer } from "./LogViewer";
+import { N8nStatus } from "./N8nStatus";
 import { ServiceCard } from "./ServiceCard";
 import { SystemResources } from "./SystemResources";
 import { TrainStatus } from "./TrainStatus";
@@ -27,7 +28,8 @@ type CardItem =
   | { type: "system"; id: string }
   | { type: "blog"; id: string }
   | { type: "train"; id: string }
-  | { type: "automation"; id: string };
+  | { type: "automation"; id: string }
+  | { type: "n8n"; id: string };
 
 export function Dashboard({ username, onLogout }: Props) {
   const [services, setServices] = useState<ServiceStatus[]>([]);
@@ -92,6 +94,7 @@ export function Dashboard({ username, onLogout }: Props) {
     { type: "train", id: "train-status" },
     { type: "blog", id: "blog-traffic" },
     { type: "claude", id: "claude-usage" },
+    { type: "n8n", id: "n8n-status" },
     { type: "automation", id: "automation-hub" },
   ];
 
@@ -219,6 +222,9 @@ export function Dashboard({ username, onLogout }: Props) {
                   break;
                 case "train":
                   content = <TrainStatus {...cardProps(card.id)} />;
+                  break;
+                case "n8n":
+                  content = <N8nStatus {...cardProps(card.id)} />;
                   break;
                 case "automation":
                   content = <AutomationHub {...cardProps(card.id)} />;
