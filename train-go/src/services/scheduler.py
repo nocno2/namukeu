@@ -97,9 +97,16 @@ class ReservationScheduler:
 
     async def restore_pending(self):
         """서버 재시작 시 pending/searching 상태 예약 복원"""
+        pending_reservations = []
         for status in ("pending", "searching"):
             for res in self.db.get_reservations(status=status):
-                self.start_search(res["id"])
+                pending_reservations.append(res["id"])
+
+        # 각 예약에 랜덤 대기로 분산 시작 (봇 패턴 탐지 회피)
+        for rid in pending_reservations:
+            delay = random.uniform(self.STARTUP_DELAY_MIN, self.STARTUP_DELAY_MAX)
+            await asyncio.sleep(delay)
+            self.start_search(rid)
 
     async def _search_loop(self, reservation_id: int):
         reservation = self.db.get_reservation(reservation_id)
