@@ -10,6 +10,12 @@ import {
   getMemoryDetail,
   clearMemory,
 } from "./memory";
+import {
+  getRevenueStatus,
+  setMonthlyTarget,
+  addRevenue,
+  getRevenueHistory,
+} from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
 import {
@@ -258,6 +264,11 @@ export async function createBot(): Promise<Bot> {
         "/forget — Clear all memories\n" +
         "/history — Recent conversation history\n" +
         "/search <query> — Search past messages\n\n" +
+        "Revenue Tracking:\n" +
+        "/revenue — Show revenue status\n" +
+        "/revenue set <amount> — Set monthly target\n" +
+        "/revenue add <amount> <source> — Add revenue\n" +
+        "/revenue history — Show history\n\n" +
         "Agent Commands:\n" +
         "/tasks — View autonomous tasks\n" +
         "/cancel <id> — Cancel a task\n" +
@@ -428,6 +439,58 @@ export async function createBot(): Promise<Bot> {
       await sendResponse(ctx, lines.join("\n"));
     } catch (err) {
       await ctx.reply(`Failed to fetch forbidden rules: ${err}`);
+    }
+  });
+
+  // Revenue tracking
+  bot.command("revenue", async (ctx) => {
+    const args = ctx.match?.trim() || "";
+    const parts = args.split(" ");
+    const subcommand = parts[0].toLowerCase();
+
+    try {
+      if (!subcommand || subcommand === "status") {
+        // Show current revenue status
+        const status = await getRevenueStatus();
+        await sendResponse(ctx, status);
+      } else if (subcommand === "set") {
+        // /revenue set 50000 - set monthly target
+        const amount = parseInt(parts[1]?.replace(/[^0-9]/g, "") || "0", 10);
+        if (!amount || amount <= 0) {
+          await ctx.reply("사용법: /revenue set <금액>\n예: /revenue set 50000");
+          return;
+        }
+        const msg = await setMonthlyTarget(amount);
+        await ctx.reply(msg);
+      } else if (subcommand === "add") {
+        // /revenue add 10000 adsense - add revenue
+        const amount = parseInt(parts[1]?.replace(/[^0-9]/g, "") || "0", 10);
+        const source = parts.slice(2).join(" ") || "manual";
+        if (!amount || amount <= 0) {
+          await ctx.reply("사용법: /revenue add <금액> <출처>\n예: /revenue add 10000 adsense");
+          return;
+        }
+        const msg = await addRevenue(amount, source);
+        await ctx.reply(msg);
+      } else if (subcommand === "history") {
+        // /revenue history - show history
+        const months = parseInt(parts[1] || "6", 10);
+        const history = await getRevenueHistory(months);
+        await sendResponse(ctx, history);
+      } else if (subcommand === "help") {
+        await ctx.reply(
+          "수익 추적 명령어:\n\n" +
+            "/revenue — 현재 상태 확인\n" +
+            "/revenue set 50000 — 월 목표 설정\n" +
+            "/revenue add 10000 adsense — 수익 추가\n" +
+            "/revenue history — 월별 이력 확인\n" +
+            "/revenue help — 도움말"
+        );
+      } else {
+        await ctx.reply("알 수 없는 명령어입니다. /revenue help 를 입력하세요.");
+      }
+    } catch (err) {
+      await ctx.reply(`오류: ${err}`);
     }
   });
 
