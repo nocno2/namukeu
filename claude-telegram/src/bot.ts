@@ -482,10 +482,13 @@ export async function createBot(): Promise<Bot> {
         const msg = await addRevenue(amount, source);
         await ctx.reply(msg);
       } else if (subcommand === "history") {
-        // /revenue history - show history
         const months = parseInt(parts[1] || "6", 10);
         const history = await getRevenueHistory(months);
         await sendResponse(ctx, history);
+      } else if (subcommand === "profit") {
+        const months = parseInt(parts[1] || "6", 10);
+        const summary = await getProfitSummary(months);
+        await sendResponse(ctx, summary);
       } else if (subcommand === "help") {
         await ctx.reply(
           "수익 추적 명령어:\n\n" +
@@ -493,6 +496,7 @@ export async function createBot(): Promise<Bot> {
             "/revenue set 50000 — 월 목표 설정\n" +
             "/revenue add 10000 adsense — 수익 추가\n" +
             "/revenue history — 월별 이력 확인\n" +
+            "/revenue profit — 손익 요약\n" +
             "/revenue help — 도움말"
         );
       } else {
