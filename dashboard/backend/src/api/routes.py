@@ -1062,12 +1062,17 @@ async def n8n_status(_=Depends(verify_session)):
         # 2. Get active workflows count
         active_workflows = 0
         try:
-            resp = await client.get(f"{N8N_BASE_URL}/api/v1/workflows", headers=_get_n8n_headers(), timeout=5.0)
+            resp = await client.get(
+                f"{N8N_BASE_URL}/api/v1/workflows",
+                params={"active": "true", "limit": 100},
+                headers=_get_n8n_headers(),
+                timeout=5.0,
+            )
             if resp.status_code == 200:
                 data = resp.json()
-                # n8n v1.x returns {"data": [...]}, older versions return [...]
-                workflows = data.get("data", data) if isinstance(data, dict) else data
-                active_workflows = sum(1 for w in workflows if w.get("active", False))
+                # n8n v1.x returns {"data": [...]}
+                workflows = data.get("data", [])
+                active_workflows = len(workflows)
         except Exception:
             pass
 
@@ -1080,7 +1085,7 @@ async def n8n_status(_=Depends(verify_session)):
         try:
             resp = await client.get(
                 f"{N8N_BASE_URL}/api/v1/executions",
-                params={"limit": 100, "include": "data"},
+                params={"limit": 100},
                 headers=_get_n8n_headers(),
                 timeout=5.0,
             )
