@@ -43,6 +43,7 @@ class Config:
         coin_token = os.environ.get("COIN_AUTO_TRADE_TOKEN", "")
         train_url = os.environ.get("TRAIN_GO_URL", "http://127.0.0.1:8000")
         train_token = os.environ.get("TRAIN_GO_TOKEN", "")
+        tgbot_token = os.environ.get("TGBOT_API_TOKEN", "agent-api-token")
 
         log_base = "/Users/namwook/Library/Logs"
 
@@ -81,6 +82,8 @@ class Config:
                 display_name="Claude Telegram",
                 description="Telegram 릴레이 봇",
                 type="process",
+                port=8081,
+                status_token=tgbot_token,
                 launchd_label="com.namukeu.claude-telegram",
                 git_dir=project_root,
                 git_codename="TGBOT",

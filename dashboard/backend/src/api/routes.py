@@ -8,17 +8,24 @@ from pathlib import Path
 
 import httpx
 import psutil
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from src.api.auth import verify_session
+from src.api import proxy as proxy_module
 from src.core.config import Config
 from src.core.database import Database
 from src.services.health_checker import check_all_services
 
 logger = logging.getLogger(__name__)
 
+# Note: proxy routes are handled separately in main.py
 router = APIRouter(prefix="/api")
+
+# Include proxy routes directly to ensure they take priority
+# proxy.router has prefix="/api/proxy", so it will be /api/proxy/...
+router.include_router(proxy_module.router)
 
 
 def get_config() -> Config:
@@ -1172,3 +1179,7 @@ async def n8n_status(_=Depends(verify_session)):
             "fail_count": fail_count,
             "last_execution": last_execution,
         }
+
+
+# Note: SPA fallback is handled separately in main.py
+# Note: SPA fallback is handled in main.py

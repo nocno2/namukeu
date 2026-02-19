@@ -4,8 +4,8 @@ from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, Request, HTTPException, APIRouter
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api import auth, proxy, routes
@@ -58,8 +58,7 @@ def create_app(config: Config | None = None) -> FastAPI:
 
     # API routes
     app.include_router(auth.router)
-    app.include_router(routes.router)
-    app.include_router(proxy.router)
+    app.include_router(routes.router)  # proxy routes are included in routes.router
 
     # Health check (no auth)
     @app.get("/health")
@@ -70,13 +69,13 @@ def create_app(config: Config | None = None) -> FastAPI:
     if FRONTEND_DIR.exists():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
 
-        @app.get("/{path:path}")
+        # SPA fallback - must be last route
+        @app.get("/{path:path}", include_in_schema=False)
         async def spa_fallback(request: Request, path: str):
-            # Serve actual files if they exist
-            file_path = FRONTEND_DIR / path
-            if file_path.is_file():
-                return FileResponse(file_path)
-            # SPA fallback: return index.html
+            # API routes should be handled by API routers, not here
+            if path.startswith("api"):
+                raise HTTPException(status_code=404, detail="Not Found")
+            # Serve frontend
             return FileResponse(FRONTEND_DIR / "index.html")
 
     return app
