@@ -11,7 +11,7 @@ import { readFile, writeFile, unlink } from "fs/promises";
 import { spawn } from "child_process";
 import { join } from "path";
 import { callClaude } from "./claude";
-import { SessionTracker, getExpiringSessions, getDaysSinceLastActivity } from "./session";
+import { SessionTracker, getExpiringSessions, getSessionsNeedingWarning, getDaysSinceLastActivity } from "./session";
 import {
   processMemoryTags,
   getMemoryContext,
@@ -372,24 +372,36 @@ export async function createBot(): Promise<Client> {
     const SESSION_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
     setInterval(async () => {
-      const expiringSessions = getExpiringSessions(sessions.sessions);
-      if (expiringSessions.length > 0) {
-        console.log(`[session] Found ${expiringSessions.length} expiring session(s)`);
-        for (const session of expiringSessions) {
+      // Check for sessions needing warning (5+ days) or expiring (7+ days)
+      const warningSessions = getSessionsNeedingWarning(sessions.sessions);
+      if (warningSessions.length > 0) {
+        console.log(`[session] Found ${warningSessions.length} session(s) needing attention`);
+        for (const session of warningSessions) {
           const days = getDaysSinceLastActivity(session);
           if (days === null) continue;
           const channel = await client.channels.fetch(session.channelId);
           if (channel && channel.isTextBased()) {
             const textChannel = channel as TextBasedChannel;
-            const warningMsg = days >= 7
-              ? `⚠️ **세션 만료 경고**\n` +
+            let warningMsg: string;
+            if (days >= 7) {
+              // Session expired - urgent warning
+              warningMsg = `⚠️ **세션 만료!**\n` +
                 `이 채널의 세션이 ${days}일 동안 활동이 없습니다.\n` +
-                `Claude CLI 세션이 만료되면 대화가 초기화됩니다.\n` +
-                `계속하려면 \`/reset\` 명령어로 새 세션을 시작하세요.`
-              : `⏰ **세션 만료 임박**\n` +
+                `Claude CLI 세션이 만료되어 대화가 초기화됩니다.\n` +
+                `새 대화를 시작하려면 \`/reset\` 명령어를 사용하세요.`;
+            } else if (days >= 6) {
+              // 6 days - final warning
+              warningMsg = `🔴 **세션 만료 경고**\n` +
                 `이 채널의 세션이 ${days}일 동안 활동이 없습니다.\n` +
                 `곧 7일 limite에 도달하면 세션이 만료됩니다.\n` +
                 `계속하려면 \`/reset\` 명령어로 새 세션을 시작하세요.`;
+            } else {
+              // 5 days - initial warning
+              warningMsg = `⏰ **세션 만료 사전 경고**\n` +
+                `이 채널의 세션이 ${days}일 동안 활동이 없습니다.\n` +
+                `7일 이상 활동이 없으면 세션이 만료됩니다.\n` +
+                `계속하려면 \`/reset\` 명령어로 새 세션을 시작하세요.`;
+            }
             await sendResponse(textChannel, warningMsg).catch(() => {});
           }
         }
@@ -770,14 +782,15 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === "AbortError";
     const isNetworkError = err instanceof TypeError && err.message.includes("fetch");
+    const stack = err instanceof Error ? err.stack : "";
     if (isTimeout) {
-      const errorMsg = `[gate] Timeout | ${GATE_TIMEOUT_MS}ms | path: ${path}`;
+      const errorMsg = `[gate] Timeout | ${GATE_TIMEOUT_MS}ms | path: ${path}\nStack: ${stack}`;
       console.error(errorMsg);
       await logGateError(errorMsg);
       throw new Error(`Gateway API timeout after ${GATE_TIMEOUT_MS}ms: ${path}`);
     }
     if (isNetworkError) {
-      const errorMsg = `[gate] Network Error | path: ${path} | error: ${err}`;
+      const errorMsg = `[gate] Network Error | path: ${path} | error: ${err}\nStack: ${stack}`;
       console.error(errorMsg);
       await logGateError(errorMsg);
       throw new Error(`Gateway API network error: ${err}`);
