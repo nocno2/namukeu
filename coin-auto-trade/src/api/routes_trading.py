@@ -172,40 +172,67 @@ def get_readiness_check(
     min_win_rate: float = 50.0,
     max_drawdown: float = 10.0,
     min_return: float = 0.0,
+    min_trades: int = 10,
     _=Depends(verify),
     db: Database = Depends(get_db),
 ):
-    """Check if paper trading meets criteria for live trading transition."""
+    """Check if paper trading meets criteria for live trading transition.
+
+    Uses same logic as TransitionChecker to accurately determine readiness.
+    """
     # Get paper trading P&L
     paper_stats = db.get_paper_trading_pnl()
 
-    # Get best backtest result
-    best_backtest = db.get_backtest_results(limit=1)
-    backtest_ready = False
-    if best_backtest:
-        bt = best_backtest[0]
-        backtest_ready = (
-            bt["total_return_pct"] > min_return and
-            bt["win_rate"] >= min_win_rate and
-            bt["max_drawdown_pct"] <= max_drawdown
-        )
+    # Check backtest results that meet ALL criteria (same as TransitionChecker)
+    query = """
+        SELECT strategy_name, ticker, total_return_pct, win_rate, max_drawdown_pct, total_trades
+        FROM backtest_results
+        WHERE total_return_pct > ?
+          AND win_rate >= ?
+          AND max_drawdown_pct <= ?
+          AND total_trades >= ?
+        ORDER BY total_return_pct DESC
+        LIMIT 1
+    """
+    row = db.conn.execute(query, [min_return, min_win_rate, max_drawdown, min_trades]).fetchone()
+
+    backtest_ready = row is not None
+    best_backtest = None
+    if row:
+        best_backtest = {
+            "strategy_name": row["strategy_name"],
+            "ticker": row["ticker"],
+            "total_return_pct": row["total_return_pct"],
+            "win_rate": row["win_rate"],
+            "max_drawdown_pct": row["max_drawdown_pct"],
+            "total_trades": row["total_trades"],
+        }
+
+    # Get total backtest stats
+    all_backtest = db.conn.execute("""
+        SELECT COUNT(*) as total,
+               SUM(CASE WHEN total_return_pct > 0 THEN 1 ELSE 0 END) as profitable
+        FROM backtest_results
+    """).fetchone()
 
     # Check current mode
     is_paper = runtime.config.dry_run if runtime.config else True
+
+    paper_ready = paper_stats["completed_trades"] >= min_trades and paper_stats["win_rate"] >= min_win_rate
 
     return {
         "paper_trading": {
             "win_rate": paper_stats["win_rate"],
             "total_pnl_pct": paper_stats["total_pnl_pct"],
             "completed_trades": paper_stats["completed_trades"],
-            "ready": paper_stats["completed_trades"] >= 10 and paper_stats["win_rate"] >= min_win_rate,
+            "ready": paper_ready,
         },
         "backtest": {
-            "best_return_pct": best_backtest[0]["total_return_pct"] if best_backtest else 0,
-            "best_win_rate": best_backtest[0]["win_rate"] if best_backtest else 0,
-            "best_max_drawdown": best_backtest[0]["max_drawdown_pct"] if best_backtest else 0,
+            "total": all_backtest["total"] or 0,
+            "profitable": all_backtest["profitable"] or 0,
+            "best_result": best_backtest,
             "ready": backtest_ready,
         },
         "current_mode": "paper" if is_paper else "live",
-        "transition_ready": backtest_ready and paper_stats["completed_trades"] >= 10,
+        "transition_ready": backtest_ready and paper_ready,
     }
