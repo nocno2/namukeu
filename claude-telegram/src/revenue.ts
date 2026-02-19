@@ -712,3 +712,72 @@ export async function getRevenueStatusAll(): Promise<string> {
 
   return lines.join("\n");
 }
+
+// Check for goal alerts - returns alert message if action needed
+export interface GoalAlert {
+  needsAttention: boolean;
+  message: string;
+}
+
+export async function checkGoalAlerts(): Promise<GoalAlert> {
+  const data = await loadRevenue();
+
+  if (data.monthlyTarget <= 0) {
+    return { needsAttention: false, message: "" };
+  }
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const monthRecords = data.records.filter((r) => r.date.startsWith(currentMonth));
+  const monthCosts = data.costs.filter((c) => c.date.startsWith(currentMonth));
+
+  const currentRevenue = monthRecords.reduce((sum, r) => sum + r.amount, 0);
+  const currentCost = monthCosts.reduce((sum, c) => sum + c.amount, 0);
+  const netIncome = currentRevenue - currentCost;
+
+  const today = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const remainingDays = daysInMonth - today;
+
+  // Calculate moving average for projection
+  const dailyRevenueValues = data.records.map((r) => r.amount);
+  const ma7Revenue = calculateMovingAverage(dailyRevenueValues, 7);
+  const projectedRevenue = Math.round(ma7Revenue * daysInMonth);
+  const projectedProfit = projectedRevenue - currentCost;
+
+  const lines: string[] = [];
+  const target = data.monthlyTarget;
+
+  // Calculate required daily average
+  const needed = target - netIncome;
+  const dailyNeeded = remainingDays > 0 ? Math.ceil(needed / remainingDays) : needed;
+
+  // Check various alert conditions
+  if (projectedProfit < target * 0.5) {
+    // Critical: less than 50% of target projected
+    lines.push("🚨 경고: 월 목표의 50% 미만 달성 예상");
+    lines.push(`  현재: ₩${netIncome.toLocaleString()} (${Math.round((netIncome / target) * 100)}%)`);
+    lines.push(`  예측: ₩${projectedProfit.toLocaleString()} (${Math.round((projectedProfit / target) * 100)}%)`);
+    lines.push(`  ⚠️ 남은 ${remainingDays}일에 하루 ₩${dailyNeeded.toLocaleString()}씩 필요 (불가능에 가까움)`);
+  } else if (projectedProfit < target) {
+    // Warning: target not projected to be met
+    lines.push("⚠️ 주의: 월 목표 미달성 예상");
+    lines.push(`  현재: ₩${netIncome.toLocaleString()} (${Math.round((netIncome / target) * 100)}%)`);
+    lines.push(`  예측: ₩${projectedProfit.toLocaleString()} (${Math.round((projectedProfit / target) * 100)}%)`);
+    lines.push(`  💡 남은 ${remainingDays}일에 하루 ₩${dailyNeeded.toLocaleString()}씩 필요`);
+  } else if (netIncome >= target) {
+    // Goal achieved!
+    lines.push("🎉 월 목표 달성!");
+    lines.push(`  현재: ₩${netIncome.toLocaleString()} (${Math.round((netIncome / target) * 100)}%)`);
+  } else {
+    // On track
+    lines.push("✅ 계획대로 진행 중");
+    lines.push(`  현재: ₩${netIncome.toLocaleString()} (${Math.round((netIncome / target) * 100)}%)`);
+    lines.push(`  예측: ₩${projectedProfit.toLocaleString()} (${Math.round((projectedProfit / target) * 100)}%)`);
+  }
+
+  return {
+    needsAttention: projectedProfit < target && netIncome < target,
+    message: lines.join("\n"),
+  };
+}

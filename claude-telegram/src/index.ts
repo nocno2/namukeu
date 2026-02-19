@@ -4,7 +4,7 @@ import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { killActiveChild } from "./claude";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
-import { getRevenueStatus } from "./revenue";
+import { getRevenueStatus, checkGoalAlerts } from "./revenue";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -69,8 +69,24 @@ async function main(): Promise<void> {
   console.log("Claude Telegram Relay v2 starting...");
   console.log("Agent system delegated to content-pipeline (port 8003)");
   bot.start({
-    onStart: () => {
+    onStart: async () => {
       console.log("Bot is running. Waiting for messages...");
+
+      // Check goal alerts on startup (delayed to ensure bot is ready)
+      setTimeout(async () => {
+        try {
+          const alert = await checkGoalAlerts();
+          if (alert.needsAttention) {
+            // Send alert to user (use the configured user ID)
+            const userId = parseInt(process.env.TELEGRAM_USER_ID!, 10);
+            await bot.api.sendMessage(userId, `📢 수익 알림:\n\n${alert.message}`);
+            console.log("[alert] Goal alert sent to user");
+          }
+        } catch (err) {
+          console.error("[alert] Failed to check goal alerts:", err);
+        }
+      }, 3000); // Wait 3 seconds for bot to fully initialize
+
       // Heartbeat is now managed by content-pipeline
     },
   });

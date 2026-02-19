@@ -23,6 +23,7 @@ import {
   getRevenueBySource,
   syncAllRevenue,
   getRevenueStatusAll,
+  checkGoalAlerts,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -501,6 +502,10 @@ export async function createBot(): Promise<Bot> {
         const months = parseInt(parts[1] || "12", 10);
         const sources = await getRevenueBySource(months);
         await sendResponse(ctx, sources);
+      } else if (subcommand === "alert") {
+        // /revenue alert - check goal alerts
+        const alert = await checkGoalAlerts();
+        await sendResponse(ctx, alert.message);
       } else if (subcommand === "sync") {
         // /revenue sync - sync from COIN and BLOG
         await ctx.reply("수익 동기화 중...");
@@ -522,6 +527,7 @@ export async function createBot(): Promise<Bot> {
             "/revenue profit — 손익 요약\n" +
             "/revenue forecast — 월말 예측\n" +
             "/revenue sources — 수익 원별 분석\n" +
+            "/revenue alert — 목표 달성 경고 확인\n" +
             "/revenue help — 도움말"
         );
       } else {
