@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronUp,
   CloudOff,
+  Download,
   FileText,
   Gauge,
   Link,
@@ -72,7 +73,23 @@ const STATUS_COLORS: Record<string, string> = {
   no_data: "bg-text-muted/20",
 };
 
-function UptimeBar({ blocks, uptimePercent }: { blocks: UptimeBlock[]; uptimePercent: number | null }) {
+function UptimeBar({ blocks, uptimePercent, serviceName }: { blocks: UptimeBlock[]; uptimePercent: number | null; serviceName: string }) {
+  const handleExport = () => {
+    const data = {
+      service: serviceName,
+      exported_at: new Date().toISOString(),
+      uptime_blocks: blocks,
+      uptime_percent: uptimePercent,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${serviceName}-uptime-${new Date().toISOString().split("T")[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="mt-3 border-t border-border pt-3">
       <div className="flex items-center justify-between mb-1.5">
@@ -80,11 +97,20 @@ function UptimeBar({ blocks, uptimePercent }: { blocks: UptimeBlock[]; uptimePer
           <Gauge size={10} />
           24h 업타임
         </span>
-        {uptimePercent !== null && (
-          <span className={`text-[10px] font-mono font-medium ${uptimePercent >= 99 ? "text-success" : uptimePercent >= 90 ? "text-warning" : "text-danger"}`}>
-            {uptimePercent}%
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="text-[10px] text-text-muted/50 hover:text-primary flex items-center gap-1 transition-colors"
+            title="업타임 내보내기"
+          >
+            <Download size={10} />
+          </button>
+          {uptimePercent !== null && (
+            <span className={`text-[10px] font-mono font-medium ${uptimePercent >= 99 ? "text-success" : uptimePercent >= 90 ? "text-warning" : "text-danger"}`}>
+              {uptimePercent}%
+            </span>
+          )}
+        </div>
       </div>
       <div className="flex gap-[1px] h-2 rounded-full overflow-hidden bg-border/30">
         {blocks.map((block, i) => (
@@ -112,13 +138,39 @@ function formatDuration(sec: number | null): string {
   return m > 0 ? `${h}시간 ${m}분` : `${h}시간`;
 }
 
-function IncidentList({ incidents }: { incidents: Incident[] }) {
+function IncidentList({ incidents, serviceName }: { incidents: Incident[]; serviceName: string }) {
+  const handleExport = () => {
+    const data = {
+      service: serviceName,
+      exported_at: new Date().toISOString(),
+      incidents: incidents,
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${serviceName}-incidents-${new Date().toISOString().split("T")[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="mt-3 border-t border-border pt-3">
-      <span className="text-[10px] text-text-muted mb-1.5 block flex items-center gap-1">
-        <Activity size={10} />
-        최근 인시던트
-      </span>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] text-text-muted flex items-center gap-1">
+          <Activity size={10} />
+          최근 인시던트
+        </span>
+        {incidents.length > 0 && (
+          <button
+            onClick={handleExport}
+            className="text-[10px] text-text-muted/50 hover:text-primary flex items-center gap-1 transition-colors"
+            title="인시던트 내보내기"
+          >
+            <Download size={10} />
+          </button>
+        )}
+      </div>
       <div className="space-y-1.5">
         {incidents.map((inc) => (
           <div key={inc.id} className="flex items-center justify-between text-[11px]">
@@ -292,12 +344,12 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
 
           {/* Uptime Bar */}
           {uptimeBlocks.length > 0 && (
-            <UptimeBar blocks={uptimeBlocks} uptimePercent={uptimePercent} />
+            <UptimeBar blocks={uptimeBlocks} uptimePercent={uptimePercent} serviceName={service.name} />
           )}
 
           {/* Recent Incidents */}
           {incidents.length > 0 && (
-            <IncidentList incidents={incidents} />
+            <IncidentList incidents={incidents} serviceName={service.name} />
           )}
 
           {/* Actions */}
