@@ -3,10 +3,11 @@ interface PostContentProps {
   showInArticleAd?: boolean;
 }
 
-// 인아티클 광고 슬롯 ID (환경변수에서 가져오거나 기본값 사용)
+// 인아티클 광고 슬롯 ID (환경변수에서 가져오기, 없으면 빈 문자열 반환)
 const getInArticleAdSlot = (index: number): string => {
-  const envVar = `NEXT_PUBLIC_AD_SLOT_IN_ARTICLE_${index}`;
-  return process.env[envVar] || `in-article-${index}`;
+  const baseSlot = process.env.NEXT_PUBLIC_AD_SLOT_IN_ARTICLE_BASE;
+  if (!baseSlot) return "";
+  return `${baseSlot}-${index}`;
 };
 
 // 콘텐츠 길이에 비례하여 인아티클 광고를 분산 삽입 (최대 3개)
@@ -18,7 +19,9 @@ export default function PostContent({ html, showInArticleAd = false }: PostConte
   const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
 
   const insertInArticleAds = (content: string): string => {
-    if (!showInArticleAd || !adsenseId) return content;
+    // 인아티클 광고 슬롯이 없으면广告插入 안 함
+    const inArticleSlot = getInArticleAdSlot(1);
+    if (!showInArticleAd || !adsenseId || !inArticleSlot) return content;
 
     const textLength = content.replace(/<[^>]*>/g, "").length;
     if (textLength < MIN_CHARS_FOR_AD) return content;
