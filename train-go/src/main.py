@@ -7,12 +7,14 @@ from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from src.api.routes import router, get_db, get_crypto, get_scheduler, get_token
 from src.core.config import Config
 from src.core.crypto import CryptoManager
 from src.core.database import Database
+from src.core.errors import TrainAPIError
 from src.services.notifier import CompositeNotifier, DiscordNotifier, EmailNotifier, TelegramNotifier
 from src.services.scheduler import ReservationScheduler
 
@@ -104,6 +106,23 @@ def create_app() -> FastAPI:
     app = FastAPI(title="train-go", version="0.1.0", lifespan=lifespan)
     app.state.config = config
     app.include_router(router)
+
+    # 에러 핸들러 등록
+    @app.exception_handler(TrainAPIError)
+    async def train_api_error_handler(request: Request, exc: TrainAPIError):
+        """TrainAPIError를 클라이언트에 friendly하게 반환.
+
+        에러 코드와 recoverable 정보를 포함하여 클라이언트가 에러 상황에 대응할 수 있도록 함.
+        """
+        return JSONResponse(
+            status_code=400 if exc.recoverable else 500,
+            content={
+                "error": exc.code or "UNKNOWN",
+                "message": str(exc),
+                "recoverable": exc.recoverable,
+            },
+        )
+
     return app
 
 

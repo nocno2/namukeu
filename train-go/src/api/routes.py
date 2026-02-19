@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.core.crypto import CryptoManager
 from src.core.database import Database
+from src.core.errors import TrainAPIError
 from src.models.credential import CredentialCreate, CredentialResponse
 from src.models.reservation import ReservationCreate, ReservationResponse, SearchStats
 from src.services.scheduler import ReservationScheduler
