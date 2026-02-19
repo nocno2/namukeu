@@ -105,13 +105,22 @@ class TransitionChecker:
         return win_rate > self.MIN_PAPER_WIN_RATE, stats
 
     def _check_drawdown(self) -> tuple[bool, float]:
-        """최대낙폭 < 10% 검증."""
-        # performance_snapshots에서 최대 낙폭 계산 (0 equity 제외)
+        """최대낙폭 < 10% 검증.
+
+        - 최근 24시간 데이터만 사용 (이전 잘못된 데이터 제외)
+        - equity >= 1000 (최소 trading capital) 이상인 스냅샷만 사용
+        - 이는 여러 거래소 데이터가 섞여 있는 경우를 처리
+        """
+        from datetime import datetime, timedelta
+
+        cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
+
+        # 최근 24시간, equity >= 1000 (10만원相当) 이상
         rows = self.db.conn.execute("""
             SELECT total_equity FROM performance_snapshots
-            WHERE total_equity > 0
+            WHERE timestamp >= ? AND total_equity >= 1000
             ORDER BY timestamp ASC
-        """).fetchall()
+        """, (cutoff,)).fetchall()
 
         if not rows:
             # 유효한 스냅샷이 없으면 기본값 (추정)

@@ -11,11 +11,14 @@ logger = logging.getLogger(__name__)
 
 
 class UpbitExchange:
-    def __init__(self, access_key: str, secret_key: str, dry_run: bool = True):
+    def __init__(self, access_key: str, secret_key: str, dry_run: bool = True,
+                 initial_balance: float = 10_000_000):
         self._upbit = pyupbit.Upbit(access_key, secret_key)
         self._dry_run = dry_run
         self._last_call_time: float = 0
         self._min_interval = 0.125  # 8 calls/sec for orders
+        # Dry-run balance: fixed initial capital for paper trading simulation
+        self._dry_balance = initial_balance
 
     @property
     def name(self) -> str:
@@ -88,6 +91,9 @@ class UpbitExchange:
     # --- Exchange (authenticated) ---
 
     async def get_balance(self, ticker: str | None = None) -> float | None:
+        # In dry_run mode, return simulated balance
+        if self._dry_run:
+            return self._dry_balance
         try:
             await self._rate_limit()
             return await asyncio.to_thread(self._upbit.get_balance, ticker or "KRW")
