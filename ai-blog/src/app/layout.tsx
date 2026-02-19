@@ -47,6 +47,7 @@ export default function RootLayout({
 }>) {
   const gaId = process.env.NEXT_PUBLIC_GA_ID;
   const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
+  const adsEnabled = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === "true";
 
   return (
     <html lang="ko">
@@ -64,7 +65,7 @@ export default function RootLayout({
             />
           </>
         )}
-        {adsenseId && (
+        {adsEnabled && adsenseId && (
           <script
             async
             src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseId}`}

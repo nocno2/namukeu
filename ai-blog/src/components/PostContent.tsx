@@ -17,11 +17,12 @@ const MAX_IN_ARTICLE_ADS = 3;
 
 export default function PostContent({ html, showInArticleAd = false }: PostContentProps) {
   const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
+  const adsEnabled = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === "true";
 
   const insertInArticleAds = (content: string): string => {
-    // 인아티클 광고 슬롯이 없으면广告插入 안 함
+    // 광고가 비활성화되어 있거나 슬롯이 없으면广告插入 안 함
     const inArticleSlot = getInArticleAdSlot(1);
-    if (!showInArticleAd || !adsenseId || !inArticleSlot) return content;
+    if (!adsEnabled || !showInArticleAd || !adsenseId || !inArticleSlot) return content;
 
     const textLength = content.replace(/<[^>]*>/g, "").length;
     if (textLength < MIN_CHARS_FOR_AD) return content;

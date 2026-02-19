@@ -16,10 +16,11 @@ declare global {
 
 export default function AdBanner({ slot, format = "auto", className }: AdBannerProps) {
   const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
+  const adsEnabled = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === "true";
   const pushed = useRef(false);
 
-  // slot 또는 adsenseId가 없으면广告を表示しない
-  if (!adsenseId || !slot) return null;
+  // 광고가 비활성화되어 있거나 slot/advertisementId가 없으면广告を表示しない
+  if (!adsEnabled || !adsenseId || !slot) return null;
 
   useEffect(() => {
     if (pushed.current) return;
