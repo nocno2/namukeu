@@ -57,6 +57,12 @@ async def lifespan(app: FastAPI):
 
     # pending 예약 복원
     await scheduler.restore_pending()
+
+    # 오래된 검색 로그 정리
+    cleanup_count = db.cleanup_old_logs()
+    if cleanup_count > 0:
+        logger.info(f"시작 시 search_logs 정리: {cleanup_count}개 삭제")
+
     logger.info(f"train-go 서버 시작 (http://{config.host}:{config.port})")
 
     yield

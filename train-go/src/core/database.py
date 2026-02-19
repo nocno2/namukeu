@@ -178,5 +178,24 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
+    def cleanup_old_logs(self, keep_days: int = 7) -> int:
+        """만료된 예약의 오래된 검색 로그 삭제. 삭제된 로그 수 반환."""
+        import sqlite3
+        cutoff = datetime.now().isoformat()
+        cursor = self.conn.execute(
+            """DELETE FROM search_logs
+               WHERE reservation_id IN (
+                   SELECT id FROM reservations
+                   WHERE status IN ('reserved', 'failed', 'cancelled')
+                   AND updated_at < datetime(?, '-' || ? || ' days')
+               )""",
+            (cutoff, keep_days),
+        )
+        self.conn.commit()
+        deleted = cursor.rowcount
+        if deleted > 0:
+            print(f"search_logs 정리 완료: {deleted}개 로그 삭제 (보관 {keep_days}일)")
+        return deleted
+
     def close(self):
         self.conn.close()
