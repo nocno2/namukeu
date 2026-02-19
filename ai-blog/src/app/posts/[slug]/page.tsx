@@ -223,6 +223,8 @@ export default async function PostPage({ params }: Props) {
             </div>
           </section>
         )}
+
+        <AdBanner slot="after-related" format="auto" className="mt-8" />
       </article>
     </>
   );
