@@ -423,3 +423,91 @@ def portfolio_history(
     db: Database = Depends(get_db),
 ):
     return db.get_performance_history(limit=limit)
+
+
+# --- 전환 체크리스트 검증 API ---
+
+@router.get("/transition-checklist")
+def transition_checklist(
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """라이브 트레이딩 전환 체크리스트 자동 검증.
+
+    조건:
+    - 백테스트 수익률 > 0
+    - 백테스트 최대낙폭 < 10%
+    - 페이퍼 트레이딩 승률 > 50%
+    """
+    # 1. 백테스트 결과 조회
+    backtest_results = db.get_backtest_results(limit=100)
+    bt_passed = False
+    bt_details = []
+
+    if backtest_results:
+        # 모든 백테스트 결과 중 조건 충족 비율 계산
+        bt_profitable = sum(1 for r in backtest_results if r["total_return_pct"] > 0)
+        bt_low_drawdown = sum(1 for r in backtest_results if r["max_drawdown_pct"] < 10)
+        bt_total = len(backtest_results)
+
+        bt_details = {
+            "total_backtests": bt_total,
+            "profitable_count": bt_profitable,
+            "low_drawdown_count": bt_low_drawdown,
+            "profitable_rate": round(bt_profitable / bt_total * 100, 1) if bt_total > 0 else 0,
+            "low_drawdown_rate": round(bt_low_drawdown / bt_total * 100, 1) if bt_total > 0 else 0,
+        }
+
+        # 조건: 수익률>0 AND 최대낙폭<10% 인 백테스트가 1개 이상
+        bt_passed = any(
+            r["total_return_pct"] > 0 and r["max_drawdown_pct"] < 10
+            for r in backtest_results
+        )
+    else:
+        bt_details = {"total_backtests": 0, "message": "백테스트 결과 없음"}
+
+    # 2. 페이퍼 트레이딩 결과 조회
+    paper_pnl = db.get_paper_trading_pnl()
+    paper_passed = paper_pnl.get("win_rate", 0) > 50 if paper_pnl else False
+
+    paper_details = {
+        "total_trades": paper_pnl.get("completed_trades", 0),
+        "wins": paper_pnl.get("wins", 0),
+        "losses": paper_pnl.get("losses", 0),
+        "win_rate": paper_pnl.get("win_rate", 0),
+        "total_pnl": paper_pnl.get("total_pnl", 0),
+        "total_pnl_pct": paper_pnl.get("total_pnl_pct", 0),
+    }
+
+    # 3. 종합 판정
+    all_passed = bt_passed and paper_passed
+
+    recommendation = "전환 준비 완료"
+    if not bt_passed and not paper_passed:
+        recommendation = "백테스트/페이퍼 모두 조건 미충족 - 추가 검증 필요"
+    elif bt_passed and not paper_passed:
+        recommendation = "백테스트는 통과, 페이퍼 트레이딩 승률 확보 필요"
+    elif not bt_passed and paper_passed:
+        recommendation = "페이퍼는 양호, 백테스트 조건 충족 전략 필요"
+    else:
+        recommendation = "모든 조건 충족 - 소액 라이브 전환 권장 (5% 이하)"
+
+    return {
+        "ready_to_transition": all_passed,
+        "backtest": {
+            "passed": bt_passed,
+            "conditions": {
+                "profit_rate_gt_0": bt_passed,
+                "max_drawdown_lt_10pct": bt_passed,
+            },
+            "details": bt_details,
+        },
+        "paper_trading": {
+            "passed": paper_passed,
+            "conditions": {
+                "win_rate_gt_50pct": paper_passed,
+            },
+            "details": paper_details,
+        },
+        "recommendation": recommendation,
+    }
