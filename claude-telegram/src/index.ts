@@ -4,7 +4,7 @@ import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { killActiveChild } from "./claude";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
-import { getRevenueStatus, checkGoalAlerts } from "./revenue";
+import { getRevenueStatus, checkGoalAlerts, getFormattedDailyReport, generateDailyReport } from "./revenue";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -23,6 +23,43 @@ function validateConfig(): void {
 async function ensureDirectories(): Promise<void> {
   await mkdir(DATA_DIR, { recursive: true });
   await mkdir(UPLOADS_DIR, { recursive: true });
+}
+
+// Daily revenue report scheduler
+let lastReportDate = "";
+let botInstance: any = null;
+
+async function scheduleDailyReport(): Promise<void> {
+  const checkAndSendReport = async () => {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+
+    // Only send once per day
+    if (lastReportDate === today) return;
+
+    // Check if it's around 8 AM (KST = UTC+9)
+    const hour = now.getHours();
+    if (hour < 7 || hour > 9) return; // Send between 7-9 AM KST
+
+    try {
+      const report = await generateDailyReport();
+      if (!botInstance) return;
+
+      const userId = parseInt(process.env.TELEGRAM_USER_ID!, 10);
+      const message = report.summary + (report.needsAttention && report.alertMessage ? `\n\n⚠️${report.alertMessage.split("\n").join("\n⚠️ ")}` : "");
+
+      await botInstance.api.sendMessage(userId, message);
+      lastReportDate = today;
+      console.log(`[report] Daily revenue report sent for ${today}`);
+    } catch (err) {
+      console.error("[report] Failed to send daily report:", err);
+    }
+  };
+
+  // Check every hour
+  setInterval(checkAndSendReport, 60 * 60 * 1000);
+  // Also check on startup (if it's morning)
+  setTimeout(checkAndSendReport, 5000);
 }
 
 async function showRevenueStatus(): Promise<void> {
@@ -65,6 +102,10 @@ async function main(): Promise<void> {
   process.on("SIGTERM", cleanup);
 
   const bot = await createBot();
+  botInstance = bot; // Store for daily report scheduler
+
+  // Start daily report scheduler
+  scheduleDailyReport();
 
   console.log("Claude Telegram Relay v2 starting...");
   console.log("Agent system delegated to content-pipeline (port 8003)");

@@ -781,3 +781,95 @@ export async function checkGoalAlerts(): Promise<GoalAlert> {
     message: lines.join("\n"),
   };
 }
+
+// --- Auto Reporting ---
+
+export interface DailyReport {
+  date: string;
+  summary: string;
+  needsAttention: boolean;
+  alertMessage?: string;
+  forecast: string;
+  goalStatus: string;
+}
+
+export async function generateDailyReport(): Promise<DailyReport> {
+  const data = await loadRevenue();
+  const now = new Date();
+  const date = now.toISOString().split("T")[0];
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const monthRecords = data.records.filter((r) => r.date.startsWith(currentMonth));
+  const monthCosts = data.costs.filter((c) => c.date.startsWith(currentMonth));
+  const currentRevenue = monthRecords.reduce((sum, r) => sum + r.amount, 0);
+  const currentCost = monthCosts.reduce((sum, c) => sum + c.amount, 0);
+  const netIncome = currentRevenue - currentCost;
+
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const today = now.getDate();
+  const remainingDays = daysInMonth - today;
+
+  // Get forecast
+  const forecast = await getRevenueForecast();
+
+  // Check goal alerts
+  const goalAlert = await checkGoalAlerts();
+
+  // Build summary
+  const lines: string[] = [];
+  lines.push(`📊 ${currentMonth} 수익 보고 (${today}/${daysInMonth})`);
+  lines.push(`─`.repeat(25));
+
+  if (data.monthlyTarget > 0) {
+    const percent = Math.round((netIncome / data.monthlyTarget) * 100);
+    lines.push(`순수입: ₩${netIncome.toLocaleString()} / ₩${data.monthlyTarget.toLocaleString()} (${percent}%)`);
+
+    // Progress bar
+    const barLength = 10;
+    const filled = Math.min(Math.round((percent / 100) * barLength), barLength);
+    const bar = "▓".repeat(filled) + "░".repeat(barLength - filled);
+    lines.push(`[${bar}]`);
+
+    if (netIncome >= data.monthlyTarget) {
+      lines.push(`🎉 월 목표 달성!`);
+    } else {
+      const remaining = data.monthlyTarget - netIncome;
+      const dailyNeeded = remainingDays > 0 ? Math.ceil(remaining / remainingDays) : remaining;
+      lines.push(`남은 ${remainingDays}일에 하루 ₩${dailyNeeded.toLocaleString()} 필요`);
+    }
+  } else {
+    lines.push(`순수입: ₩${netIncome.toLocaleString()}`);
+    lines.push(`(월 목표 미설정)`);
+  }
+
+  // Source breakdown for today
+  const todayRecords = data.records.filter((r) => r.date === date);
+  if (todayRecords.length > 0) {
+    lines.push(`\n오늘 추가:`);
+    for (const r of todayRecords) {
+      lines.push(`+ ₩${r.amount.toLocaleString()} (${r.source})`);
+    }
+  }
+
+  return {
+    date,
+    summary: lines.join("\n"),
+    needsAttention: goalAlert.needsAttention,
+    alertMessage: goalAlert.message,
+    forecast,
+    goalStatus: goalAlert.message,
+  };
+}
+
+// Format report for Telegram
+export async function getFormattedDailyReport(): Promise<string> {
+  const report = await generateDailyReport();
+
+  const lines: string[] = [report.summary];
+
+  if (report.needsAttention && report.alertMessage) {
+    lines.push(`\n⚠️${report.alertMessage.split("\n").join("\n⚠️ ")}`);
+  }
+
+  return lines.join("\n");
+}
