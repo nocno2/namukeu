@@ -19,6 +19,7 @@ import {
   getCostStatus,
   getCostHistory,
   getProfitSummary,
+  getRevenueForecast,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -272,7 +273,8 @@ export async function createBot(): Promise<Bot> {
         "/revenue — Show revenue status\n" +
         "/revenue set <amount> — Set monthly target\n" +
         "/revenue add <amount> <source> — Add revenue\n" +
-        "/revenue history — Show history\n\n" +
+        "/revenue history — Show history\n" +
+        "/forecast — Monthly forecast\n\n" +
         "Cost Tracking:\n" +
         "/cost — Show cost status\n" +
         "/cost add <amount> <category> — Add cost\n" +
@@ -489,6 +491,9 @@ export async function createBot(): Promise<Bot> {
         const months = parseInt(parts[1] || "6", 10);
         const summary = await getProfitSummary(months);
         await sendResponse(ctx, summary);
+      } else if (subcommand === "forecast") {
+        const forecast = await getRevenueForecast();
+        await sendResponse(ctx, forecast);
       } else if (subcommand === "help") {
         await ctx.reply(
           "수익 추적 명령어:\n\n" +
@@ -497,6 +502,7 @@ export async function createBot(): Promise<Bot> {
             "/revenue add 10000 adsense — 수익 추가\n" +
             "/revenue history — 월별 이력 확인\n" +
             "/revenue profit — 손익 요약\n" +
+            "/revenue forecast — 월말 예측\n" +
             "/revenue help — 도움말"
         );
       } else {
@@ -548,6 +554,16 @@ export async function createBot(): Promise<Bot> {
       } else {
         await ctx.reply("알 수 없는 명령어입니다. /cost help 를 입력하세요.");
       }
+    } catch (err) {
+      await ctx.reply(`오류: ${err}`);
+    }
+  });
+
+  // Standalone forecast command
+  bot.command("forecast", async (ctx) => {
+    try {
+      const forecast = await getRevenueForecast();
+      await sendResponse(ctx, forecast);
     } catch (err) {
       await ctx.reply(`오류: ${err}`);
     }
