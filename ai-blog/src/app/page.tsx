@@ -7,6 +7,10 @@ import { generateWebSiteJsonLd } from "@/lib/seo";
 
 export const revalidate = 3600;
 
+const adSlotHero = process.env.NEXT_PUBLIC_AD_SLOT_HERO;
+const adSlotMid = process.env.NEXT_PUBLIC_AD_SLOT_MID;
+const adSlotBottom = process.env.NEXT_PUBLIC_AD_SLOT_BOTTOM;
+
 export default async function HomePage() {
   const posts = await db
     .select({
@@ -78,7 +82,7 @@ export default async function HomePage() {
       </section>
 
       <div className="mx-auto max-w-4xl px-6 py-12">
-        <AdBanner slot="home-hero" format="horizontal" className="mb-10" />
+        {adSlotHero && <AdBanner slot={adSlotHero} format="horizontal" className="mb-10" />}
 
         {/* Popular Tags */}
         {popularTags.length > 0 && (
@@ -106,7 +110,7 @@ export default async function HomePage() {
           </section>
         )}
 
-        <AdBanner slot="home-mid" format="auto" className="mb-10" />
+        {adSlotMid && <AdBanner slot={adSlotMid} format="auto" className="mb-10" />}
 
         {/* Latest Posts */}
         <section>
@@ -137,7 +141,7 @@ export default async function HomePage() {
           )}
         </section>
 
-        <AdBanner slot="home-bottom" format="auto" className="mt-10" />
+        {adSlotBottom && <AdBanner slot={adSlotBottom} format="auto" className="mt-10" />}
       </div>
     </div>
   );
