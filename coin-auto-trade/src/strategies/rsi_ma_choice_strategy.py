@@ -35,6 +35,7 @@ class RSIMAChoiceStrategy:
             "rsi_overbought": 70,
             "ma_period": 200,
             "allow_short_in_bear": False,  # 하락장에서 단타 허용 여부
+            "ignore_market_regime": False,  # market regime 체크 무시 (RSI만 사용)
         }
 
     def analyze(self, df: pd.DataFrame, params: dict | None = None) -> TradeSignal:
@@ -51,6 +52,47 @@ class RSIMAChoiceStrategy:
 
         # 시장 레짐 감지
         is_bull_market = current_price > current_ma
+
+        # ignore_market_regime=True이면 RSI 신호만 사용
+        if p.get("ignore_market_regime", False):
+            if current_rsi < p["rsi_oversold"]:
+                confidence = (p["rsi_oversold"] - current_rsi) / p["rsi_oversold"]
+                return TradeSignal(
+                    signal=Signal.BUY,
+                    ticker="",
+                    confidence=min(1.0, confidence + 0.3),
+                    reason=f"RSI 과매도 (regime 무시): {current_rsi:.1f} < {p['rsi_oversold']}",
+                    indicators={
+                        "rsi": round(current_rsi, 2),
+                        "ma200": round(current_ma, 2),
+                        "price": round(current_price, 2),
+                        "regime": "ignored",
+                    },
+                )
+            elif current_rsi > p["rsi_overbought"]:
+                return TradeSignal(
+                    signal=Signal.SELL,
+                    ticker="",
+                    confidence=0.6,
+                    reason=f"RSI 과매수 (regime 무시): {current_rsi:.1f} > {p['rsi_overbought']}",
+                    indicators={
+                        "rsi": round(current_rsi, 2),
+                        "ma200": round(current_ma, 2),
+                        "regime": "ignored",
+                    },
+                )
+            else:
+                return TradeSignal(
+                    signal=Signal.HOLD,
+                    ticker="",
+                    confidence=0.2,
+                    reason=f"RSI 중립 (regime 무시): {current_rsi:.1f}",
+                    indicators={
+                        "rsi": round(current_rsi, 2),
+                        "ma200": round(current_ma, 2),
+                        "regime": "ignored",
+                    },
+                )
 
         # 상승장: RSI 과매도에서 매수
         if is_bull_market:
