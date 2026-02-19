@@ -10,8 +10,10 @@ import {
   AlertCircle,
   CheckCircle,
   Loader2,
+  Activity,
+  Zap,
 } from "lucide-react";
-import { api, type BacktestResult, type BacktestValidation } from "../lib/api";
+import { api, type BacktestResult, type BacktestValidation, type ReadinessReport, type TradingMode } from "../lib/api";
 
 interface Props {
   collapsed: boolean;
@@ -91,6 +93,8 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [readiness, setReadiness] = useState<ReadinessReport | null>(null);
+  const [tradingMode, setTradingMode] = useState<TradingMode | null>(null);
 
   const fetchResults = useCallback(async () => {
     try {
@@ -103,9 +107,29 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
     }
   }, []);
 
+  const fetchReadiness = useCallback(async () => {
+    try {
+      const data = await api.coinReadinessReport();
+      setReadiness(data);
+    } catch (e) {
+      console.error("Failed to fetch readiness:", e);
+    }
+  }, []);
+
+  const fetchTradingMode = useCallback(async () => {
+    try {
+      const data = await api.coinTradingMode();
+      setTradingMode(data);
+    } catch (e) {
+      console.error("Failed to fetch trading mode:", e);
+    }
+  }, []);
+
   useEffect(() => {
     fetchResults();
-  }, [fetchResults]);
+    fetchReadiness();
+    fetchTradingMode();
+  }, [fetchResults, fetchReadiness, fetchTradingMode]);
 
   const handleStartTrading = async (resultId: number, tradeMode: "paper" | "live") => {
     setStartingId(resultId);
@@ -138,17 +162,18 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
   };
 
   if (collapsed) {
+    const isDryRun = tradingMode?.global.effective ?? true;
     return (
       <div className="bg-surface border border-border rounded-2xl p-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-primary status-pulse" />
-            <span className="font-semibold text-sm text-text">COIN 백테스트</span>
-            {results.length > 0 && (
-              <span className="text-[10px] text-text-muted bg-surface-hover px-2 py-0.5 rounded-full">
-                {results.length}건
-              </span>
-            )}
+            <div className={`w-2.5 h-2.5 rounded-full ${isDryRun ? "bg-warning" : "bg-success"} status-pulse`} />
+            <span className="font-semibold text-sm text-text">COIN</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+              isDryRun ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
+            }`}>
+              {isDryRun ? "DRY" : "LIVE"}
+            </span>
           </div>
           <div className="flex items-center gap-0.5">
             <button
@@ -185,13 +210,13 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2.5 h-2.5 rounded-full bg-primary status-pulse" />
-          <h3 className="font-semibold text-sm text-text">COIN 백테스트</h3>
-          {results.length > 0 && (
-            <span className="text-[10px] text-text-muted bg-surface-hover px-2 py-0.5 rounded-full">
-              {results.length}건
-            </span>
-          )}
+          <div className={`w-2.5 h-2.5 rounded-full ${(tradingMode?.global.effective ?? true) ? "bg-warning" : "bg-success"} status-pulse`} />
+          <h3 className="font-semibold text-sm text-text">COIN</h3>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+            (tradingMode?.global.effective ?? true) ? "bg-warning/10 text-warning" : "bg-success/10 text-success"
+          }`}>
+            {(tradingMode?.global.effective ?? true) ? "DRY-RUN" : "LIVE"}
+          </span>
         </div>
         <div className="flex items-center gap-0.5">
           <button
@@ -219,6 +244,41 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
           </button>
         </div>
       </div>
+
+      {/* Readiness Status Bar */}
+      {readiness && (
+        <div className={`mt-3 p-2 rounded-lg border ${
+          readiness.ready_for_live
+            ? "bg-success/5 border-success/20"
+            : "bg-warning/5 border-warning/20"
+        }`}>
+          <div className="flex items-center gap-2 text-[11px]">
+            {readiness.ready_for_live ? (
+              <>
+                <Zap size={12} className="text-success" />
+                <span className="text-success font-medium">라이브 트레이딩 가능</span>
+              </>
+            ) : (
+              <>
+                <Activity size={12} className="text-warning" />
+                <span className="text-warning">전환 준비 중</span>
+              </>
+            )}
+            <span className="text-text-muted">|</span>
+            <span className="text-text-muted">
+              백테 {readiness.backtest.profitable}/{readiness.backtest.total}
+            </span>
+            <span className="text-text-muted">|</span>
+            <span className="text-text-muted">
+              페이퍼 승률 {readiness.paper_trading.win_rate.toFixed(1)}%
+            </span>
+            <span className="text-text-muted">|</span>
+            <span className="text-text-muted">
+              MDD {readiness.drawdown.current_max.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Success/Error messages */}
       {success && (

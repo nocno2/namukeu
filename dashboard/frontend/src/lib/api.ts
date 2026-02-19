@@ -268,6 +268,27 @@ export const api = {
       { method: "POST" },
     );
   },
+
+  // COIN 전환 준비 상태
+  coinReadinessReport() {
+    return request<ReadinessReport>("/api/proxy/coin/api/readiness-report");
+  },
+
+  // COIN 트레이딩 모드
+  coinTradingMode() {
+    return request<TradingMode>("/api/proxy/coin/api/trading-mode");
+  },
+
+  // COIN dry-run 토글
+  coinToggleDryRun(dryRun: boolean | null, exchange?: string) {
+    const params = new URLSearchParams();
+    if (dryRun !== null) params.set("dry_run", dryRun.toString());
+    if (exchange) params.set("exchange", exchange);
+    return request<{ success: boolean; mode: string; effective_dry_run: boolean }>(
+      `/api/proxy/coin/api/toggle-dry-run?${params.toString()}`,
+      { method: "POST" },
+    );
+  },
 };
 
 export interface BacktestResult {
@@ -501,4 +522,40 @@ export interface N8nStatus {
   success_count: number;
   fail_count: number;
   last_execution: string | null;
+}
+
+export interface ReadinessReport {
+  backtest: {
+    total: number;
+    profitable: number;
+    profitable_rate: number;
+  };
+  paper_trading: {
+    initial_capital: number;
+    final_capital: number;
+    total_pnl: number;
+    total_pnl_pct: number;
+    completed_trades: number;
+    win_rate: number;
+  };
+  drawdown: {
+    current_max: number;
+    valid: boolean;
+    threshold: number;
+  };
+  ready_for_live: boolean;
+}
+
+export interface TradingMode {
+  global: {
+    config: boolean;
+    runtime_override: boolean | null;
+    effective: boolean;
+  };
+  exchanges: Record<string, {
+    config: boolean;
+    runtime_override: boolean | null;
+    per_exchange: boolean | null;
+    effective: boolean;
+  }>;
 }
