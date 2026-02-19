@@ -32,21 +32,21 @@ export default function Chart() {
     // Create chart
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { color: '#22303c' },
-        textColor: '#8899a6',
+        background: { color: '#161b22' },
+        textColor: '#8b949e',
       },
       grid: {
-        vertLines: { color: '#38444d' },
-        horzLines: { color: '#38444d' },
+        vertLines: { color: '#30363d' },
+        horzLines: { color: '#30363d' },
       },
       crosshair: {
         mode: 1,
       },
       rightPriceScale: {
-        borderColor: '#38444d',
+        borderColor: '#30363d',
       },
       timeScale: {
-        borderColor: '#38444d',
+        borderColor: '#30363d',
         timeVisible: true,
         secondsVisible: false,
       },
@@ -54,12 +54,12 @@ export default function Chart() {
 
     // Add candlestick series
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#00ba7c',
-      downColor: '#f4212e',
-      borderUpColor: '#00ba7c',
-      borderDownColor: '#f4212e',
-      wickUpColor: '#00ba7c',
-      wickDownColor: '#f4212e',
+      upColor: '#3fb950',
+      downColor: '#f85149',
+      borderUpColor: '#3fb950',
+      borderDownColor: '#f85149',
+      wickUpColor: '#3fb950',
+      wickDownColor: '#f85149',
     });
 
     chartRef.current = chart;
@@ -108,7 +108,7 @@ export default function Chart() {
       candlestickSeriesRef.current?.setData(data);
       chartRef.current?.timeScale().fitContent();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load chart data');
+      setError(err.response?.data?.detail || '차트 데이터를 불러오는데 실패했습니다');
     } finally {
       setLoading(false);
     }
@@ -138,27 +138,27 @@ export default function Chart() {
   };
 
   return (
-    <div className="p-6 h-full flex flex-col">
+    <div className="p-8 h-full flex flex-col">
       {/* Header */}
-      <div className="flex justify-between items-start mb-4">
+      <div className="flex justify-between items-start mb-6">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            {symbol}
+          <h1 className="text-2xl font-bold flex items-center gap-3">
+            <span className="text-[#f0f6fc]">{symbol}</span>
             {price?.name && (
-              <span className="text-sm font-normal text-[--text-secondary]">
+              <span className="text-sm font-normal text-[#8b949e]">
                 {price.name}
               </span>
             )}
           </h1>
           {price && (
-            <div className="flex items-center gap-3 mt-1">
-              <span className="text-3xl font-bold">
+            <div className="flex items-center gap-3 mt-2">
+              <span className="text-3xl font-bold text-[#f0f6fc]">
                 ${formatPrice(price.price)}
               </span>
               {price.change_pct !== undefined && (
                 <span
-                  className={`text-lg ${
-                    price.change_pct >= 0 ? 'positive' : 'negative'
+                  className={`text-lg font-medium ${
+                    price.change_pct >= 0 ? 'text-[#3fb950]' : 'text-[#f85149]'
                   }`}
                 >
                   {price.change_pct >= 0 ? '+' : ''}
@@ -168,7 +168,7 @@ export default function Chart() {
               {price.change !== undefined && (
                 <span
                   className={`text-sm ${
-                    price.change >= 0 ? 'positive' : 'negative'
+                    price.change >= 0 ? 'text-[#3fb950]' : 'text-[#f85149]'
                   }`}
                 >
                   {price.change >= 0 ? '+' : ''}
@@ -185,11 +185,11 @@ export default function Chart() {
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             placeholder="종목코드 (e.g., AAPL)"
-            className="px-3 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent] w-40"
+            className="input-field w-44"
           />
           <button
             type="submit"
-            className="px-4 py-2 bg-[--accent] hover:bg-[--accent-hover] rounded-lg transition-colors"
+            className="btn-secondary px-4"
           >
             검색
           </button>
@@ -202,10 +202,10 @@ export default function Chart() {
           <button
             key={p.value}
             onClick={() => handlePeriodChange(p.value)}
-            className={`px-3 py-1 rounded text-sm transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               period === p.value
-                ? 'bg-[--accent] text-white'
-                : 'bg-[--bg-card] text-[--text-secondary] hover:text-white'
+                ? 'bg-[#58a6ff] text-white'
+                : 'bg-[#21262d] text-[#8b949e] hover:text-[#f0f6fc] hover:bg-[#30363d]'
             }`}
           >
             {p.label}
@@ -214,13 +214,16 @@ export default function Chart() {
       </div>
 
       {/* Chart */}
-      <div className="flex-1 bg-[--bg-card] rounded-xl border border-[--border] overflow-hidden">
+      <div className="flex-1 bg-[#161b22] rounded-xl border border-[#30363d] overflow-hidden">
         {loading ? (
-          <div className="h-full flex items-center justify-center text-[--text-secondary]">
-            Loading...
+          <div className="h-full flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin"></div>
+              <div className="text-[#8b949e]">Loading...</div>
+            </div>
           </div>
         ) : error ? (
-          <div className="h-full flex items-center justify-center text-red-400">
+          <div className="h-full flex items-center justify-center text-[#f85149]">
             {error}
           </div>
         ) : (

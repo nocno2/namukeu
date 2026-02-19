@@ -96,12 +96,16 @@ export default function Alerts() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-8 space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">가격 알림</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-[#f0f6fc]">가격 알림</h1>
+          <p className="text-sm text-[#8b949e] mt-1">종목 가격 알림을 설정하세요</p>
+        </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-[--accent] hover:bg-[--accent-hover] rounded-lg transition-colors"
+          className="btn-primary px-4 py-2"
         >
           {showForm ? '취소' : '새 알림'}
         </button>
@@ -109,18 +113,18 @@ export default function Alerts() {
 
       {/* Create Form */}
       {showForm && (
-        <div className="p-4 bg-[--bg-card] rounded-xl border border-[--border]">
-          <h2 className="text-lg font-semibold mb-4">새 알림 만들기</h2>
+        <div className="bg-[#161b22] rounded-xl border border-[#30363d] p-6">
+          <h2 className="text-lg font-semibold text-[#f0f6fc] mb-4">새 알림 만들기</h2>
 
           {message && (
-            <div className="mb-4 p-3 bg-green-500/20 text-green-400 rounded-lg text-sm">
+            <div className="mb-4 p-3 bg-[#3fb950]/10 text-[#3fb950] border border-[#3fb950]/20 rounded-lg text-sm">
               {message}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div className="relative">
-              <label className="block text-sm text-[--text-secondary] mb-1">
+              <label className="block text-sm text-[#8b949e] mb-2">
                 종목
               </label>
               <input
@@ -131,11 +135,11 @@ export default function Alerts() {
                   searchStock(e.target.value);
                 }}
                 placeholder="종목코드"
-                className="w-full px-4 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent]"
+                className="input-field"
                 required
               />
               {searchResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-[--bg-secondary] border border-[--border] rounded-lg overflow-hidden z-10">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-[#21262d] border border-[#30363d] rounded-lg overflow-hidden z-10">
                   {searchResults.map((stock) => (
                     <button
                       key={stock.id}
@@ -144,10 +148,10 @@ export default function Alerts() {
                         setSymbol(stock.symbol);
                         setSearchResults([]);
                       }}
-                      className="w-full px-4 py-2 text-left hover:bg-[--bg-card] flex justify-between"
+                      className="w-full px-4 py-3 text-left hover:bg-[#30363d] flex justify-between items-center"
                     >
-                      <span className="font-medium">{stock.symbol}</span>
-                      <span className="text-sm text-[--text-secondary]">
+                      <span className="font-medium text-[#f0f6fc]">{stock.symbol}</span>
+                      <span className="text-sm text-[#8b949e]">
                         {stock.name}
                       </span>
                     </button>
@@ -158,13 +162,13 @@ export default function Alerts() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm text-[--text-secondary] mb-1">
+                <label className="block text-sm text-[#8b949e] mb-2">
                   조건
                 </label>
                 <select
                   value={condition}
                   onChange={(e) => setCondition(e.target.value)}
-                  className="w-full px-4 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent]"
+                  className="input-field"
                 >
                   <option value="above">가격이 이상일 때</option>
                   <option value="below">가격이 이하일 때</option>
@@ -172,7 +176,7 @@ export default function Alerts() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-[--text-secondary] mb-1">
+                <label className="block text-sm text-[#8b949e] mb-2">
                   {condition === 'change' ? '변동률 (%)' : '가격 ($)'}
                 </label>
                 <input
@@ -181,7 +185,7 @@ export default function Alerts() {
                   onChange={(e) => setTargetValue(e.target.value)}
                   placeholder="0"
                   step={condition === 'change' ? '0.1' : '0.01'}
-                  className="w-full px-4 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent]"
+                  className="input-field"
                   required
                 />
               </div>
@@ -190,7 +194,7 @@ export default function Alerts() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3 bg-[--accent] hover:bg-[--accent-hover] rounded-lg font-medium transition-colors disabled:opacity-50"
+              className="btn-primary w-full py-3"
             >
               {submitting ? '생성 중...' : '알림 생성'}
             </button>
@@ -199,52 +203,62 @@ export default function Alerts() {
       )}
 
       {/* Alert List */}
-      <div className="p-4 bg-[--bg-card] rounded-xl border border-[--border]">
-        <h2 className="text-lg font-semibold mb-4">내 알림</h2>
+      <div className="bg-[#161b22] rounded-xl border border-[#30363d] overflow-hidden">
+        <div className="p-5 border-b border-[#30363d]">
+          <h2 className="text-lg font-semibold text-[#f0f6fc]">내 알림</h2>
+        </div>
 
         {loading ? (
-          <div className="text-[--text-secondary]">Loading...</div>
+          <div className="p-8 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin"></div>
+              <div className="text-[#8b949e]">Loading...</div>
+            </div>
+          </div>
         ) : alerts.length > 0 ? (
-          <div className="space-y-3">
+          <div className="divide-y divide-[#21262d]">
             {alerts.map((alert) => (
               <div
                 key={alert.id}
-                className="p-4 bg-[--bg-secondary] rounded-lg flex justify-between items-center"
+                className="p-5 hover:bg-[#21262d] transition-colors"
               >
-                <div>
-                  <div className="font-medium flex items-center gap-2">
-                    {alert.symbol}
-                    {alert.is_triggered && (
-                      <span className="px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-400">
-                        발동됨
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-[#f0f6fc]">{alert.symbol}</span>
+                      {alert.is_triggered && (
+                        <span className="badge badge-success">발동됨</span>
+                      )}
+                    </div>
+                    <div className="text-sm text-[#8b949e] mt-1">
+                      {alert.name}
+                    </div>
+                    <div className="text-sm mt-2">
+                      <span className="text-[#8b949e]">
+                        {conditionLabels[alert.condition] || alert.condition}:{' '}
                       </span>
-                    )}
+                      <span className="font-medium text-[#f0f6fc]">
+                        {alert.condition === 'change'
+                          ? `${alert.target_value}%`
+                          : `$${alert.target_value}`}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-sm text-[--text-secondary] mt-1">
-                    {alert.name}
-                  </div>
-                  <div className="text-sm mt-1">
-                    {conditionLabels[alert.condition] || alert.condition}:{' '}
-                    <span className="font-medium">
-                      {alert.condition === 'change'
-                        ? `${alert.target_value}%`
-                        : `$${alert.target_value}`}
-                    </span>
-                  </div>
+                  <button
+                    onClick={() => handleDelete(alert.id)}
+                    className="px-3 py-1.5 bg-[#f85149]/20 text-[#f85149] rounded-lg text-sm font-medium hover:bg-[#f85149]/30 transition-colors"
+                  >
+                    삭제
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleDelete(alert.id)}
-                  className="px-3 py-1 bg-red-500/20 text-red-400 rounded text-sm"
-                >
-                  삭제
-                </button>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-[--text-secondary] text-sm py-8 text-center">
-            등록된 알림이 없습니다
-          </p>
+          <div className="p-12 text-center">
+            <div className="text-4xl mb-3">🔔</div>
+            <div className="text-[#8b949e]">등록된 알림이 없습니다</div>
+          </div>
         )}
       </div>
     </div>

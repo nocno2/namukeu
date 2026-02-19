@@ -78,12 +78,16 @@ export default function Watchlist() {
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-8 space-y-6">
+      {/* Header */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">관심종목</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-[#f0f6fc]">관심종목</h1>
+          <p className="text-sm text-[#8b949e] mt-1">관심있는 종목을 추가하여 모니터링하세요</p>
+        </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-[--accent] hover:bg-[--accent-hover] rounded-lg transition-colors"
+          className="btn-primary px-4 py-2"
         >
           {showForm ? '취소' : '새 그룹'}
         </button>
@@ -91,18 +95,18 @@ export default function Watchlist() {
 
       {/* Create Form */}
       {showForm && (
-        <div className="p-4 bg-[--bg-card] rounded-xl border border-[--border]">
-          <h2 className="text-lg font-semibold mb-4">새 관심종목 그룹</h2>
+        <div className="bg-[#161b22] rounded-xl border border-[#30363d] p-6">
+          <h2 className="text-lg font-semibold text-[#f0f6fc] mb-4">새 관심종목 그룹</h2>
 
           {message && (
-            <div className="mb-4 p-3 bg-green-500/20 text-green-400 rounded-lg text-sm">
+            <div className="mb-4 p-3 bg-[#3fb950]/10 text-[#3fb950] border border-[#3fb950]/20 rounded-lg text-sm">
               {message}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label className="block text-sm text-[--text-secondary] mb-1">
+              <label className="block text-sm text-[#8b949e] mb-2">
                 그룹명
               </label>
               <input
@@ -110,21 +114,21 @@ export default function Watchlist() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="미국 주식"
-                className="w-full px-4 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent]"
+                className="input-field"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm text-[--text-secondary] mb-1">
-                종목을 (쉼표로 구분)
+              <label className="block text-sm text-[#8b949e] mb-2">
+                종목 (쉼표로 구분)
               </label>
               <input
                 type="text"
                 value={symbols}
                 onChange={(e) => setSymbols(e.target.value)}
                 placeholder="AAPL, MSFT, GOOGL, AMZN"
-                className="w-full px-4 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent]"
+                className="input-field"
                 required
               />
             </div>
@@ -132,7 +136,7 @@ export default function Watchlist() {
             <button
               type="submit"
               disabled={submitting}
-              className="w-full py-3 bg-[--accent] hover:bg-[--accent-hover] rounded-lg font-medium transition-colors disabled:opacity-50"
+              className="btn-primary w-full py-3"
             >
               {submitting ? '추가 중...' : '그룹 만들기'}
             </button>
@@ -142,19 +146,24 @@ export default function Watchlist() {
 
       {/* Watchlist */}
       {loading ? (
-        <div className="text-[--text-secondary]">Loading...</div>
+        <div className="p-8 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin"></div>
+            <div className="text-[#8b949e]">Loading...</div>
+          </div>
+        </div>
       ) : watchlists.length > 0 ? (
         <div className="space-y-6">
           {watchlists.map((watchlist) => (
             <div
               key={watchlist.id}
-              className="p-4 bg-[--bg-card] rounded-xl border border-[--border]"
+              className="bg-[#161b22] rounded-xl border border-[#30363d] overflow-hidden"
             >
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-lg font-semibold">{watchlist.name}</h2>
+              <div className="p-5 border-b border-[#30363d] flex justify-between items-center">
+                <h2 className="text-lg font-semibold text-[#f0f6fc]">{watchlist.name}</h2>
                 <button
                   onClick={() => handleDelete(watchlist.id)}
-                  className="px-3 py-1 bg-red-500/20 text-red-400 rounded text-sm"
+                  className="px-3 py-1.5 bg-[#f85149]/20 text-[#f85149] rounded-lg text-sm font-medium hover:bg-[#f85149]/30 transition-colors"
                 >
                   삭제
                 </button>
@@ -162,53 +171,38 @@ export default function Watchlist() {
 
               {watchlist.items.length > 0 ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full">
                     <thead>
-                      <tr className="text-left text-[--text-secondary] border-b border-[--border]">
-                        <th className="pb-2">종목</th>
-                        <th className="pb-2 text-right">현재가</th>
-                        <th className="pb-2 text-right">변동</th>
-                        <th className="pb-2 text-right">변동률</th>
+                      <tr className="bg-[#21262d]">
+                        <th className="px-5 py-3 text-left text-xs font-semibold text-[#8b949e] uppercase">종목</th>
+                        <th className="px-5 py-3 text-right text-xs font-semibold text-[#8b949e] uppercase">현재가</th>
+                        <th className="px-5 py-3 text-right text-xs font-semibold text-[#8b949e] uppercase">변동</th>
+                        <th className="px-5 py-3 text-right text-xs font-semibold text-[#8b949e] uppercase">변동률</th>
                       </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-[#21262d]">
                       {watchlist.items.map((item) => (
-                        <tr
-                          key={item.symbol}
-                          className="border-b border-[--border]/50 hover:bg-[--bg-secondary]"
-                        >
-                          <td className="py-2">
-                            <div className="font-medium">{item.symbol}</div>
-                            <div className="text-xs text-[--text-secondary]">
+                        <tr key={item.symbol} className="table-row">
+                          <td className="px-5 py-4">
+                            <div className="font-medium text-[#f0f6fc]">{item.symbol}</div>
+                            <div className="text-xs text-[#6e7681]">
                               {item.name}
                             </div>
                           </td>
-                          <td className="py-2 text-right">
+                          <td className="px-5 py-4 text-right text-[#f0f6fc]">
                             ${formatPrice(item.price)}
                           </td>
-                          <td
-                            className={`py-2 text-right ${
-                              (item.change || 0) >= 0 ? 'positive' : 'negative'
-                            }`}
-                          >
+                          <td className={`px-5 py-4 text-right font-medium ${(item.change || 0) >= 0 ? 'text-[#3fb950]' : 'text-[#f85149]'}`}>
                             {item.change !== null
-                              ? `${item.change >= 0 ? '+' : ''}${formatPrice(
-                                  item.change
-                                )}`
+                              ? `${item.change >= 0 ? '+' : ''}${formatPrice(item.change)}`
                               : '-'}
                           </td>
-                          <td
-                            className={`py-2 text-right ${
-                              (item.change_pct || 0) >= 0
-                                ? 'positive'
-                                : 'negative'
-                            }`}
-                          >
-                            {item.change_pct !== null
-                              ? `${
-                                  item.change_pct >= 0 ? '+' : ''
-                                }${formatPrice(item.change_pct)}%`
-                              : '-'}
+                          <td className="px-5 py-4 text-right">
+                            <span className={`badge ${(item.change_pct || 0) >= 0 ? 'badge-success' : 'badge-danger'}`}>
+                              {item.change_pct !== null
+                                ? `${item.change_pct >= 0 ? '+' : ''}${formatPrice(item.change_pct)}%`
+                                : '-'}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -216,18 +210,17 @@ export default function Watchlist() {
                   </table>
                 </div>
               ) : (
-                <p className="text-[--text-secondary] text-sm">
+                <div className="p-8 text-center text-[#8b949e]">
                   종목을 추가해주세요
-                </p>
+                </div>
               )}
             </div>
           ))}
         </div>
       ) : (
-        <div className="p-8 bg-[--bg-card] rounded-xl border border-[--border] text-center">
-          <p className="text-[--text-secondary]">
-            관심종목 그룹이 없습니다
-          </p>
+        <div className="bg-[#161b22] rounded-xl border border-[#30363d] p-12 text-center">
+          <div className="text-4xl mb-3">★</div>
+          <div className="text-[#8b949e]">관심종목 그룹이 없습니다</div>
         </div>
       )}
     </div>

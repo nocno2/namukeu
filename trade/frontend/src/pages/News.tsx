@@ -66,46 +66,50 @@ export default function News() {
   };
 
   return (
-    <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">뉴스</h1>
+    <div className="p-8 space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-[#f0f6fc]">뉴스</h1>
+        <p className="text-sm text-[#8b949e] mt-1">최신 금융 뉴스를 확인하세요</p>
+      </div>
 
       {/* Search */}
-      <div className="p-4 bg-[--bg-card] rounded-xl border border-[--border]">
-        <div className="flex gap-4">
+      <div className="bg-[#161b22] rounded-xl border border-[#30363d] p-5">
+        <div className="flex gap-3">
           <div className="flex-1">
             <input
               type="text"
               value={searchSymbol}
               onChange={(e) => setSearchSymbol(e.target.value)}
               placeholder="종목코드 (e.g., AAPL)"
-              className="w-full px-4 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent]"
+              className="input-field"
               onKeyDown={(e) => e.key === 'Enter' && handleSearch('symbol')}
             />
           </div>
           <button
             onClick={() => handleSearch('symbol')}
             disabled={fetching}
-            className="px-4 py-2 bg-[--accent] hover:bg-[--accent-hover] rounded-lg transition-colors disabled:opacity-50"
+            className="btn-primary px-5"
           >
             {fetching ? '...' : '종목 뉴스'}
           </button>
         </div>
 
-        <div className="flex gap-4 mt-3">
+        <div className="flex gap-3 mt-3">
           <div className="flex-1">
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="검색어 (e.g., 주식 시장)"
-              className="w-full px-4 py-2 bg-[--bg-secondary] border border-[--border] rounded-lg text-white focus:outline-none focus:border-[--accent]"
+              className="input-field"
               onKeyDown={(e) => e.key === 'Enter' && handleSearch('query')}
             />
           </div>
           <button
             onClick={() => handleSearch('query')}
             disabled={fetching}
-            className="px-4 py-2 bg-[--bg-card] hover:bg-[--accent] border border-[--border] rounded-lg transition-colors disabled:opacity-50"
+            className="btn-secondary px-5"
           >
             {fetching ? '...' : '검색'}
           </button>
@@ -113,29 +117,36 @@ export default function News() {
       </div>
 
       {/* News List */}
-      <div className="p-4 bg-[--bg-card] rounded-xl border border-[--border]">
-        <h2 className="text-lg font-semibold mb-4">최신 뉴스</h2>
+      <div className="bg-[#161b22] rounded-xl border border-[#30363d] overflow-hidden">
+        <div className="p-5 border-b border-[#30363d]">
+          <h2 className="text-lg font-semibold text-[#f0f6fc]">최신 뉴스</h2>
+        </div>
 
         {loading || fetching ? (
-          <div className="text-[--text-secondary]">Loading...</div>
+          <div className="p-8 flex items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-8 h-8 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin"></div>
+              <div className="text-[#8b949e]">Loading...</div>
+            </div>
+          </div>
         ) : news.length > 0 ? (
-          <div className="space-y-4">
+          <div className="divide-y divide-[#21262d]">
             {news.map((item, idx) => (
               <a
                 key={idx}
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="block p-4 bg-[--bg-secondary] rounded-lg hover:bg-[--bg-primary] transition-colors"
+                className="block p-5 hover:bg-[#21262d] transition-colors"
               >
-                <div className="font-medium line-clamp-2">{item.title}</div>
+                <div className="font-medium text-[#f0f6fc] line-clamp-2">{item.title}</div>
                 {item.summary && (
-                  <div className="text-sm text-[--text-secondary] mt-1 line-clamp-2">
+                  <div className="text-sm text-[#8b949e] line-clamp-2">
                     {item.summary}
                   </div>
                 )}
-                <div className="flex items-center gap-3 mt-2 text-xs text-[--text-secondary]">
-                  <span>{item.source}</span>
+                <div className="flex items-center gap-3 mt-3 text-xs text-[#6e7681]">
+                  <span className="text-[#58a6ff]">{item.source}</span>
                   <span>•</span>
                   <span>{formatDate(item.published_at)}</span>
                 </div>
@@ -143,9 +154,10 @@ export default function News() {
             ))}
           </div>
         ) : (
-          <p className="text-[--text-secondary] text-sm py-8 text-center">
-            뉴스가 없습니다
-          </p>
+          <div className="p-12 text-center">
+            <div className="text-4xl mb-3">📰</div>
+            <div className="text-[#8b949e]">뉴스가 없습니다</div>
+          </div>
         )}
       </div>
     </div>
