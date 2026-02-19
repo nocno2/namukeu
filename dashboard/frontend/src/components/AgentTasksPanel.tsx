@@ -62,13 +62,14 @@ function TaskDetail({
   onBack: () => void;
   onApprove: (id: string) => void;
   onCancel: (id: string) => void;
-  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string }) => Promise<void>;
+  onUpdate: (id: string, updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string }) => Promise<void>;
   actionLoading: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
   const [editPrompt, setEditPrompt] = useState(task.prompt);
   const [editProject, setEditProject] = useState(task.project);
+  const [editScheduleCron, setEditScheduleCron] = useState(task.schedule_cron || "");
   const [saving, setSaving] = useState(false);
 
   const sentinel = isSentinel(task.prompt);
@@ -77,10 +78,11 @@ function TaskDetail({
   const handleSave = async () => {
     setSaving(true);
     try {
-      const updates: { title?: string; prompt?: string; project?: string } = {};
+      const updates: { title?: string; prompt?: string; project?: string; schedule_cron?: string } = {};
       if (editTitle !== task.title) updates.title = editTitle;
       if (editPrompt !== task.prompt) updates.prompt = editPrompt;
       if (editProject !== task.project) updates.project = editProject;
+      if (editScheduleCron !== (task.schedule_cron || "")) updates.schedule_cron = editScheduleCron;
       if (Object.keys(updates).length > 0) {
         await onUpdate(task.id, updates);
       }
@@ -94,6 +96,7 @@ function TaskDetail({
     setEditTitle(task.title);
     setEditPrompt(task.prompt);
     setEditProject(task.project);
+    setEditScheduleCron(task.schedule_cron || "");
     setEditing(false);
   };
 
@@ -166,6 +169,27 @@ function TaskDetail({
                 onChange={(e) => setEditProject(e.target.value)}
               />
             </div>
+            {task.schedule_cron !== undefined && (
+              <div>
+                <span className="text-xs text-text-muted block mb-1.5">
+                  스케줄 (Cron)
+                  <a
+                    href="https://crontab.guru/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="ml-1 text-primary hover:underline"
+                  >
+                    도움말
+                  </a>
+                </span>
+                <input
+                  className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm focus:border-primary outline-none font-mono"
+                  value={editScheduleCron}
+                  onChange={(e) => setEditScheduleCron(e.target.value)}
+                  placeholder="*/15 * * * *"
+                />
+              </div>
+            )}
             <div>
               <span className="text-xs text-text-muted block mb-1.5">프롬프트</span>
               {sentinel && (
