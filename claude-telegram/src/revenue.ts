@@ -391,6 +391,7 @@ function getDailyAverages(monthRecords: RevenueRecord[], monthCosts: CostRecord[
   };
 }
 
+// Enhanced forecast with confidence intervals
 export async function getRevenueForecast(): Promise<string> {
   const data = await loadRevenue();
 
@@ -408,9 +409,9 @@ export async function getRevenueForecast(): Promise<string> {
   const today = now.getDate(); // 1~31
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const remainingDays = daysInMonth - today;
+  const weekOfMonth = Math.ceil(today / 7);
 
   // Use the helper function for all calculations
-  // Pass all records for moving average calculation
   const {
     currentRevenue,
     currentCost,
@@ -439,50 +440,128 @@ export async function getRevenueForecast(): Promise<string> {
     profit: Math.round(ma14Revenue * daysInMonth) - Math.round(ma14Cost * daysInMonth),
   };
 
-  const lines: string[] = ["📊 월말 예측 (다중 방법):"];
+  // Calculate confidence interval (standard deviation based)
+  const allDailyRevenue = [...data.records.map((r) => r.amount), ...Array(monthRecords.length).fill(0)];
+  const revenueStdDev = allDailyRevenue.length > 1
+    ? Math.sqrt(allDailyRevenue.reduce((sum, v) => sum + Math.pow(v - (allDailyRevenue.reduce((a, b) => a + b, 0) / allDailyRevenue.length), 2), 0) / allDailyRevenue.length)
+    : 0;
 
-  lines.push(`\n현재까지 (${today}/${daysInMonth}일):`);
+  const optimisticProj = {
+    revenue: proj7d.revenue + Math.round(revenueStdDev * remainingDays * 0.5),
+    cost: proj7d.cost - Math.round(revenueStdDev * remainingDays * 0.2),
+    profit: 0,
+  };
+  optimisticProj.profit = optimisticProj.revenue - optimisticProj.cost;
+
+  const pessimisticProj = {
+    revenue: Math.max(0, proj7d.revenue - Math.round(revenueStdDev * remainingDays * 0.5)),
+    cost: proj7d.cost + Math.round(revenueStdDev * remainingDays * 0.3),
+    profit: 0,
+  };
+  pessimisticProj.profit = pessimisticProj.revenue - pessimisticProj.cost;
+
+  // Week-over-week growth calculation
+  const week1Records = monthRecords.filter((r) => {
+    const day = parseInt(r.date.split("-")[2], 10);
+    return day >= 1 && day <= 7;
+  });
+  const week2Records = monthRecords.filter((r) => {
+    const day = parseInt(r.date.split("-")[2], 10);
+    return day >= 8 && day <= 14;
+  });
+  const week3Records = monthRecords.filter((r) => {
+    const day = parseInt(r.date.split("-")[2], 10);
+    return day >= 15 && day <= 21;
+  });
+
+  const week1Revenue = week1Records.reduce((sum, r) => sum + r.amount, 0);
+  const week2Revenue = week2Records.reduce((sum, r) => sum + r.amount, 0);
+  const week3Revenue = week3Records.reduce((sum, r) => sum + r.amount, 0);
+
+  const w1w2Growth = week1Revenue > 0 ? ((week2Revenue - week1Revenue) / week1Revenue) * 100 : 0;
+  const w2w3Growth = week2Revenue > 0 ? ((week3Revenue - week2Revenue) / week2Revenue) * 100 : 0;
+  const avgWeeklyGrowth = (w1w2Growth + w2w3Growth) / 2;
+
+  // Trend projection using growth rate
+  const growthProj = {
+    revenue: Math.round(week3Revenue * (1 + avgWeeklyGrowth / 100) * (4 - weekOfMonth + 1)),
+    cost: Math.round(simpleDailyCost * daysInMonth),
+    profit: 0,
+  };
+  growthProj.profit = growthProj.revenue - growthProj.cost;
+
+  const lines: string[] = ["📊 월말 예측 (향상된 분석):"];
+
+  lines.push(`\n📅 현재 (${today}/${daysInMonth}일, ${weekOfMonth}주차):`);
   lines.push(`- 수익: ₩${currentRevenue.toLocaleString()}`);
   lines.push(`- 비용: ₩${currentCost.toLocaleString()}`);
   lines.push(`- 순수입: ₩${(currentRevenue - currentCost).toLocaleString()}`);
 
-  lines.push(`\n📈 예측 방법별 월말 순수입:`);
-  lines.push(`- 단순 평균: ₩${projSimple.profit.toLocaleString()}`);
-  lines.push(`- 7일 이동평균: ₩${proj7d.profit.toLocaleString()}`);
-  lines.push(`- 14일 이동평균: ₩${proj14d.profit.toLocaleString()}`);
-
-  // Choose best prediction (prioritize 7-day if enough data, else simple)
+  // Best prediction selection
   const hasEnoughData = monthRecords.length >= 7;
   const bestProj = hasEnoughData ? proj7d : projSimple;
   const bestMethod = hasEnoughData ? "7일 이동평균" : "단순 평균";
 
-  lines.push(`\n🎯 ${bestMethod} 기반:`);
-  lines.push(`- 예상 수익: ₩${bestProj.revenue.toLocaleString()}`);
-  lines.push(`- 예상 비용: ₩${bestProj.cost.toLocaleString()}`);
+  lines.push(`\n🎯 ${bestMethod} 기반 예측:`);
+  lines.push(`  수익: ₩${bestProj.revenue.toLocaleString()}`);
+  lines.push(`  비용: ₩${bestProj.cost.toLocaleString()}`);
   const profitMark = bestProj.profit >= 0 ? "+" : "";
-  lines.push(`- 예상 순수입: ₩${profitMark}${bestProj.profit.toLocaleString()}`);
+  lines.push(`  순수입: ₩${profitMark}${bestProj.profit.toLocaleString()}`);
+
+  // Confidence interval
+  if (revenueStdDev > 0) {
+    lines.push(`\n📊 신뢰구간 (₩${Math.round(revenueStdDev).toLocaleString()} 일일 표준편차):`);
+    const optMark = optimisticProj.profit >= 0 ? "+" : "";
+    const pesMark = pessimisticProj.profit >= 0 ? "+" : "";
+    lines.push(`  낙관: ₩${optMark}${optimisticProj.profit.toLocaleString()}`);
+    lines.push(`  중심: ₩${profitMark}${bestProj.profit.toLocaleString()}`);
+    lines.push(`  비관: ₩${pesMark}${pessimisticProj.profit.toLocaleString()}`);
+  }
+
+  // Week-over-week analysis
+  if (week1Revenue > 0 || week2Revenue > 0 || week3Revenue > 0) {
+    lines.push(`\n📈 주간 추세:`);
+    lines.push(`  1주: ₩${week1Revenue.toLocaleString()}`);
+    if (week2Revenue > 0) {
+      const w1w2Icon = w1w2Growth >= 0 ? "↑" : "↓";
+      lines.push(`  2주: ₩${week2Revenue.toLocaleString()} (${w1w2Icon}${Math.abs(Math.round(w1w2Growth))}%)`);
+    }
+    if (week3Revenue > 0) {
+      const w2w3Icon = w2w3Growth >= 0 ? "↑" : "↓";
+      lines.push(`  3주: ₩${week3Revenue.toLocaleString()} (${w2w3Icon}${Math.abs(Math.round(w2w3Growth))}%)`);
+    }
+    if (!isNaN(avgWeeklyGrowth)) {
+      const growthIcon = avgWeeklyGrowth >= 0 ? "📈 상승" : "📉 하락";
+      lines.push(`  평균 성장률: ${growthIcon} (${Math.round(avgWeeklyGrowth)}%)`);
+    }
+  }
 
   if (data.monthlyTarget > 0) {
     const currentPercent = Math.round(((currentRevenue - currentCost) / data.monthlyTarget) * 100);
     const projectedPercent = Math.round((bestProj.profit / data.monthlyTarget) * 100);
 
-    lines.push(`\n월 목표 (₩${data.monthlyTarget.toLocaleString()}):`);
-    lines.push(`- 현재: ${currentPercent}%`);
-    lines.push(`- 예측: ${projectedPercent}%`);
+    lines.push(`\n🎯 월 목표 (₩${data.monthlyTarget.toLocaleString()}):`);
+    lines.push(`  현재: ${currentPercent}%`);
+    lines.push(`  예측: ${projectedPercent}%`);
+
+    // Confidence-based goal probability
+    if (revenueStdDev > 0 && optimisticProj.profit >= data.monthlyTarget && pessimisticProj.profit < data.monthlyTarget) {
+      lines.push(`  달성 확률: 🔶 불확실 (추이 관찰 필요)`);
+    } else if (optimisticProj.profit >= data.monthlyTarget) {
+      lines.push(`  달성 확률: 🟢 높음`);
+    } else if (bestProj.profit >= data.monthlyTarget) {
+      lines.push(`  달성 확률: 🟡 보통`);
+    } else {
+      lines.push(`  달성 확률: 🔴 낮음`);
+    }
 
     if (bestProj.profit >= data.monthlyTarget) {
-      lines.push("\n🎯 예측 달성 가능!");
+      lines.push("\n✨ 예측 달성 가능!");
     } else {
       const needed = data.monthlyTarget - bestProj.profit;
       const avgNeeded = remainingDays > 0 ? Math.ceil(needed / remainingDays) : 0;
-      lines.push(`\n남은 ${remainingDays}일에 하루 ₩${avgNeeded.toLocaleString()}씩 필요`);
+      lines.push(`\n💡 남은 ${remainingDays}일에 하루 ₩${avgNeeded.toLocaleString()}씩 필요`);
     }
-  }
-
-  // Trend indicator
-  if (hasEnoughData) {
-    const trend = ma7Revenue > ma14Revenue ? "📈 상승" : ma7Revenue < ma14Revenue ? "📉 하락" : "➡️持平";
-    lines.push(`\n추세 (7일 vs 14일): ${trend}`);
   }
 
   return lines.join("\n");
