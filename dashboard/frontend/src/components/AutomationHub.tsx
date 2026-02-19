@@ -1201,6 +1201,15 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
                             {g.priority === "high" && <Star size={10} className="text-warning" />}
                             <span className="text-sm font-medium text-text">{g.title}</span>
                           </div>
+                          {g.projects && g.projects.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {g.projects.map((p, i) => (
+                                <span key={i} className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded border border-primary/20">
+                                  {p}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                           {g.description && g.description !== g.title && (
                             <div className="text-xs text-text-muted mt-1">{g.description}</div>
                           )}
