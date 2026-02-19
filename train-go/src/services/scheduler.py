@@ -152,14 +152,18 @@ class ReservationScheduler:
             # 반복 검색
             while datetime.now() < deadline:
                 try:
-                    result = service.search_and_reserve(
-                        dep=reservation["dep_station"],
-                        arr=reservation["arr_station"],
-                        date=reservation["date"],
-                        time_range_start=reservation["time_range_start"],
-                        time_range_end=reservation["time_range_end"],
-                        passengers=passengers,
-                        seat_type=reservation["seat_type"],
+                    # 검색 타임아웃 30초 - 무한 대기를 방지
+                    result = await asyncio.wait_for(
+                        service.search_and_reserve(
+                            dep=reservation["dep_station"],
+                            arr=reservation["arr_station"],
+                            date=reservation["date"],
+                            time_range_start=reservation["time_range_start"],
+                            time_range_end=reservation["time_range_end"],
+                            passengers=passengers,
+                            seat_type=reservation["seat_type"],
+                        ),
+                        timeout=30.0,
                     )
 
                     search_count += 1

@@ -13,7 +13,8 @@ class TelegramNotifier:
         self._base_url = f"https://api.telegram.org/bot{bot_token}"
 
     async def send_message(self, text: str):
-        async with httpx.AsyncClient() as client:
+        timeout = httpx.Timeout(10.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             try:
                 resp = await client.post(
                     f"{self._base_url}/sendMessage",
