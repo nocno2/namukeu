@@ -112,15 +112,19 @@ function TaskDetail({
   const [showHistory, setShowHistory] = useState(false);
 
   const loadHistory = async (page: number) => {
+    console.log("loadHistory called", { taskId: task.id, page });
     setHistoryLoading(true);
     try {
       const items = await onLoadHistory(task.id, 5, page * 5);
+      console.log("loadHistory result", { items });
       if (page === 0) {
         setHistory(items);
       } else {
         setHistory((prev) => [...prev, ...items]);
       }
       setHistoryPage(page);
+    } catch (err) {
+      console.error("loadHistory error", err);
     } finally {
       setHistoryLoading(false);
     }
@@ -286,10 +290,15 @@ function TaskDetail({
         </div>
 
         {/* 실행 기록 */}
-        <div className="pt-2 border-t border-border">
+        <div className="pt-2 border-t border-border relative z-10">
           <button
-            onClick={toggleHistory}
-            className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              console.log("toggleHistory clicked", { showHistory, historyLength: history.length });
+              toggleHistory();
+            }}
+            className="text-xs text-primary hover:text-primary/80 flex items-center gap-1 cursor-pointer relative z-20"
           >
             <Clock size={12} />
             {showHistory ? "기록 숨기기" : "실행 기록 보기"}
@@ -301,7 +310,30 @@ function TaskDetail({
               {historyLoading && history.length === 0 ? (
                 <div className="text-xs text-text-muted py-2">로딩 중...</div>
               ) : history.length === 0 ? (
-                <div className="text-xs text-text-muted py-2">실행 기록이 없습니다</div>
+                <div className="text-xs bg-bg rounded-lg p-3 border border-border">
+                  {task.runCount > 0 ? (
+                    <>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-success/10 text-success">실행됨</span>
+                        <span className="text-text-muted">
+                          {task.lastRunAt ? new Date(task.lastRunAt).toLocaleString("ko-KR", {
+                            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+                          }) : "-"}
+                        </span>
+                      </div>
+                      <div className="text-text-muted text-[11px]">
+                        총 {task.runCount}회 실행됨 (상세 기록은 API 연동 필요)
+                      </div>
+                      {task.lastResult && (
+                        <div className="text-text whitespace-pre-wrap max-h-16 overflow-y-auto mt-2 pt-2 border-t border-border">
+                          {task.lastResult.substring(0, 200)}{task.lastResult.length > 200 ? "..." : ""}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="text-text-muted">실행 기록이 없습니다</div>
+                  )}
+                </div>
               ) : (
                 <>
                   {history.map((h, idx) => (
@@ -425,6 +457,21 @@ function AgentTasksModal({
   actionLoading: boolean;
 }) {
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
+  const [taskFilter, setTaskFilter] = useState<"all" | "recurring" | "event" | "one-time" | "completed">("all");
+
+  const filteredTasks = tasks.filter((t) => {
+    if (taskFilter === "all") return true;
+    if (taskFilter === "completed") return t.status === "completed" || t.status === "failed";
+    return t.type === taskFilter;
+  });
+
+  const taskCounts = {
+    all: tasks.length,
+    recurring: tasks.filter((t) => t.type === "recurring").length,
+    "one-time": tasks.filter((t) => t.type === "one_time").length,
+    event: tasks.filter((t) => t.type === "event").length,
+    completed: tasks.filter((t) => t.status === "completed" || t.status === "failed").length,
+  };
 
   if (selectedTask) {
     return (
@@ -457,11 +504,34 @@ function AgentTasksModal({
           </button>
         </div>
         <div className="overflow-y-auto max-h-[calc(80vh-60px)]">
-          {tasks.length === 0 ? (
-            <div className="text-center text-text-muted py-8">작업이 없습니다</div>
+          {/* 탭 필터 */}
+          <div className="flex gap-1 px-5 py-3 border-b border-border bg-bg/50">
+            {([
+              ["all", "전체"],
+              ["recurring", "주기적"],
+              ["one-time", "원샷"],
+              ["event", "이벤트"],
+              ["completed", "완료"],
+            ] as const).map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setTaskFilter(key)}
+                className={`text-xs px-2.5 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                  taskFilter === key
+                    ? "bg-primary text-white"
+                    : "text-text-muted hover:text-text hover:bg-surface-hover"
+                }`}
+              >
+                {label} ({taskCounts[key]})
+              </button>
+            ))}
+          </div>
+
+          {filteredTasks.length === 0 ? (
+            <div className="text-center text-text-muted py-8">표시할 작업이 없습니다</div>
           ) : (
             <div className="divide-y divide-border">
-              {tasks.map((task) => (
+              {filteredTasks.map((task) => (
                 <div
                   key={task.id}
                   className="px-5 py-3 hover:bg-surface-hover cursor-pointer"
