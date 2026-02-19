@@ -4,6 +4,18 @@ import logging
 from SRT import SRT, SeatType
 from SRT import Adult, Child, Senior
 
+from src.core.errors import (
+    TrainAPIError,
+    LoginError,
+    SessionExpiredError,
+    SeatNotAvailableError,
+    TrainNotFoundError,
+    ReservationFailedError,
+    NetworkError,
+    RateLimitError,
+    SystemMaintenanceError,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,7 +37,41 @@ class SRTService:
 
     def _ensure_logged_in(self):
         if not self._client:
-            raise RuntimeError("SRT 로그인이 필요합니다")
+            raise LoginError("SRT 로그인이 필요합니다")
+
+    def _classify_srt_error(self, error: Exception) -> TrainAPIError:
+        """SRT 라이브러리 예외를 TrainAPIError 서브클래스로 변환."""
+        error_msg = str(error)
+        error_lower = error_msg.lower()
+
+        # 로그인/인증 관련
+        if any(kw in error_lower for kw in ["login", "로그인", "인증", "password", "unauthorized"]):
+            if "만료" in error_msg or "expired" in error_lower:
+                return SessionExpiredError(error_msg)
+            return LoginError(error_msg)
+
+        # 좌석 관련
+        if any(kw in error_lower for kw in ["좌석", "seat", "매진", "sold", "no seat", "available"]):
+            return SeatNotAvailableError(error_msg)
+
+        # 열차 없음
+        if any(kw in error_lower for kw in ["열차", "train", "결과가 없습니다", "no result", "not found"]):
+            return TrainNotFoundError(error_msg)
+
+        # Rate limit
+        if any(kw in error_lower for kw in ["rate limit", "too many", "너무 많"]):
+            return RateLimitError(error_msg)
+
+        # 시스템 점검
+        if any(kw in error_lower for kw in ["점검", "maintenance", "unavailable", "service"]):
+            return SystemMaintenanceError(error_msg)
+
+        # 네트워크
+        if any(kw in error_lower for kw in ["timeout", "connection", "network", "networkerror"]):
+            return NetworkError(error_msg)
+
+        # 기본: 예약 실패로 처리
+        return ReservationFailedError(error_msg)
 
     def _build_passengers(self, passengers: dict) -> list:
         result = []
@@ -107,8 +153,10 @@ class SRTService:
         except Exception as e:
             if "열차가 없습니다" in str(e) or "결과가 없습니다" in str(e):
                 return None
-            logger.error(f"SRT 검색 실패: {e}")
-            raise
+            # 에러 타입 변환
+            raised_error = self._classify_srt_error(e)
+            logger.error(f"SRT 검색 실패: {raised_error}")
+            raise raised_error from e
 
         special = SeatType.SPECIAL_FIRST if seat_type == "special" else SeatType.GENERAL_FIRST
         passenger_list = self._build_passengers(passengers)
@@ -159,7 +207,9 @@ class SRTService:
                     "reservation": str(reservation),
                 }
             except Exception as e:
-                logger.debug(f"SRT 예약 시도 실패 ({train.dep_time}): {e}")
+                # 예약 시도 실패는 좌석 없음으로 인한 경우가 대부분이므로 debug 레벨로
+                classified = self._classify_srt_error(e)
+                logger.debug(f"SRT 예약 시도 실패 ({train.dep_time}): {classified}")
                 continue
 
         return None
