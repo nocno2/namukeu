@@ -691,6 +691,7 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
 
     // Token expired — re-login and retry once
     if (resp.status === 401 && retryCount === 0) {
+      console.log(`[gate] Token expired for ${path}, re-logging in...`);
       clearTimeout(timeoutId);
       await gateLogin();
       return gateApi(path, retryCount + 1);
@@ -698,17 +699,35 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
 
     // Service unavailable — exponential backoff retry (max 2 retries)
     if (resp.status >= 500 && retryCount < 2) {
+      console.log(`[gate] Service unavailable (${resp.status}) for ${path}, retry ${retryCount + 1}/2...`);
       clearTimeout(timeoutId);
       const delay = Math.pow(2, retryCount) * 1000;
       await new Promise((r) => setTimeout(r, delay));
       return gateApi(path, retryCount + 1);
     }
 
-    if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`);
+    if (!resp.ok) {
+      // 상세 에러 정보 로깅
+      const status = resp.status;
+      const statusText = resp.statusText;
+      let body = "";
+      try {
+        body = await resp.text();
+      } catch {}
+      console.error(`[gate] API Error | ${status} ${statusText} | path: ${path} | body: ${body.slice(0, 500)}`);
+      throw new Error(`${status} ${statusText}`);
+    }
     return resp.json();
   } catch (err) {
-    if (err instanceof Error && err.name === "AbortError") {
+    const isTimeout = err instanceof Error && err.name === "AbortError";
+    const isNetworkError = err instanceof TypeError && err.message.includes("fetch");
+    if (isTimeout) {
+      console.error(`[gate] Timeout | ${GATE_TIMEOUT_MS}ms | path: ${path}`);
       throw new Error(`Gateway API timeout after ${GATE_TIMEOUT_MS}ms: ${path}`);
+    }
+    if (isNetworkError) {
+      console.error(`[gate] Network Error | path: ${path} | error: ${err}`);
+      throw new Error(`Gateway API network error: ${err}`);
     }
     throw err;
   } finally {
@@ -717,10 +736,12 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
 }
 
 async function coinApi(path: string): Promise<any> {
+  const fullPath = `/api/coin${path}`;
   try {
-    return await gateApi(`/api/coin${path}`);
+    return await gateApi(fullPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[coin] API failed | path: ${fullPath} | error: ${msg}`);
     // Throw a structured error for command handlers to catch
     throw new Error(`[COIN] ${msg}`);
   }
