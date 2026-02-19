@@ -449,6 +449,88 @@ function GoalForm({
   );
 }
 
+// 작업 생성 폼
+function TaskForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (data: { title: string; prompt: string; project: string; type: "one-time" | "recurring" | "event"; schedule_cron?: string }) => void;
+  onCancel: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [prompt, setPrompt] = useState("");
+  const [project, setProject] = useState("");
+  const [type, setType] = useState<"one-time" | "recurring" | "event">("one-time");
+  const [scheduleCron, setScheduleCron] = useState("");
+
+  const handleSubmit = () => {
+    if (!title.trim() || !prompt.trim()) return;
+    onSubmit({
+      title,
+      prompt,
+      project: project || "default",
+      type,
+      schedule_cron: type === "recurring" ? scheduleCron : undefined,
+    });
+  };
+
+  return (
+    <div className="bg-bg rounded-xl p-4 border border-border space-y-3">
+      <input
+        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
+        placeholder="작업 제목"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+      />
+      <input
+        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
+        placeholder="프로젝트 (예: COIN, BLOG)"
+        value={project}
+        onChange={(e) => setProject(e.target.value)}
+      />
+      <select
+        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
+        value={type}
+        onChange={(e) => setType(e.target.value as "one-time" | "recurring" | "event")}
+      >
+        <option value="one-time">一次性 (One-time)</option>
+        <option value="recurring">주기적 (Recurring)</option>
+        <option value="event">이벤트 (Event)</option>
+      </select>
+      {type === "recurring" && (
+        <input
+          className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text font-mono"
+          placeholder="Cron (예: 0 9 * * *)"
+          value={scheduleCron}
+          onChange={(e) => setScheduleCron(e.target.value)}
+        />
+      )}
+      <textarea
+        className="w-full bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
+        placeholder="프롬프트"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        rows={4}
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={handleSubmit}
+          disabled={!title.trim() || !prompt.trim()}
+          className="flex-1 text-sm text-white bg-primary hover:bg-primary/80 disabled:opacity-50 rounded-lg py-2"
+        >
+          추가
+        </button>
+        <button
+          onClick={onCancel}
+          className="text-sm text-text-muted hover:text-text border border-border rounded-lg px-3 py-2"
+        >
+          취소
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
@@ -458,6 +540,7 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
   const [showModal, setShowModal] = useState(false);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [showGoalForm, setShowGoalForm] = useState(false);
+  const [showTaskForm, setShowTaskForm] = useState(false);
   const [goalsFilter, setGoalsFilter] = useState<"all" | "active" | "proposed" | "completed">("active");
   const [error, setError] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -619,6 +702,29 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     }
   };
 
+  const handleCreateTask = async (data: {
+    title: string;
+    prompt: string;
+    project: string;
+    type: "one-time" | "recurring" | "event";
+    schedule_cron?: string;
+  }) => {
+    setActionLoading(true);
+    try {
+      await api.agentCreateTask({
+        title: data.title,
+        prompt: data.prompt,
+        project: data.project,
+        type: data.type,
+        schedule_cron: data.schedule_cron,
+      });
+      setShowTaskForm(false);
+      fetchAll();
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // 통계
   const todayTaskCount = agentStatus?.todayTaskCount || 0;
   const activeGoals = goals.filter((g) => g.status === "active");
@@ -729,6 +835,22 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
                 </div>
               </div>
             </div>
+
+            {/* 작업 추가 버튼 */}
+            <button
+              onClick={() => setShowTaskForm(true)}
+              className="w-full text-sm text-primary border border-primary/30 hover:bg-primary/5 rounded-lg py-2 flex items-center justify-center gap-1"
+            >
+              <Plus size={14} /> 작업 추가
+            </button>
+
+            {/* 작업 추가 폼 */}
+            {showTaskForm && (
+              <TaskForm
+                onSubmit={handleCreateTask}
+                onCancel={() => setShowTaskForm(false)}
+              />
+            )}
 
             {/* 승인 대기 */}
             {pendingTasks.length > 0 && (
