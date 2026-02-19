@@ -7,7 +7,7 @@ from src.core.crypto import CryptoManager
 from src.core.database import Database
 from src.core.errors import TrainAPIError
 from src.models.credential import CredentialCreate, CredentialResponse
-from src.models.reservation import ReservationCreate, ReservationResponse, SearchStats
+from src.models.reservation import ReservationCreate, ReservationResponse, SearchStats, ErrorPatternStats
 from src.services.scheduler import ReservationScheduler
 
 router = APIRouter()
@@ -172,6 +172,31 @@ def cancel_reservation(
     scheduler.stop_search(reservation_id)
     db.update_reservation_status(reservation_id, "cancelled")
     return {"message": f"예약 #{reservation_id} 취소 완료"}
+
+
+@router.get("/reservations/{reservation_id}/error-stats", response_model=ErrorPatternStats)
+def get_error_stats(
+    reservation_id: int,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """에러 패턴 분석. consecutive_errors, backoff_seconds, is_expected 기반 분석."""
+    reservation = db.get_reservation(reservation_id)
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+
+    stats = db.get_error_stats(reservation_id)
+    return ErrorPatternStats(**stats)
+
+
+@router.get("/error-stats", response_model=ErrorPatternStats)
+def get_all_error_stats(
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """전체 에러 패턴 분석. 모든 예약의 에러를 종합 분석."""
+    stats = db.get_error_stats()
+    return ErrorPatternStats(**stats)
 
 
 # --- System ---

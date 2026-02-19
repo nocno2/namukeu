@@ -230,8 +230,9 @@ class Database:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def get_error_stats(self, reservation_id: int | None = None) -> dict[str, int]:
-        """에러 통계 조회. 특정 예약 또는 전체에 대한 에러 유형별 발생 횟수."""
+    def get_error_stats(self, reservation_id: int | None = None) -> dict:
+        """에러 통계 조회. 특정 예약 또는 전체에 대한 에러 패턴 분석."""
+        # 에러 코드별 개수
         if reservation_id:
             rows = self.conn.execute(
                 "SELECT error_code, COUNT(*) as count FROM search_logs WHERE error_code IS NOT NULL AND reservation_id = ? GROUP BY error_code",
@@ -241,7 +242,40 @@ class Database:
             rows = self.conn.execute(
                 "SELECT error_code, COUNT(*) as count FROM search_logs WHERE error_code IS NOT NULL GROUP BY error_code",
             ).fetchall()
-        return {dict(r)["error_code"]: dict(r)["count"] for r in rows}
+        error_by_code = {dict(r)["error_code"]: dict(r)["count"] for r in rows}
+
+        # 에러 패턴 분석 (consecutive_errors, backoff_seconds, is_expected 기반)
+        if reservation_id:
+            pattern_rows = self.conn.execute(
+                """SELECT
+                    MAX(consecutive_errors) as max_consecutive,
+                    AVG(backoff_seconds) as avg_backoff,
+                    SUM(CASE WHEN is_expected = 1 THEN 1 ELSE 0 END) as expected_count,
+                    SUM(CASE WHEN is_expected = 0 AND error IS NOT NULL THEN 1 ELSE 0 END) as unexpected_count
+                   FROM search_logs
+                   WHERE reservation_id = ? AND error IS NOT NULL""",
+                (reservation_id,),
+            ).fetchone()
+        else:
+            pattern_rows = self.conn.execute(
+                """SELECT
+                    MAX(consecutive_errors) as max_consecutive,
+                    AVG(backoff_seconds) as avg_backoff,
+                    SUM(CASE WHEN is_expected = 1 THEN 1 ELSE 0 END) as expected_count,
+                    SUM(CASE WHEN is_expected = 0 AND error IS NOT NULL THEN 1 ELSE 0 END) as unexpected_count
+                   FROM search_logs
+                   WHERE error IS NOT NULL"""
+            ).fetchone()
+
+        pattern = dict(pattern_rows) if pattern_rows else {}
+
+        return {
+            "error_by_code": error_by_code,
+            "max_consecutive_errors": pattern.get("max_consecutive", 0) or 0,
+            "avg_backoff_seconds": round(pattern.get("avg_backoff", 0) or 0, 2),
+            "expected_error_count": pattern.get("expected_count", 0) or 0,
+            "unexpected_error_count": pattern.get("unexpected_count", 0) or 0,
+        }
 
     def cleanup_old_logs(self, keep_days: int = 7) -> int:
         """만료된 예약의 오래된 검색 로그 삭제. 삭제된 로그 수 반환."""

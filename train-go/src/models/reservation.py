@@ -43,6 +43,14 @@ class SearchStats(BaseModel):
     avg_interval_seconds: float | None = None
 
 
+class ErrorPatternStats(BaseModel):
+    error_by_code: dict[str, int] = {}
+    max_consecutive_errors: int = 0
+    avg_backoff_seconds: float = 0.0
+    expected_error_count: int = 0
+    unexpected_error_count: int = 0
+
+
 class ReservationResponse(BaseModel):
     id: int
     provider: str
