@@ -7,6 +7,7 @@ from src.services.exchange_base import Exchange
 from src.services.notifier import TelegramNotifier
 from src.services.portfolio import PortfolioTracker
 from src.services.risk_manager import RiskManager
+from src.services.transition_checker import TransitionChecker
 from src.strategies.base import Signal
 from src.strategies.registry import get_strategy
 
@@ -34,6 +35,8 @@ class TradingScheduler:
         self.trading_interval = trading_interval
         self._tasks: dict[str, asyncio.Task] = {}
         self._snapshot_task: asyncio.Task | None = None
+        self._transition_task: asyncio.Task | None = None
+        self.transition_checker = TransitionChecker(db)
 
     def get_active_keys(self) -> list[str]:
         return list(self._tasks.keys())
@@ -86,6 +89,37 @@ class TradingScheduler:
                 self._snapshot_loop(interval_minutes, initial_equity)
             )
             logger.info(f"스냅샷 루프 시작 (interval={interval_minutes}min)")
+
+    def start_transition_check_loop(self, hour: int = 9, minute: int = 0):
+        """매일 특정 시간에 전환 체크를 실행하는 루프 시작."""
+        if self._transition_task is None or self._transition_task.done():
+            self._transition_task = asyncio.create_task(
+                self._transition_check_loop(hour, minute)
+            )
+            logger.info(f"전환 체크 루프 시작 (매일 {hour:02d}:{minute:02d})")
+
+    async def _transition_check_loop(self, target_hour: int, target_minute: int):
+        """매일 특정 시간에 전환 체크를 실행."""
+        import datetime
+
+        async def run_check():
+            logger.info("전환 체크 실행...")
+            result = self.transition_checker.get_readiness_report()
+            await self.notifier.notify_transition_check(result)
+
+        while True:
+            now = datetime.datetime.now()
+            target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+
+            # 목표 시간이 지났으면 다음 날로
+            if target <= now:
+                target += datetime.timedelta(days=1)
+
+            wait_seconds = (target - now).total_seconds()
+            logger.info(f"전환 체크까지 {wait_seconds/3600:.1f}시간 대기")
+            await asyncio.sleep(wait_seconds)
+
+            await run_check()
 
     async def _snapshot_loop(self, interval_minutes: int, initial_equity: float | None):
         try:

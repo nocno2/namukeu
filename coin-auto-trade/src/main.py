@@ -153,6 +153,7 @@ async def lifespan(app: FastAPI):
     for provider, scheduler in runtime.schedulers.items():
         await scheduler.restore_enabled()
         scheduler.start_snapshot_loop(interval_minutes=10)
+        scheduler.start_transition_check_loop(hour=9, minute=0)  # 매일早上 9시 전환 체크
 
     # Start data collectors for active tickers per exchange
     for provider, collector in runtime.collectors.items():
