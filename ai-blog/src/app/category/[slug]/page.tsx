@@ -5,6 +5,11 @@ import PostCard from "@/components/PostCard";
 import AdBanner from "@/components/AdBanner";
 import type { Metadata } from "next";
 
+// AdSense 슬롯 ID
+const adSlotTop = process.env.NEXT_PUBLIC_AD_SLOT_CATEGORY_TOP;
+const adSlotMid = process.env.NEXT_PUBLIC_AD_SLOT_CATEGORY_MID;
+const adSlotBottom = process.env.NEXT_PUBLIC_AD_SLOT_CATEGORY_BOTTOM;
+
 export const revalidate = 3600;
 
 interface Props {
@@ -66,16 +71,16 @@ export default async function CategoryPage({ params }: Props) {
         {category.description && <p className="text-[var(--text-tertiary)]">{category.description}</p>}
       </header>
 
-      <AdBanner slot="category-top" format="auto" className="mb-8" />
+      {adSlotTop && <AdBanner slot={adSlotTop} format="auto" className="mb-8" />}
 
       {posts.length === 0 ? (
         <p className="text-[var(--text-tertiary)] text-center py-12">이 카테고리에 게시된 글이 없습니다.</p>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {postsWithMidAd.map((item, idx) =>
-            item === "AD" ? (
-              <AdBanner key="mid-ad" slot="category-mid" format="auto" className="sm:col-span-2 lg:col-span-3 my-4" />
-            ) : (
+            item === "AD" && adSlotMid ? (
+              <AdBanner key="mid-ad" slot={adSlotMid} format="auto" className="sm:col-span-2 lg:col-span-3 my-4" />
+            ) : item !== "AD" ? (
               <PostCard
                 key={item.id}
                 title={item.title}
@@ -87,12 +92,12 @@ export default async function CategoryPage({ params }: Props) {
                 featuredImage={item.featuredImage}
                 tags={tagsByPostId.get(item.id)}
               />
-            )
+            ) : null
           )}
         </div>
       )}
 
-      <AdBanner slot="category-bottom" format="horizontal" className="mt-10" />
+      {adSlotBottom && <AdBanner slot={adSlotBottom} format="horizontal" className="mt-10" />}
     </div>
   );
 }

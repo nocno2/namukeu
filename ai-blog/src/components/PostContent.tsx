@@ -3,6 +3,12 @@ interface PostContentProps {
   showInArticleAd?: boolean;
 }
 
+// 인아티클 광고 슬롯 ID (환경변수에서 가져오거나 기본값 사용)
+const getInArticleAdSlot = (index: number): string => {
+  const envVar = `NEXT_PUBLIC_AD_SLOT_IN_ARTICLE_${index}`;
+  return process.env[envVar] || `in-article-${index}`;
+};
+
 // 콘텐츠 길이에 비례하여 인아티클 광고를 분산 삽입 (최대 3개)
 const MIN_CHARS_BETWEEN_ADS = 1500;
 const MIN_CHARS_FOR_AD = 800;
@@ -50,7 +56,7 @@ export default function PostContent({ html, showInArticleAd = false }: PostConte
           <ins class="adsbygoogle"
                style="display:block; text-align:center;"
                data-ad-client="${adsenseId}"
-               data-ad-slot="in-article-${i + 1}"
+               data-ad-slot="${getInArticleAdSlot(i + 1)}"
                data-ad-format="auto"
                data-full-width-responsive="true"></ins>
           <script>(adsbygoogle = window.adsbygoogle || []).push({})</script>
