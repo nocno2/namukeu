@@ -278,6 +278,77 @@ export async function getProfitSummary(months: number = 6): Promise<string> {
   return lines.join("\n");
 }
 
+export async function getRevenueBySource(months: number = 12): Promise<string> {
+  const data = await loadRevenue();
+
+  if (data.records.length === 0) {
+    return "수익 기록이 없습니다.";
+  }
+
+  // Get recent months data
+  const now = new Date();
+  const recentMonths: string[] = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    recentMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  // Group by source (all time)
+  const bySourceAllTime: Record<string, number> = {};
+  for (const r of data.records) {
+    bySourceAllTime[r.source] = (bySourceAllTime[r.source] || 0) + r.amount;
+  }
+
+  // Group by source (recent months)
+  const bySourceRecent: Record<string, number> = {};
+  for (const r of data.records) {
+    const month = r.date.substring(0, 7);
+    if (recentMonths.includes(month)) {
+      bySourceRecent[r.source] = (bySourceRecent[r.source] || 0) + r.amount;
+    }
+  }
+
+  const lines: string[] = ["📊 수익 원별 분석:"];
+
+  // Recent months breakdown
+  const recentTotal = Object.values(bySourceRecent).reduce((a, b) => a + b, 0);
+  lines.push(`\n최근 ${months}개월 (총 ₩${recentTotal.toLocaleString()}):`);
+
+  if (Object.keys(bySourceRecent).length > 0) {
+    const sorted = Object.entries(bySourceRecent)
+      .sort((a, b) => b[1] - a[1]);
+
+    for (const [source, amount] of sorted) {
+      const percent = recentTotal > 0 ? Math.round((amount / recentTotal) * 100) : 0;
+      const bar = "▓".repeat(Math.min(percent / 5, 20));
+      lines.push(`- ${source}: ₩${amount.toLocaleString()} (${percent}%) ${bar}`);
+    }
+  } else {
+    lines.push("  데이터 없음");
+  }
+
+  // All time breakdown
+  const allTimeTotal = Object.values(bySourceAllTime).reduce((a, b) => a + b, 0);
+  lines.push(`\n전체 기간 (총 ₩${allTimeTotal.toLocaleString()}):`);
+
+  const sortedAll = Object.entries(bySourceAllTime)
+    .sort((a, b) => b[1] - a[1]);
+
+  for (const [source, amount] of sortedAll) {
+    const percent = allTimeTotal > 0 ? Math.round((amount / allTimeTotal) * 100) : 0;
+    const bar = "▓".repeat(Math.min(percent / 5, 20));
+    lines.push(`- ${source}: ₩${amount.toLocaleString()} (${percent}%) ${bar}`);
+  }
+
+  // Top source highlight
+  if (sortedAll.length > 0) {
+    const topSource = sortedAll[0][0];
+    lines.push(`\n🏆 최대 수익 원: ${topSource} (₩${sortedAll[0][1].toLocaleString()})`);
+  }
+
+  return lines.join("\n");
+}
+
 // Helper: calculate moving average
 function calculateMovingAverage(values: number[], days: number): number {
   if (values.length === 0) return 0;

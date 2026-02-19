@@ -20,6 +20,7 @@ import {
   getCostHistory,
   getProfitSummary,
   getRevenueForecast,
+  getRevenueBySource,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -494,6 +495,10 @@ export async function createBot(): Promise<Bot> {
       } else if (subcommand === "forecast") {
         const forecast = await getRevenueForecast();
         await sendResponse(ctx, forecast);
+      } else if (subcommand === "sources") {
+        const months = parseInt(parts[1] || "12", 10);
+        const sources = await getRevenueBySource(months);
+        await sendResponse(ctx, sources);
       } else if (subcommand === "help") {
         await ctx.reply(
           "수익 추적 명령어:\n\n" +
@@ -503,6 +508,7 @@ export async function createBot(): Promise<Bot> {
             "/revenue history — 월별 이력 확인\n" +
             "/revenue profit — 손익 요약\n" +
             "/revenue forecast — 월말 예측\n" +
+            "/revenue sources — 수익 원별 분석\n" +
             "/revenue help — 도움말"
         );
       } else {
