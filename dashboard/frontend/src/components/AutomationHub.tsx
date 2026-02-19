@@ -5,6 +5,7 @@ import {
   ChevronUp,
   Pin,
   PinOff,
+  RefreshCw,
   Target,
   CheckCircle,
   XCircle,
@@ -25,6 +26,7 @@ interface Props {
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onRefresh?: () => void;
 }
 
 interface TaskItem {
@@ -447,7 +449,7 @@ function GoalForm({
   );
 }
 
-export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
+export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [agentStatus, setAgentStatus] = useState<AgentStatus | null>(null);
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([]);
   const [goals, setGoals] = useState<AgentGoal[]>([]);
@@ -459,6 +461,7 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
   const [goalsFilter, setGoalsFilter] = useState<"all" | "active" | "proposed" | "completed">("active");
   const [error, setError] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -504,6 +507,14 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     const interval = setInterval(fetchAll, 15_000);
     return () => clearInterval(interval);
   }, [fetchAll]);
+
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    await fetchAll();
+    setRefreshing(false);
+    onRefresh?.();
+  };
 
   const handleApproveTask = async (taskId: string) => {
     setActionLoading(true);
@@ -629,6 +640,13 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
             <span className="font-semibold text-sm text-text">Automation Hub</span>
           </div>
           <div className="flex items-center gap-0.5">
+            <button
+              onClick={handleRefresh}
+              className={`p-1.5 rounded-lg text-text-muted/40 hover:text-text-muted ${refreshing ? "animate-spin" : ""}`}
+              title="새로고침"
+            >
+              <RefreshCw size={14} />
+            </button>
             <button onClick={onTogglePin} className={`p-1.5 rounded-lg ${pinned ? "text-primary" : "text-text-muted/40 hover:text-text-muted"}`}>
               {pinned ? <Pin size={14} /> : <PinOff size={14} />}
             </button>
@@ -650,6 +668,13 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
             <h3 className="font-semibold text-sm text-text">Automation Hub</h3>
           </div>
           <div className="flex items-center gap-0.5">
+            <button
+              onClick={handleRefresh}
+              className={`p-1.5 rounded-lg transition-colors text-text-muted/40 hover:text-text-muted hover:bg-surface-hover ${refreshing ? "animate-spin" : ""}`}
+              title="새로고침"
+            >
+              <RefreshCw size={14} />
+            </button>
             <button
               onClick={onTogglePin}
               className={`p-1.5 rounded-lg transition-colors ${

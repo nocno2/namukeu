@@ -5,6 +5,7 @@ import {
   Pin,
   PinOff,
   Play,
+  RefreshCw,
   TrendingUp,
   AlertCircle,
   CheckCircle,
@@ -17,6 +18,7 @@ interface Props {
   pinned: boolean;
   onToggleCollapse: () => void;
   onTogglePin: () => void;
+  onRefresh?: () => void;
 }
 
 function formatDate(dateStr?: string): string {
@@ -81,13 +83,14 @@ function ValidationBadge({ resultId }: { resultId: number }) {
   );
 }
 
-export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogglePin }: Props) {
+export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogglePin, onRefresh }: Props) {
   const [results, setResults] = useState<BacktestResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [startingId, setStartingId] = useState<number | null>(null);
   const [mode, setMode] = useState<"paper" | "live" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const fetchResults = useCallback(async () => {
     try {
@@ -126,6 +129,14 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
     }
   };
 
+  const handleRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setRefreshing(true);
+    await fetchResults();
+    setRefreshing(false);
+    onRefresh?.();
+  };
+
   if (collapsed) {
     return (
       <div className="bg-surface border border-border rounded-2xl p-3">
@@ -140,6 +151,13 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
             )}
           </div>
           <div className="flex items-center gap-0.5">
+            <button
+              onClick={handleRefresh}
+              className={`p-1.5 rounded-lg transition-colors text-text-muted/40 hover:text-text-muted hover:bg-surface-hover ${refreshing ? "animate-spin" : ""}`}
+              title="새로고침"
+            >
+              <RefreshCw size={14} />
+            </button>
             <button
               onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
               className={`p-1.5 rounded-lg transition-colors ${
@@ -176,6 +194,13 @@ export function CoinBacktestStatus({ collapsed, pinned, onToggleCollapse, onTogg
           )}
         </div>
         <div className="flex items-center gap-0.5">
+          <button
+            onClick={handleRefresh}
+            className={`p-1.5 rounded-lg transition-colors text-text-muted/40 hover:text-text-muted hover:bg-surface-hover ${refreshing ? "animate-spin" : ""}`}
+            title="새로고침"
+          >
+            <RefreshCw size={14} />
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
             className={`p-1.5 rounded-lg transition-colors ${
