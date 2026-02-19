@@ -873,3 +873,186 @@ export async function getFormattedDailyReport(): Promise<string> {
 
   return lines.join("\n");
 }
+
+// --- Revenue Insights Generator ---
+
+export interface RevenueInsight {
+  category: "growth" | "cost" | "opportunity" | "warning";
+  title: string;
+  description: string;
+  action?: string;
+}
+
+export async function getRevenueInsights(): Promise<RevenueInsight[]> {
+  const data = await loadRevenue();
+  const insights: RevenueInsight[] = [];
+
+  if (data.records.length < 3) {
+    return [{
+      category: "opportunity",
+      title: "데이터 부족",
+      description: "더 정확한 인사이트를 위해 최소 3건 이상의 수익 기록이 필요합니다.",
+    }];
+  }
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const lastMonth = `${now.getFullYear()}-${String(now.getMonth()).padStart(2, "0")}`;
+  const twoMonthsAgo = `${now.getFullYear()}-${String(now.getMonth() - 1).padStart(2, "0")}`;
+
+  // Get monthly totals
+  const monthTotals: Record<string, number> = {};
+  for (const r of data.records) {
+    const month = r.date.substring(0, 7);
+    monthTotals[month] = (monthTotals[month] || 0) + r.amount;
+  }
+
+  // Get cost monthly totals
+  const costMonthTotals: Record<string, number> = {};
+  for (const c of data.costs) {
+    const month = c.date.substring(0, 7);
+    costMonthTotals[month] = (costMonthTotals[month] || 0) + c.amount;
+  }
+
+  // Growth analysis
+  const months = Object.keys(monthTotals).sort();
+  if (months.length >= 2) {
+    const current = monthTotals[currentMonth] || 0;
+    const previous = monthTotals[lastMonth] || 0;
+    const growth = previous > 0 ? ((current - previous) / previous) * 100 : 0;
+
+    if (growth > 20) {
+      insights.push({
+        category: "growth",
+        title: "🚀 급성장",
+        description: `이번 달 수익이 지난달 대비 ${Math.round(growth)}% 증가했습니다.`,
+        action: "성장 요인을 분석하고 유지 전략을 수립하세요.",
+      });
+    } else if (growth < -20) {
+      insights.push({
+        category: "warning",
+        title: "⚠️ 수익 감소",
+        description: `이번 달 수익이 지난달 대비 ${Math.round(Math.abs(growth))}% 감소했습니다.`,
+        action: "원인을 분석하고 회복 전략이 필요합니다.",
+      });
+    }
+  }
+
+  // Cost analysis
+  const currentCosts = costMonthTotals[currentMonth] || 0;
+  const currentRevenue = monthTotals[currentMonth] || 0;
+  if (currentRevenue > 0) {
+    const costRatio = (currentCosts / currentRevenue) * 100;
+    if (costRatio > 50) {
+      insights.push({
+        category: "cost",
+        title: "💰 높은 비용 비율",
+        description: `비용이 수익의 ${Math.round(costRatio)}%를 차지합니다. (목표: 30% 이하)`,
+        action: "비용 최적화 기회를 검토하세요.",
+      });
+    } else if (costRatio < 20) {
+      insights.push({
+        category: "growth",
+        title: "✅ 건강한 비용 구조",
+        description: `비용이 수익의 ${Math.round(costRatio)}%로 효율적입니다.`,
+      });
+    }
+  }
+
+  // Revenue source diversity
+  const sourceTotals: Record<string, number> = {};
+  for (const r of data.records) {
+    sourceTotals[r.source] = (sourceTotals[r.source] || 0) + r.amount;
+  }
+  const sources = Object.keys(sourceTotals);
+  if (sources.length === 1) {
+    insights.push({
+      category: "opportunity",
+      title: "🎯 수익원 다각화 필요",
+      description: `현재 ${sources[0]}에만 의존하고 있습니다. 수익원을 다양화하면 리스크를 줄일 수 있습니다.`,
+      action: "새로운 수익 채널을探索해보세요.",
+    });
+  } else if (sources.length >= 3) {
+    const topSource = Object.entries(sourceTotals).sort((a, b) => b[1] - a[1])[0];
+    const topRatio = (topSource[1] / Object.values(sourceTotals).reduce((a, b) => a + b, 0)) * 100;
+    if (topRatio > 70) {
+      insights.push({
+        category: "opportunity",
+        title: "📊 주요 수익원 집중",
+        description: `${topSource[0]}가 전체 수익의 ${Math.round(topRatio)}%를 차지합니다.`,
+        action: "비중을 줄이고 다른 수익원을 강화해보세요.",
+      });
+    }
+  }
+
+  // Monthly target progress
+  if (data.monthlyTarget > 0 && monthTotals[currentMonth]) {
+    const progress = (monthTotals[currentMonth] / data.monthlyTarget) * 100;
+    if (progress < 50 && now.getDate() > 15) {
+      insights.push({
+        category: "warning",
+        title: "🚨 목표 이탈 위험",
+        description: `이번 달 목표 달성률이 ${Math.round(progress)}%입니다.`,
+        action: "남은 기간 동안 일일 수익 목표를 달성해야 합니다.",
+      });
+    } else if (progress >= 100) {
+      insights.push({
+        category: "growth",
+        title: "🎉 목표 달성",
+        description: `이번 달 목표를 달성했습니다!`,
+        action: "다음 달 목표를 상향 조정해보세요.",
+      });
+    }
+  }
+
+  // Seasonal pattern (simple)
+  if (months.length >= 6) {
+    const recentMonths = months.slice(-3);
+    const olderMonths = months.slice(-6, -3);
+    const recentAvg = recentMonths.reduce((sum, m) => sum + (monthTotals[m] || 0), 0) / 3;
+    const olderAvg = olderMonths.reduce((sum, m) => sum + (monthTotals[m] || 0), 0) / 3;
+    if (olderAvg > 0) {
+      const trend = ((recentAvg - olderAvg) / olderAvg) * 100;
+      if (trend > 30) {
+        insights.push({
+          category: "growth",
+          title: "📈 장기 성장 추세",
+          description: "최근 3개월이 이전 3개월 대비 증가 추세입니다.",
+        });
+      } else if (trend < -30) {
+        insights.push({
+          category: "warning",
+          title: "📉 장기 하락 추세",
+          description: "최근 3개월이 이전 3개월 대비 감소 추세입니다.",
+          action: " strategis한 재검토가 필요합니다.",
+        });
+      }
+    }
+  }
+
+  return insights;
+}
+
+// Format insights for Telegram
+export async function getFormattedInsights(): Promise<string> {
+  const insights = await getRevenueInsights();
+
+  if (insights.length === 0) {
+    return "분석할 데이터가 부족합니다.";
+  }
+
+  const lines: string[] = ["💡 수익 인사이트:"];
+
+  for (const insight of insights) {
+    const icon = insight.category === "growth" ? "🟢" :
+                 insight.category === "warning" ? "🔴" :
+                 insight.category === "cost" ? "🟡" : "🔵";
+    lines.push(`\n${icon} ${insight.title}`);
+    lines.push(`   ${insight.description}`);
+    if (insight.action) {
+      lines.push(`   → ${insight.action}`);
+    }
+  }
+
+  return lines.join("\n");
+}

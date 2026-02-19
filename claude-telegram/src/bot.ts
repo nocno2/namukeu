@@ -21,6 +21,7 @@ import {
   getProfitSummary,
   getRevenueForecast,
   getRevenueBySource,
+  getFormattedInsights,
   syncAllRevenue,
   getRevenueStatusAll,
   checkGoalAlerts,
@@ -278,7 +279,8 @@ export async function createBot(): Promise<Bot> {
         "/revenue set <amount> — Set monthly target\n" +
         "/revenue add <amount> <source> — Add revenue\n" +
         "/revenue history — Show history\n" +
-        "/forecast — Monthly forecast\n\n" +
+        "/forecast — Monthly forecast\n" +
+        "/insights — AI revenue insights\n\n" +
         "Cost Tracking:\n" +
         "/cost — Show cost status\n" +
         "/cost add <amount> <category> — Add cost\n" +
@@ -528,6 +530,7 @@ export async function createBot(): Promise<Bot> {
             "/revenue forecast — 월말 예측\n" +
             "/revenue sources — 수익 원별 분석\n" +
             "/revenue alert — 목표 달성 경고 확인\n" +
+            "/insights — AI 수익 인사이트\n" +
             "/revenue help — 도움말"
         );
       } else {
@@ -589,6 +592,16 @@ export async function createBot(): Promise<Bot> {
     try {
       const forecast = await getRevenueForecast();
       await sendResponse(ctx, forecast);
+    } catch (err) {
+      await ctx.reply(`오류: ${err}`);
+    }
+  });
+
+  // Revenue insights command
+  bot.command("insights", async (ctx) => {
+    try {
+      const insights = await getFormattedInsights();
+      await sendResponse(ctx, insights);
     } catch (err) {
       await ctx.reply(`오류: ${err}`);
     }

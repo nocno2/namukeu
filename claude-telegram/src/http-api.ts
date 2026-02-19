@@ -9,6 +9,7 @@ import {
   getRevenueForecast,
   getProfitSummary,
   getRevenueBySource,
+  getRevenueInsights,
   setMonthlyTarget,
   addRevenue,
   addCost,
@@ -207,6 +208,11 @@ async function handleRequest(req: Request): Promise<Response> {
     return json({ bySource });
   }
 
+  if (path === "/api/revenue/insights" && method === "GET") {
+    const insights = await getRevenueInsights();
+    return json({ insights });
+  }
+
   if (path === "/api/revenue/target" && method === "POST") {
     const body = await parseBody(req);
     if (!body.amount || typeof body.amount !== "number") {
@@ -386,4 +392,22 @@ export function startHttpApi(dependencies: HttpApiDeps): void {
   });
 
   console.log(`[http-api] Agent API server running on port ${PORT}`);
+}
+
+// Standalone execution for dashboard integration
+if (import.meta.main) {
+  deps = {
+    heartbeat: null,
+    taskStore: null,
+    goalStore: null,
+    auditLog: null,
+    forbidden: null,
+  };
+
+  Bun.serve({
+    port: PORT,
+    fetch: handleRequest,
+  });
+
+  console.log(`[http-api] Revenue API server running on port ${PORT}`);
 }

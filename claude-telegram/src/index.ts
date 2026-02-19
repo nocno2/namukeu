@@ -4,7 +4,7 @@ import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { killActiveChild } from "./claude";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
-import { getRevenueStatus, checkGoalAlerts, getFormattedDailyReport, generateDailyReport } from "./revenue";
+import { getRevenueStatus, checkGoalAlerts, getFormattedDailyReport, generateDailyReport, getFormattedInsights } from "./revenue";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -46,7 +46,17 @@ async function scheduleDailyReport(): Promise<void> {
       if (!botInstance) return;
 
       const userId = parseInt(process.env.TELEGRAM_USER_ID!, 10);
-      const message = report.summary + (report.needsAttention && report.alertMessage ? `\n\n⚠️${report.alertMessage.split("\n").join("\n⚠️ ")}` : "");
+      let message = report.summary;
+
+      // Add insights
+      const insights = await getFormattedInsights();
+      if (insights && !insights.includes("분석할 데이터가 부족합니다")) {
+        message += "\n\n" + insights;
+      }
+
+      if (report.needsAttention && report.alertMessage) {
+        message += `\n\n⚠️${report.alertMessage.split("\n").join("\n⚠️ ")}`;
+      }
 
       await botInstance.api.sendMessage(userId, message);
       lastReportDate = today;
