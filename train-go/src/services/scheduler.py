@@ -252,7 +252,14 @@ class ReservationScheduler:
                         await self.notifier.notify_reservation_success(reservation, result)
                         return
 
-                    self.db.add_search_log(reservation_id, results_count=0, error_code="SEAT_NOT_AVAILABLE")
+                    self.db.add_search_log(
+                        reservation_id,
+                        results_count=0,
+                        error_code="SEAT_NOT_AVAILABLE",
+                        consecutive_errors=consecutive_errors,
+                        backoff_seconds=0,
+                        is_expected=True,
+                    )
                     logger.info(f"매크로 #{reservation_id} 검색 {search_count}회 — 좌석 없음")
 
                 except Exception as e:
@@ -260,15 +267,24 @@ class ReservationScheduler:
                     error_code, recoverable = classify_error(e)
                     logger.error(f"매크로 #{reservation_id} 검색 에러 [{error_code}]: {e}")
 
-                    # 에러 코드와 함께 로그 저장
-                    self.db.add_search_log(reservation_id, error=str(e), error_code=error_code)
-
-                    # 예상 결과(좌석 없음, 열차 없음)는 에러 카운트에 포함 안 함
+                    # 예상 결과 여부 및 백오프 계산
                     is_expected = error_code in self.EXPECTED_OUTCOMES
-                    if not is_expected:
-                        consecutive_errors += 1
-                    else:
+                    if is_expected:
+                        backoff = 0
                         logger.info(f"매크로 #{reservation_id} 예상 결과: {error_code}")
+                    else:
+                        consecutive_errors += 1
+                        backoff = self._error_backoff(consecutive_errors, error_code)
+
+                    # 에러 코드와 함께 로그 저장 (메타데이터 포함)
+                    self.db.add_search_log(
+                        reservation_id,
+                        error=str(e),
+                        error_code=error_code,
+                        consecutive_errors=consecutive_errors,
+                        backoff_seconds=backoff,
+                        is_expected=is_expected,
+                    )
 
                     # 에러 유형별 처리
                     if error_code == "SESSION_EXPIRED":

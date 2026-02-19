@@ -73,6 +73,20 @@ class Database:
             if "duplicate column name" not in str(e).lower():
                 raise
 
+        # search_logs 테이블에 백오프 정보 컬럼 추가
+        for col, default in [
+            ("consecutive_errors", "INTEGER DEFAULT 0"),
+            ("backoff_seconds", "REAL DEFAULT 0"),
+            ("is_expected", "INTEGER DEFAULT 0"),
+        ]:
+            try:
+                self.conn.execute(f"ALTER TABLE search_logs ADD COLUMN {col} {default}")
+                self.conn.commit()
+                logger.info(f"마이그레이션 완료: search_logs.{col} 컬럼 추가")
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+
     # --- Credentials ---
 
     def save_credential(self, provider: str, encrypted_id: str, encrypted_pw: str):
@@ -191,12 +205,21 @@ class Database:
     # --- Search Logs ---
 
     def add_search_log(
-        self, reservation_id: int, results_count: int = 0, error: str | None = None, error_code: str | None = None
+        self,
+        reservation_id: int,
+        results_count: int = 0,
+        error: str | None = None,
+        error_code: str | None = None,
+        consecutive_errors: int = 0,
+        backoff_seconds: float = 0.0,
+        is_expected: bool = False,
     ):
         now = datetime.now().isoformat()
         self.conn.execute(
-            "INSERT INTO search_logs (reservation_id, searched_at, results_count, error, error_code) VALUES (?, ?, ?, ?, ?)",
-            (reservation_id, now, results_count, error, error_code),
+            """INSERT INTO search_logs
+               (reservation_id, searched_at, results_count, error, error_code, consecutive_errors, backoff_seconds, is_expected)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (reservation_id, now, results_count, error, error_code, consecutive_errors, backoff_seconds, 1 if is_expected else 0),
         )
         self.conn.commit()
 
