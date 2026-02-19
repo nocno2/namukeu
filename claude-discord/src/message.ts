@@ -1,6 +1,44 @@
-import type { TextBasedChannel } from "discord.js";
+import type { TextBasedChannel, GuildTextBasedChannel, Message } from "discord.js";
 
 const MAX_LENGTH = 1900; // Leave buffer under Discord's 2000 limit
+
+// Log message patterns - messages matching these will be auto-deleted after 5 minutes
+const LOG_PATTERNS = [
+  /^\[PROGRESS:/,
+  /^\[AUTO\//,
+  /^\[HEARTBEAT/,
+  /^처리중/,
+  /^(running|editing|working|thinking)\b/i,
+  /^⏳/,
+  /^🔄/,
+];
+
+// Check if message is a log message
+function isLogMessage(text: string): boolean {
+  return LOG_PATTERNS.some((pattern) => pattern.test(text.trim()));
+}
+
+// Store pending deletions: messageId -> timeout
+const pendingDeletions = new Map<string, NodeJS.Timeout>();
+
+// Auto-delete message after delay (default 5 minutes)
+async function scheduleDeletion(message: Message, delayMs = 5 * 60 * 1000): Promise<void> {
+  const key = `${message.channelId}-${message.id}`;
+  // Cancel any existing deletion for this message
+  const existing = pendingDeletions.get(key);
+  if (existing) clearTimeout(existing);
+
+  const timeout = setTimeout(async () => {
+    try {
+      await message.delete();
+    } catch {
+      // Ignore deletion errors
+    }
+    pendingDeletions.delete(key);
+  }, delayMs);
+
+  pendingDeletions.set(key, timeout);
+}
 
 /**
  * Send a response to Discord, automatically chunking long messages
@@ -15,25 +53,33 @@ export async function sendResponse(
     return;
   }
 
+  const isLog = isLogMessage(text);
+
   if (text.length <= MAX_LENGTH) {
-    await sendSafe(channel, text);
+    const msg = await sendSafe(channel, text);
+    if (isLog && msg) scheduleDeletion(msg);
     return;
   }
 
   const chunks = splitPreservingCodeBlocks(text, MAX_LENGTH);
-  for (const chunk of chunks) {
-    await sendSafe(channel, chunk);
+  for (let i = 0; i < chunks.length; i++) {
+    const msg = await sendSafe(channel, chunks[i]);
+    // Only schedule deletion for first chunk of log messages
+    if (i === 0 && isLog && msg) scheduleDeletion(msg);
   }
 }
 
 /**
  * Send a message to Discord. Discord natively renders Markdown.
+ * Returns the sent message for tracking, or null if failed.
  */
-async function sendSafe(channel: TextBasedChannel, text: string): Promise<void> {
+async function sendSafe(channel: TextBasedChannel, text: string): Promise<Message | null> {
   try {
-    await channel.send(text);
+    const msg = await channel.send(text);
+    return msg;
   } catch (err) {
     console.error("Failed to send message:", err);
+    return null;
   }
 }
 
