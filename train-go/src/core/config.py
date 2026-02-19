@@ -8,6 +8,7 @@ class Config:
     encryption_key: str
     telegram_bot_token: str
     telegram_chat_id: str
+    discord_webhook_url: str | None = None
     host: str = "127.0.0.1"
     port: int = 8000
     search_interval_min: int = 3
@@ -23,6 +24,7 @@ class Config:
             encryption_key=os.environ["ENCRYPTION_KEY"],
             telegram_bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
             telegram_chat_id=os.environ["TELEGRAM_CHAT_ID"],
+            discord_webhook_url=os.environ.get("DISCORD_WEBHOOK_URL"),
             host=os.environ.get("HOST", "127.0.0.1"),
             port=int(os.environ.get("PORT", "8000")),
             search_interval_min=int(os.environ.get("SEARCH_INTERVAL_MIN", "3")),

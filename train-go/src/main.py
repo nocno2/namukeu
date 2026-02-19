@@ -13,7 +13,7 @@ from src.api.routes import router, get_db, get_crypto, get_scheduler, get_token
 from src.core.config import Config
 from src.core.crypto import CryptoManager
 from src.core.database import Database
-from src.services.notifier import TelegramNotifier
+from src.services.notifier import CompositeNotifier, DiscordNotifier, TelegramNotifier
 from src.services.scheduler import ReservationScheduler
 
 LOG_DIR = Path("data/logs")
@@ -38,7 +38,14 @@ async def lifespan(app: FastAPI):
     config = app.state.config
     db = Database(config.db_path)
     crypto = CryptoManager(config.encryption_key)
-    notifier = TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id)
+
+    # 알림 채널 설정 (텔레그램 + Discord)
+    notifiers = [TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id)]
+    if config.discord_webhook_url:
+        notifiers.append(DiscordNotifier(config.discord_webhook_url))
+        logger.info("Discord 웹훅 알림 활성화")
+    notifier = CompositeNotifier(notifiers) if len(notifiers) > 1 else notifiers[0]
+
     scheduler = ReservationScheduler(
         db=db,
         crypto=crypto,

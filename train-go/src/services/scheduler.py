@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 
 from src.core.crypto import CryptoManager
 from src.core.database import Database
-from src.services.notifier import TelegramNotifier
+from src.core.errors import classify_error
+from src.services.notifier import CompositeNotifier, TelegramNotifier
 from src.services.srt import SRTService
 from src.services.korail import KorailService
 
@@ -26,7 +27,7 @@ class ReservationScheduler:
         self,
         db: Database,
         crypto: CryptoManager,
-        notifier: TelegramNotifier,
+        notifier: TelegramNotifier | CompositeNotifier,
         search_interval_min: int = 3,
         search_interval_max: int = 8,
         max_duration_hours: int = 24,
@@ -224,22 +225,44 @@ class ReservationScheduler:
                 except Exception as e:
                     search_count += 1
                     consecutive_errors += 1
-                    logger.error(f"매크로 #{reservation_id} 검색 에러: {e}")
+                    error_code, recoverable = classify_error(e)
+                    logger.error(f"매크로 #{reservation_id} 검색 에러 [{error_code}]: {e}")
                     self.db.add_search_log(reservation_id, error=str(e))
 
-                    # 로그인 만료 시 재로그인 시도
-                    if "로그인" in str(e) or "login" in str(e).lower():
+                    # 에러 유형별 처리
+                    if error_code == "SESSION_EXPIRED":
+                        # 세션 만료: 재로그인 시도
                         try:
+                            logger.info(f"매크로 #{reservation_id} 세션 재로그인 시도")
                             await asyncio.sleep(random.uniform(2, 5))
                             service.login(login_id, login_pw)
                             consecutive_errors = 0
-                        except Exception:
-                            pass
+                        except Exception as reauth_error:
+                            logger.warning(f"매크로 #{reservation_id} 재로그인 실패: {reauth_error}")
 
-                    # 에러 시 지수 백오프 적용 후 다음 반복으로
-                    backoff = self._error_backoff(consecutive_errors)
-                    logger.info(f"매크로 #{reservation_id} 에러 백오프 {backoff:.1f}초")
-                    await asyncio.sleep(backoff)
+                    elif error_code == "RATE_LIMIT":
+                        # Rate limit: 긴 백오프 적용
+                        backoff = self._error_backoff(min(consecutive_errors + 2, 8))
+                        logger.info(f"매크로 #{reservation_id} Rate limit 감지, 백오프 {backoff:.1f}초")
+                        await asyncio.sleep(backoff)
+
+                    elif error_code == "MAINTENANCE":
+                        # 시스템 점검: 백오프 후 재시도
+                        backoff = self._error_backoff(consecutive_errors)
+                        logger.info(f"매크로 #{reservation_id} 시스템 점검 중, 백오프 {backoff:.1f}초")
+                        await asyncio.sleep(backoff)
+
+                    elif error_code == "NETWORK_ERROR":
+                        # 네트워크 에러: 백오프 후 재시도
+                        backoff = self._error_backoff(consecutive_errors)
+                        logger.info(f"매크로 #{reservation_id} 네트워크 에러, 백오프 {backoff:.1f}초")
+                        await asyncio.sleep(backoff)
+
+                    else:
+                        # 기타 에러: 기본 백오프
+                        backoff = self._error_backoff(consecutive_errors)
+                        logger.info(f"매크로 #{reservation_id} 에러 백오프 {backoff:.1f}초")
+                        await asyncio.sleep(backoff)
 
                     # 주기적 진행 알림 체크 (에러 경로에서도)
                     now = datetime.now()
