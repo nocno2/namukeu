@@ -239,29 +239,34 @@ class ReservationScheduler:
                             consecutive_errors = 0
                         except Exception as reauth_error:
                             logger.warning(f"매크로 #{reservation_id} 재로그인 실패: {reauth_error}")
+                            await self.notifier.notify_error(reservation, error_code, str(reauth_error))
 
                     elif error_code == "RATE_LIMIT":
-                        # Rate limit: 긴 백오프 적용
+                        # Rate limit: 긴 백오프 적용 + 알림
                         backoff = self._error_backoff(min(consecutive_errors + 2, 8))
                         logger.info(f"매크로 #{reservation_id} Rate limit 감지, 백오프 {backoff:.1f}초")
+                        await self.notifier.notify_error(reservation, error_code, f"백오프 {backoff:.1f}초")
                         await asyncio.sleep(backoff)
 
                     elif error_code == "MAINTENANCE":
-                        # 시스템 점검: 백오프 후 재시도
+                        # 시스템 점검: 백오프 후 재시도 + 알림
                         backoff = self._error_backoff(consecutive_errors)
                         logger.info(f"매크로 #{reservation_id} 시스템 점검 중, 백오프 {backoff:.1f}초")
+                        await self.notifier.notify_error(reservation, error_code, f"백오프 {backoff:.1f}초")
                         await asyncio.sleep(backoff)
 
                     elif error_code == "NETWORK_ERROR":
-                        # 네트워크 에러: 백오프 후 재시도
+                        # 네트워크 에러: 백오프 후 재시도 + 알림
                         backoff = self._error_backoff(consecutive_errors)
                         logger.info(f"매크로 #{reservation_id} 네트워크 에러, 백오프 {backoff:.1f}초")
+                        await self.notifier.notify_error(reservation, error_code, str(e)[:100])
                         await asyncio.sleep(backoff)
 
                     else:
-                        # 기타 에러: 기본 백오프
+                        # 기타 에러: 기본 백오프 + 알림
                         backoff = self._error_backoff(consecutive_errors)
                         logger.info(f"매크로 #{reservation_id} 에러 백오프 {backoff:.1f}초")
+                        await self.notifier.notify_error(reservation, error_code, str(e)[:100])
                         await asyncio.sleep(backoff)
 
                     # 주기적 진행 알림 체크 (에러 경로에서도)
