@@ -567,12 +567,21 @@ function GoalForm({
   onSubmit,
   onCancel,
 }: {
-  onSubmit: (data: { title: string; description: string; priority: string }) => void;
+  onSubmit: (data: { title: string; description: string; priority: string; projects: string[] }) => void;
   onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState("medium");
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+
+  const projectOptions = ["COIN", "TRAIN", "TGBOT", "DCBOT", "BLOG", "DASH", "GATE", "PIPE", "TRADE"];
+
+  const toggleProject = (project: string) => {
+    setSelectedProjects((prev) =>
+      prev.includes(project) ? prev.filter((p) => p !== project) : [...prev, project]
+    );
+  };
 
   return (
     <div className="bg-bg rounded-xl p-4 border border-border space-y-3">
@@ -589,6 +598,25 @@ function GoalForm({
         onChange={(e) => setDescription(e.target.value)}
         rows={2}
       />
+      <div>
+        <span className="text-xs text-text-muted block mb-1.5">프로젝트</span>
+        <div className="flex flex-wrap gap-1.5">
+          {projectOptions.map((project) => (
+            <button
+              key={project}
+              type="button"
+              onClick={() => toggleProject(project)}
+              className={`text-[10px] px-2 py-1 rounded-lg border transition-colors cursor-pointer ${
+                selectedProjects.includes(project)
+                  ? "bg-primary text-white border-primary"
+                  : "bg-surface border-border text-text-muted hover:text-text"
+              }`}
+            >
+              {project}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="flex items-center gap-2">
         <select
           className="bg-surface border border-border rounded-lg px-3 py-2 text-sm text-text"
@@ -600,7 +628,7 @@ function GoalForm({
           <option value="high">높은 우선순위</option>
         </select>
         <button
-          onClick={() => onSubmit({ title, description, priority })}
+          onClick={() => onSubmit({ title, description, priority, projects: selectedProjects })}
           disabled={!title.trim()}
           className="flex-1 text-sm text-white bg-primary hover:bg-primary/80 disabled:opacity-50 rounded-lg py-2"
         >
@@ -854,13 +882,13 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     }
   };
 
-  const handleCreateGoal = async (data: { title: string; description: string; priority: string }) => {
+  const handleCreateGoal = async (data: { title: string; description: string; priority: string; projects: string[] }) => {
     setActionLoading(true);
     try {
       await api.agentCreateGoal({
         title: data.title,
         description: data.description,
-        projects: [],
+        projects: data.projects,
         priority: data.priority as "low" | "medium" | "high",
       });
       setShowGoalForm(false);
