@@ -190,17 +190,38 @@ class Database:
 
     def get_enabled_tasks(self) -> list[dict]:
         with self._lock:
+            # tasks table
             rows = self.conn.execute(
-                "SELECT * FROM tasks WHERE enabled = 1"
+                "SELECT id, name, handler, cron_expr, enabled FROM tasks WHERE enabled = 1"
             ).fetchall()
-        return [dict(r) for r in rows]
+            tasks = [dict(r) for r in rows]
+            # agent_tasks table (status = 'pending' or 'running' means enabled)
+            rows = self.conn.execute(
+                "SELECT id, title as name, 'agent' as handler, schedule_cron, status FROM agent_tasks WHERE status IN ('pending', 'running')"
+            ).fetchall()
+            agent_tasks = [dict(r) for r in rows]
+            for at in agent_tasks:
+                at["cron_expr"] = at.pop("schedule_cron")
+                at["enabled"] = 1 if at.pop("status") in ("pending", "running") else 0
+        return tasks + agent_tasks
 
     def get_task(self, task_id: str) -> dict | None:
         with self._lock:
             row = self.conn.execute(
-                "SELECT * FROM tasks WHERE id = ?", (task_id,)
+                "SELECT id, name, handler, cron_expr, enabled FROM tasks WHERE id = ?", (task_id,)
             ).fetchone()
-        return dict(row) if row else None
+            if row:
+                return dict(row)
+            # Check agent_tasks
+            row = self.conn.execute(
+                "SELECT id, title as name, 'agent' as handler, schedule_cron, status FROM agent_tasks WHERE id = ?", (task_id,)
+            ).fetchone()
+            if row:
+                task = dict(row)
+                task["cron_expr"] = task.pop("schedule_cron")
+                task["enabled"] = 1 if task.pop("status") in ("pending", "running") else 0
+                return task
+        return None
 
     def create_task(self, task: dict) -> dict:
         now = datetime.now().isoformat()

@@ -189,6 +189,13 @@ class TaskStore:
         if "schedule_cron" in updates:
             sets.append("schedule_cron = ?")
             values.append(updates["schedule_cron"])
+            # Auto-update schedule_next based on new cron
+            try:
+                next_time = get_next_cron_time(updates["schedule_cron"])
+                sets.append("schedule_next = ?")
+                values.append(next_time.isoformat())
+            except Exception:
+                pass  # Invalid cron expression, skip
 
         if not sets:
             return

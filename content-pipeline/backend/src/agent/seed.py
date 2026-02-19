@@ -107,7 +107,7 @@ def seed_evolution_task(task_store: TaskStore):
         prompt="__EVOLUTION_CYCLE__",
         task_type="recurring",
         project="GENERAL",
-        schedule_cron="0 */3 * * *",
+        schedule_cron="*/15 * * * *",
         notify_user=True,
     )
     logger.info("[agent] Evolution cycle task seeded (every 3 hours).")

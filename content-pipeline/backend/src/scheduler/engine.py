@@ -46,6 +46,8 @@ class SchedulerEngine:
                 id=task["id"],
                 replace_existing=True,
                 misfire_grace_time=60,
+                max_instances=1,
+                coalesce=True,
             )
             logger.info(f"[scheduler] Job added: {task['name']} ({task['cron_expr']})")
         except Exception as e:
