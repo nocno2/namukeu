@@ -10,6 +10,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { Header } from "./Header";
 import { LogViewer } from "./LogViewer";
 import { N8nStatus } from "./N8nStatus";
+import { RevenueDashboard } from "./RevenueDashboard";
 import { ServiceCard } from "./ServiceCard";
 import { SystemResources } from "./SystemResources";
 import { TrainStatus } from "./TrainStatus";
@@ -49,16 +50,17 @@ type CardItem =
   | { type: "train"; id: string }
   | { type: "automation"; id: string }
   | { type: "n8n"; id: string }
-  | { type: "coin"; id: string };
+  | { type: "coin"; id: string }
+  | { type: "revenue"; id: string };
 
 export function Dashboard({ username, onLogout }: Props) {
   const [services, setServices] = useState<ServiceStatus[]>([]);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedService, setSelectedService] = useState<string | null>(null);
   const [logService, setLogService] = useState<string | null>(null);
   const [prefs, setPrefs] = useState<Record<string, CardPreference>>({});
   const [activeTab, setActiveTab] = useState<TabType>("all");
+  const [servicesLoading, setServicesLoading] = useState(true);
 
   const fetchServices = useCallback(async () => {
     try {
@@ -68,7 +70,7 @@ export function Dashboard({ username, onLogout }: Props) {
     } catch {
       setError("서비스 상태를 불러올 수 없습니다.");
     } finally {
-      setLoading(false);
+      setServicesLoading(false);
     }
   }, []);
 
@@ -120,6 +122,7 @@ export function Dashboard({ username, onLogout }: Props) {
     { type: "train", id: "train-status" },
     { type: "coin", id: "coin-backtest" },
     { type: "blog", id: "blog-traffic" },
+    { type: "revenue", id: "revenue-dashboard" },
     { type: "claude", id: "claude-usage" },
     { type: "n8n", id: "n8n-status" },
     { type: "automation", id: "automation-hub" },
@@ -221,7 +224,7 @@ export function Dashboard({ username, onLogout }: Props) {
           </div>
         )}
 
-        {loading ? (
+        {servicesLoading && sortedCards.length === 0 ? (
           <div className="text-center text-text-muted py-12">Loading...</div>
         ) : sortedCards.length === 0 ? (
           <div className="text-center text-text-muted py-12">
@@ -257,6 +260,9 @@ export function Dashboard({ username, onLogout }: Props) {
                   break;
                 case "coin":
                   content = <CoinBacktestStatus {...cardProps(card.id)} />;
+                  break;
+                case "revenue":
+                  content = <RevenueDashboard {...cardProps(card.id)} />;
                   break;
                 case "n8n":
                   content = <N8nStatus {...cardProps(card.id)} />;
