@@ -100,6 +100,10 @@ async def create_reservation(
         time_range_end=body.time_range_end,
         passengers=body.passengers.model_dump(),
         seat_type=body.seat_type,
+        train_name=body.train_name,
+        train_name_exclude=body.train_name_exclude,
+        seat_position=body.seat_position.value,
+        price_range=body.price_range.model_dump() if body.price_range else None,
     )
 
     scheduler.start_search(reservation_id)

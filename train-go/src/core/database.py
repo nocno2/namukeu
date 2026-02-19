@@ -35,6 +35,12 @@ class Database:
                 time_range_end TEXT NOT NULL,
                 passengers TEXT NOT NULL DEFAULT '{"adult": 1}',
                 seat_type TEXT NOT NULL DEFAULT 'general',
+                -- 세분화된 필터 옵션
+                train_name TEXT,
+                train_name_exclude INTEGER DEFAULT 0,
+                seat_position TEXT DEFAULT 'any',
+                price_range TEXT,
+                -- 상태
                 status TEXT NOT NULL DEFAULT 'pending',
                 train_info TEXT,
                 error_message TEXT,
@@ -94,13 +100,18 @@ class Database:
         time_range_end: str,
         passengers: dict | None = None,
         seat_type: str = "general",
+        train_name: str | None = None,
+        train_name_exclude: bool = False,
+        seat_position: str = "any",
+        price_range: dict | None = None,
     ) -> int:
         now = datetime.now().isoformat()
         cursor = self.conn.execute(
             """INSERT INTO reservations
                (provider, dep_station, arr_station, date, time_range_start, time_range_end,
-                passengers, seat_type, status, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
+                passengers, seat_type, train_name, train_name_exclude, seat_position, price_range,
+                status, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)""",
             (
                 provider,
                 dep_station,
@@ -110,6 +121,10 @@ class Database:
                 time_range_end,
                 json.dumps(passengers or {"adult": 1}),
                 seat_type,
+                train_name,
+                1 if train_name_exclude else 0,
+                seat_position,
+                json.dumps(price_range) if price_range else None,
                 now,
             ),
         )

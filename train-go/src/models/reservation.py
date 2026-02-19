@@ -1,3 +1,5 @@
+from enum import Enum
+
 from pydantic import BaseModel
 
 
@@ -5,6 +7,17 @@ class PassengerCount(BaseModel):
     adult: int = 1
     child: int = 0
     senior: int = 0
+
+
+class SeatPosition(str, Enum):
+    window = "window"
+    aisle = "aisle"
+    any = "any"
+
+
+class PriceRange(BaseModel):
+    min: int | None = None
+    max: int | None = None
 
 
 class ReservationCreate(BaseModel):
@@ -16,6 +29,11 @@ class ReservationCreate(BaseModel):
     time_range_end: str  # HHMM (e.g. "1700")
     passengers: PassengerCount = PassengerCount()
     seat_type: str = "general"  # "general" or "special"
+    # 세분화된 필터 옵션
+    train_name: str | None = None  # 열차명 필터 (예: "SRT", "SRT-*", "무임확인")
+    train_name_exclude: bool = False  # True면 train_name 제외, False면 포함
+    seat_position: SeatPosition = SeatPosition.any  # 좌석 위치 (window/aisle/any)
+    price_range: PriceRange | None = None  # 가격대 필터 (원)
 
 
 class SearchStats(BaseModel):
@@ -35,6 +53,12 @@ class ReservationResponse(BaseModel):
     time_range_end: str
     passengers: str
     seat_type: str
+    # 필터 옵션
+    train_name: str | None = None
+    train_name_exclude: bool = False
+    seat_position: str = "any"
+    price_range: str | None = None
+    # 상태
     status: str
     train_info: str | None = None
     error_message: str | None = None
