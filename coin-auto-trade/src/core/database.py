@@ -619,5 +619,100 @@ class Database:
         ).fetchone()
         return dict(row) if row else None
 
+    # --- Paper Trading Stats ---
+
+    def get_paper_trading_stats(self, ticker: str | None = None) -> dict:
+        """Calculate paper trading (dry_run) performance stats."""
+        query = """
+            SELECT
+                COUNT(*) as total_trades,
+                SUM(CASE WHEN side = 'buy' THEN 1 ELSE 0 END) as buy_count,
+                SUM(CASE WHEN side = 'sell' THEN 1 ELSE 0 END) as sell_count,
+                SUM(CASE WHEN state = 'done' THEN 1 ELSE 0 END) as completed_trades,
+                SUM(CASE WHEN is_dry_run = 1 THEN 1 ELSE 0 END) as dry_run_count
+            FROM orders
+            WHERE is_dry_run = 1
+        """
+        params: list = []
+
+        if ticker:
+            query += " AND ticker = ?"
+            params.append(ticker)
+
+        row = self.conn.execute(query, params).fetchone()
+        if not row:
+            return {"total_trades": 0, "completed_trades": 0, "dry_run_count": 0}
+
+        return dict(row)
+
+    def get_paper_trading_pnl(self, initial_capital: float = 1_000_000) -> dict:
+        """Calculate P&L from paper trading orders."""
+        # Get all completed dry-run orders sorted by time
+        rows = self.conn.execute("""
+            SELECT ticker, side, price, volume, amount_krw, created_at
+            FROM orders
+            WHERE is_dry_run = 1 AND state = 'done'
+            ORDER BY created_at ASC
+        """).fetchall()
+
+        if not rows:
+            return {
+                "initial_capital": initial_capital,
+                "final_capital": initial_capital,
+                "total_pnl": 0,
+                "total_pnl_pct": 0,
+                "completed_trades": 0,
+                "wins": 0,
+                "losses": 0,
+                "win_rate": 0,
+            }
+
+        capital = initial_capital
+        position: dict | None = None  # {ticker, volume, entry_price}
+        wins = 0
+        losses = 0
+
+        for row in rows:
+            side = row["side"]
+            price = row["price"] or 0
+            volume = row["volume"] or 0
+
+            if side == "buy" and position is None:
+                # Open position
+                position = {"ticker": row["ticker"], "volume": volume, "entry_price": price}
+                capital -= (volume * price) * 1.001  # Approximate fee
+            elif side == "sell" and position:
+                # Close position
+                proceeds = volume * price * 0.999  # Approximate fee
+                pnl = proceeds - (position["volume"] * position["entry_price"])
+                capital += proceeds
+                if pnl > 0:
+                    wins += 1
+                else:
+                    losses += 1
+                position = None
+
+        # Close any remaining position at last price
+        if position:
+            last_row = rows[-1]
+            last_price = last_row["price"] or 0
+            capital += position["volume"] * last_price * 0.999
+
+        total_trades = wins + losses
+        total_pnl = capital - initial_capital
+        total_pnl_pct = (total_pnl / initial_capital) * 100 if initial_capital > 0 else 0
+        win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+
+        return {
+            "initial_capital": initial_capital,
+            "final_capital": round(capital, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_pct": round(total_pnl_pct, 2),
+            "completed_trades": total_trades,
+            "wins": wins,
+            "losses": losses,
+            "win_rate": round(win_rate, 2),
+        }
+
     def close(self):
         self.conn.close()

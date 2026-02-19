@@ -142,3 +142,70 @@ async def stop_trading(exchange: str | None = None, _=Depends(verify)):
         for sched in runtime.schedulers.values():
             await sched.stop_all()
         return {"message": "전체 매매 중단"}
+
+
+# --- Paper Trading Stats ---
+
+
+@router.get("/trading/paper-stats")
+def get_paper_trading_stats(
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """Get paper trading (dry-run) statistics."""
+    stats = db.get_paper_trading_stats()
+    return stats
+
+
+@router.get("/trading/paper-pnl")
+def get_paper_trading_pnl(
+    initial_capital: float = 1_000_000,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """Calculate P&L from paper trading orders."""
+    return db.get_paper_trading_pnl(initial_capital)
+
+
+@router.get("/trading/readiness")
+def get_readiness_check(
+    min_win_rate: float = 50.0,
+    max_drawdown: float = 10.0,
+    min_return: float = 0.0,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """Check if paper trading meets criteria for live trading transition."""
+    # Get paper trading P&L
+    paper_stats = db.get_paper_trading_pnl()
+
+    # Get best backtest result
+    best_backtest = db.get_backtest_results(limit=1)
+    backtest_ready = False
+    if best_backtest:
+        bt = best_backtest[0]
+        backtest_ready = (
+            bt["total_return_pct"] > min_return and
+            bt["win_rate"] >= min_win_rate and
+            bt["max_drawdown_pct"] <= max_drawdown
+        )
+
+    # Check current mode
+    is_paper = runtime.config.dry_run if runtime.config else True
+
+    return {
+        "paper_trading": {
+            "win_rate": paper_stats["win_rate"],
+            "total_pnl_pct": paper_stats["total_pnl_pct"],
+            "completed_trades": paper_stats["completed_trades"],
+            "ready": paper_stats["completed_trades"] >= 10 and paper_stats["win_rate"] >= min_win_rate,
+        },
+        "backtest": {
+            "best_return_pct": best_backtest[0]["total_return_pct"] if best_backtest else 0,
+            "best_win_rate": best_backtest[0]["win_rate"] if best_backtest else 0,
+            "best_max_drawdown": best_backtest[0]["max_drawdown_pct"] if best_backtest else 0,
+            "ready": backtest_ready,
+        },
+        "current_mode": "paper" if is_paper else "live",
+        "transition_ready": backtest_ready and paper_stats["completed_trades"] >= 10,
+    }
