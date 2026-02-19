@@ -685,7 +685,13 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
 }
 
 async function coinApi(path: string): Promise<any> {
-  return gateApi(`/api/coin${path}`);
+  try {
+    return await gateApi(`/api/coin${path}`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // Throw a structured error for command handlers to catch
+    throw new Error(`[COIN] ${msg}`);
+  }
 }
 
 function krw(n: number): string {
@@ -729,6 +735,7 @@ function runBlogPipeline(stage: string = "all"): Promise<{ success: boolean; out
       args = [script, stage, pipelineId];
     }
 
+    console.log(`[blog] Running: ${script} ${args.slice(1).join(" ")}`);
     const child = spawn("bash", args, { cwd: BLOG_DIR });
 
     let stdout = "";
@@ -744,9 +751,15 @@ function runBlogPipeline(stage: string = "all"): Promise<{ success: boolean; out
 
     child.on("close", (code) => {
       if (code === 0) {
+        console.log(`[blog] Pipeline ${pipelineId} completed successfully`);
         resolve({ success: true, output: stdout, pipelineId });
       } else {
-        resolve({ success: false, output: stdout, pipelineId, error: stderr || `Exit code: ${code}` });
+        console.error(`[blog] Pipeline ${pipelineId} failed with code ${code}:`, stderr.slice(0, 200));
+        // Show both stdout (last lines) and stderr
+        const errorMsg = stderr.trim()
+          ? `[BLOG] stderr:\n${stderr.slice(0, 500)}`
+          : `[BLOG] Exit code: ${code}`;
+        resolve({ success: false, output: stdout, pipelineId, error: errorMsg });
       }
     });
 
