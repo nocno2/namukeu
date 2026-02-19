@@ -46,7 +46,7 @@ export function channelIdToSessionId(
 }
 
 export class SessionTracker {
-  private sessions: Map<string, SessionData> = new Map();
+  public sessions: Map<string, SessionData> = new Map();
 
   async load(): Promise<void> {
     try {
@@ -141,4 +141,34 @@ export async function releaseLock(): Promise<void> {
   try {
     await unlink(LOCK_FILE);
   } catch {}
+}
+
+// --- Session expiration helpers ---
+
+const SESSION_EXPIRY_DAYS = 7;
+
+/**
+ * Check if a session is approaching expiration (7+ days since last activity)
+ * @returns days since last activity, or null if session doesn't exist
+ */
+export function getDaysSinceLastActivity(session: SessionData): number | null {
+  if (!session.lastActivity) return null;
+  const lastActivity = new Date(session.lastActivity);
+  const now = new Date();
+  const diffMs = now.getTime() - lastActivity.getTime();
+  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Get sessions that are about to expire (7+ days since last activity)
+ */
+export function getExpiringSessions(sessions: Map<string, SessionData>): SessionData[] {
+  const expiring: SessionData[] = [];
+  for (const session of sessions.values()) {
+    const days = getDaysSinceLastActivity(session);
+    if (days !== null && days >= SESSION_EXPIRY_DAYS) {
+      expiring.push(session);
+    }
+  }
+  return expiring;
 }
