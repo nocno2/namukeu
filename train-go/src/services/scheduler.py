@@ -22,6 +22,7 @@ class ReservationScheduler:
     ERROR_BACKOFF_MAX = 120.0      # 최대 백오프 (초)
     STARTUP_DELAY_MIN = 2.0        # 매크로 시작 시 초기 지연 최소 (초)
     STARTUP_DELAY_MAX = 8.0        # 매크로 시작 시 초기 지연 최대 (초)
+    MAX_CONSECUTIVE_ERRORS = 20   # 연속 에러 시 매크로 자동 중단
 
     def __init__(
         self,
@@ -268,6 +269,20 @@ class ReservationScheduler:
                         logger.info(f"매크로 #{reservation_id} 에러 백오프 {backoff:.1f}초")
                         await self.notifier.notify_error(reservation, error_code, str(e)[:100])
                         await asyncio.sleep(backoff)
+
+                    # 연속 에러 한계 초과 시 매크로 중단
+                    if consecutive_errors >= self.MAX_CONSECUTIVE_ERRORS:
+                        logger.warning(
+                            f"매크로 #{reservation_id} 연속 에러 {consecutive_errors}회 초과, 중단"
+                        )
+                        self.db.update_reservation_status(
+                            reservation_id, "failed",
+                            error_message=f"연속 에러 {consecutive_errors}회 초과"
+                        )
+                        await self.notifier.notify_reservation_failed(
+                            reservation, f"연속 에러 {consecutive_errors}회 초과로 중단"
+                        )
+                        return
 
                     # 주기적 진행 알림 체크 (에러 경로에서도)
                     now = datetime.now()
