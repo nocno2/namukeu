@@ -30,6 +30,9 @@ import {
   getMessageCount,
   getConversationRecap,
 } from "./db";
+import { appendFile, mkdir } from "fs/promises";
+import { existsSync } from "fs";
+import { dirname, join } from "path";
 import {
   initScheduler,
   stopScheduler,
@@ -59,6 +62,9 @@ const DEDICATED_CHANNELS = new Set(
     .filter(Boolean)
 );
 
+const LOGS_DIR = join(import.meta.dir, "..", "logs");
+const GATE_ERROR_LOG = join(LOGS_DIR, "gate-errors.log");
+
 // Channel → Project context mapping
 // When the user talks in a project-specific channel, the assistant should
 // focus on that project's codebase and avoid confusion after session resets.
@@ -82,6 +88,19 @@ async function loadProfile(): Promise<void> {
     );
   } catch {
     console.log("No profile.md found, running without profile context.");
+  }
+}
+
+// 파일 로깅: Gateway API 에러를 파일에도 기록
+async function logGateError(message: string): Promise<void> {
+  try {
+    if (!existsSync(LOGS_DIR)) {
+      await mkdir(LOGS_DIR, { recursive: true });
+    }
+    const timestamp = new Date().toISOString();
+    await appendFile(GATE_ERROR_LOG, `[${timestamp}] ${message}\n`);
+  } catch (err) {
+    console.error("[logGateError] Failed to write to log file:", err);
   }
 }
 
@@ -727,14 +746,16 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
     }
 
     if (!resp.ok) {
-      // 상세 에러 정보 로깅
+      // 상세 에러 정보 로깅 (console + 파일)
       const status = resp.status;
       const statusText = resp.statusText;
       let body = "";
       try {
         body = await resp.text();
       } catch {}
-      console.error(`[gate] API Error | ${status} ${statusText} | path: ${path} | body: ${body.slice(0, 500)}`);
+      const errorMsg = `[gate] API Error | ${status} ${statusText} | path: ${path} | body: ${body.slice(0, 500)}`;
+      console.error(errorMsg);
+      await logGateError(errorMsg);
       throw new Error(`${status} ${statusText}`);
     }
     return resp.json();
@@ -742,11 +763,15 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
     const isTimeout = err instanceof Error && err.name === "AbortError";
     const isNetworkError = err instanceof TypeError && err.message.includes("fetch");
     if (isTimeout) {
-      console.error(`[gate] Timeout | ${GATE_TIMEOUT_MS}ms | path: ${path}`);
+      const errorMsg = `[gate] Timeout | ${GATE_TIMEOUT_MS}ms | path: ${path}`;
+      console.error(errorMsg);
+      await logGateError(errorMsg);
       throw new Error(`Gateway API timeout after ${GATE_TIMEOUT_MS}ms: ${path}`);
     }
     if (isNetworkError) {
-      console.error(`[gate] Network Error | path: ${path} | error: ${err}`);
+      const errorMsg = `[gate] Network Error | path: ${path} | error: ${err}`;
+      console.error(errorMsg);
+      await logGateError(errorMsg);
       throw new Error(`Gateway API network error: ${err}`);
     }
     throw err;
