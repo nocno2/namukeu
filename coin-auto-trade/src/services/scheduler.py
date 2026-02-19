@@ -247,9 +247,9 @@ class TradingScheduler:
 
         result = await self.exchange.buy_market_order(ticker, amount)
 
+        price = await self.exchange.get_current_price(ticker)
         if result:
-            self.db.update_order_state(order_id, "done", result.created_at)
-            price = await self.exchange.get_current_price(ticker)
+            self.db.update_order_state(order_id, "done", result.created_at, float(price) if price else None)
             if price is not None and price:
                 volume = amount * (1 - fee_rate) / float(price)
                 self.db.upsert_position(ticker, volume, float(price), strategy_id, float(price),
@@ -259,8 +259,7 @@ class TradingScheduler:
             await self.notifier.notify_trade("buy", ticker, amount, float(price or 0), signal.reason,
                                              quote_currency=quote)
         elif self.exchange.dry_run:
-            self.db.update_order_state(order_id, "done")
-            price = await self.exchange.get_current_price(ticker)
+            self.db.update_order_state(order_id, "done", price=float(price) if price else None)
             if price is not None and price:
                 volume = amount * (1 - fee_rate) / float(price)
                 self.db.upsert_position(ticker, volume, float(price), strategy_id, float(price),
@@ -283,17 +282,17 @@ class TradingScheduler:
             exchange=self.exchange.name,
         )
 
+        price = await self.exchange.get_current_price(ticker)
         result = await self.exchange.sell_market_order(ticker, volume)
 
         if result:
-            self.db.update_order_state(order_id, "done", result.created_at)
+            self.db.update_order_state(order_id, "done", result.created_at, float(price) if price else None)
             self.db.delete_position(ticker)
-            price = await self.exchange.get_current_price(ticker)
             amount = volume * float(price or 0) if price is not None else 0
             await self.notifier.notify_trade("sell", ticker, amount, float(price or 0), signal.reason,
                                              quote_currency=quote)
         elif self.exchange.dry_run:
-            self.db.update_order_state(order_id, "done")
+            self.db.update_order_state(order_id, "done", price=float(price) if price else None)
             self.db.delete_position(ticker)
 
     async def _check_stop_losses(self):
@@ -421,7 +420,7 @@ class TradingScheduler:
             )
             result = await self.exchange.buy_market_order(ticker, amount)
             if result or self.exchange.dry_run:
-                self.db.update_order_state(order_id, "done", result.created_at if result else None)
+                self.db.update_order_state(order_id, "done", result.created_at if result else None, float(price))
                 self.db.delete_position(ticker)
                 await self.notifier.notify_trade("close_short", ticker, amount,
                                                   float(price or 0), signal.reason, quote_currency=quote)
@@ -445,13 +444,13 @@ class TradingScheduler:
             signal_confidence=signal.confidence, indicators=signal.indicators,
             exchange=self.exchange.name,
         )
+        price = await self.exchange.get_current_price(ticker)
         result = await self.exchange.buy_market_order(ticker, leveraged_amount)
         if result or self.exchange.dry_run:
             if result:
-                self.db.update_order_state(order_id, "done", result.created_at)
+                self.db.update_order_state(order_id, "done", result.created_at, float(price) if price else None)
             else:
-                self.db.update_order_state(order_id, "done")
-            price = await self.exchange.get_current_price(ticker)
+                self.db.update_order_state(order_id, "done", price=float(price) if price else None)
             if price is not None and price:
                 volume = leveraged_amount * (1 - fee_rate) / float(price)
                 self.db.upsert_position(
@@ -477,6 +476,7 @@ class TradingScheduler:
         if existing and existing.get("side", "long") == "long":
             # Close long
             volume = existing["volume"]
+            price = await self.exchange.get_current_price(ticker)
             order_id = self.db.create_order(
                 ticker=ticker, side="sell", order_type="market",
                 is_dry_run=self.exchange.dry_run, strategy_id=strategy_id,
@@ -486,9 +486,8 @@ class TradingScheduler:
             )
             result = await self.exchange.sell_market_order(ticker, volume)
             if result or self.exchange.dry_run:
-                self.db.update_order_state(order_id, "done", result.created_at if result else None)
+                self.db.update_order_state(order_id, "done", result.created_at if result else None, float(price) if price else None)
                 self.db.delete_position(ticker)
-                price = await self.exchange.get_current_price(ticker)
                 amount = volume * float(price or 0) if price is not None else 0
                 await self.notifier.notify_trade("close_long", ticker, amount,
                                                   float(price or 0), signal.reason, quote_currency=quote)
@@ -520,9 +519,9 @@ class TradingScheduler:
         result = await self.exchange.sell_market_order(ticker, volume)
         if result or self.exchange.dry_run:
             if result:
-                self.db.update_order_state(order_id, "done", result.created_at)
+                self.db.update_order_state(order_id, "done", result.created_at, float(price) if price else None)
             else:
-                self.db.update_order_state(order_id, "done")
+                self.db.update_order_state(order_id, "done", price=float(price) if price else None)
             self.db.upsert_position(
                 ticker, volume, float(price), strategy_id, float(price),
                 exchange=self.exchange.name, side="short", leverage=leverage,

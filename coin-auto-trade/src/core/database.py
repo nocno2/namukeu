@@ -390,12 +390,18 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def update_order_state(self, order_id: int, state: str, executed_at: str | None = None):
+    def update_order_state(self, order_id: int, state: str, executed_at: str | None = None, price: float | None = None):
         now = executed_at or datetime.now().isoformat()
-        self.conn.execute(
-            "UPDATE orders SET state = ?, executed_at = ? WHERE id = ?",
-            (state, now, order_id),
-        )
+        if price is not None:
+            self.conn.execute(
+                "UPDATE orders SET state = ?, executed_at = ?, price = ? WHERE id = ?",
+                (state, now, price, order_id),
+            )
+        else:
+            self.conn.execute(
+                "UPDATE orders SET state = ?, executed_at = ? WHERE id = ?",
+                (state, now, order_id),
+            )
         self.conn.commit()
 
     def get_orders(self, ticker: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
