@@ -1,4 +1,4 @@
-import { mkdir } from "fs/promises";
+import { mkdir, readdir, rm } from "fs/promises";
 import { join } from "path";
 import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
@@ -24,9 +24,53 @@ async function ensureDirectories(): Promise<void> {
   await mkdir(UPLOADS_DIR, { recursive: true });
 }
 
+async function killOrphanClaudeProcesses(): Promise<void> {
+  try {
+    const proc = Bun.spawn(["pkill", "-f", "claude.*--session-id|claude.*--resume"], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await proc.exited;
+    await Bun.sleep(500);
+  } catch {
+    // ignore
+  }
+}
+
+async function cleanStaleSessionLocks(): Promise<void> {
+  // claude CLI uses subagents/ dir as a session lock — clean up on startup
+  const HOME = process.env.HOME || "";
+  const projectsDir = join(HOME, ".claude", "projects");
+  try {
+    const projects = await readdir(projectsDir);
+    for (const project of projects) {
+      const projectPath = join(projectsDir, project);
+      try {
+        const entries = await readdir(projectPath);
+        for (const entry of entries) {
+          if (entry === "subagents" || !entry.includes("-")) continue;
+          const subagentsPath = join(projectPath, entry, "subagents");
+          try {
+            await rm(subagentsPath, { recursive: true, force: true });
+          } catch {
+            // ignore
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+    console.log("[startup] Cleared stale claude session locks.");
+  } catch {
+    // ignore
+  }
+}
+
 async function main(): Promise<void> {
   validateConfig();
   await ensureDirectories();
+  await killOrphanClaudeProcesses();
+  await cleanStaleSessionLocks();
 
   const locked = await acquireLock();
   if (!locked) {

@@ -146,6 +146,7 @@ export async function releaseLock(): Promise<void> {
 // --- Session expiration helpers ---
 
 const SESSION_EXPIRY_DAYS = 7;
+const SESSION_WARNING_DAYS = 5; // Warning threshold (5 days before expiry)
 
 /**
  * Check if a session is approaching expiration (7+ days since last activity)
@@ -157,6 +158,21 @@ export function getDaysSinceLastActivity(session: SessionData): number | null {
   const now = new Date();
   const diffMs = now.getTime() - lastActivity.getTime();
   return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Check if a session needs warning (5+ days since last activity)
+ * @returns days since last activity, or null if session doesn't exist
+ */
+export function getSessionsNeedingWarning(sessions: Map<string, SessionData>): SessionData[] {
+  const warning: SessionData[] = [];
+  for (const session of sessions.values()) {
+    const days = getDaysSinceLastActivity(session);
+    if (days !== null && days >= SESSION_WARNING_DAYS) {
+      warning.push(session);
+    }
+  }
+  return warning;
 }
 
 /**
