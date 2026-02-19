@@ -79,6 +79,11 @@ export async function callClaude(
     const stderr = await new Response(proc.stderr).text();
     const exitCode = await proc.exited;
 
+    // Log stderr for debugging CLI errors
+    if (stderr.trim()) {
+      console.error(`[claude] stderr: ${stderr.slice(0, 500)}`);
+    }
+
     if (exitCode !== 0 && !result.result) {
       console.error(
         `Claude CLI exited with code ${exitCode}` +
