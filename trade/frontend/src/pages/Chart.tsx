@@ -150,8 +150,9 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
 
   const priceLinesRef = useRef<IPriceLine[]>([]);
 
-  const [symbol, setSymbol] = useState(initialSymbol || searchParams.get('symbol') || 'AAPL');
-  const [searchInput, setSearchInput] = useState(symbol);
+  const urlSymbol = searchParams.get('symbol');
+  const [symbol, setSymbol] = useState(urlSymbol || initialSymbol || 'AAPL');
+  const [searchInput, setSearchInput] = useState(urlSymbol || initialSymbol || 'AAPL');
   const [price, setPrice] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -205,16 +206,20 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
     chartRef.current = chart;
 
     const handleResize = () => {
-      if (chartContainerRef.current) {
+      if (chartContainerRef.current && chartRef.current) {
+        const container = chartContainerRef.current;
         chart.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
+          width: container.clientWidth || 300,
+          height: Math.max(container.clientHeight || 200, 200),
         });
       }
     };
 
+    // Initial resize after mount
+    setTimeout(handleResize, 100);
     window.addEventListener('resize', handleResize);
-    handleResize();
+    // Also handle orientation change on mobile
+    window.addEventListener('orientationchange', () => setTimeout(handleResize, 200));
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -525,7 +530,7 @@ export default function ChartMulti() {
   const [chartType, setChartType] = useState('candle');
   const [activeIndicators, setActiveIndicators] = useState<string[]>(['volume']);
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
-  const [drawingMode, setDrawingMode] = useState<string | null>(null);
+  const [showToolbar, setShowToolbar] = useState(true);
 
   const toggleIndicator = (ind: string) => {
     setActiveIndicators(prev =>
@@ -534,7 +539,7 @@ export default function ChartMulti() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-[#0d1117]">
+    <div className="flex flex-col bg-[#0d1117]" style={{ height: '100dvh' }}>
       {/* Top Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
         {/* Left: Symbol */}

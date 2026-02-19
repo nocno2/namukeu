@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { createChart, CandlestickSeries } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
+import { createChart, LineSeries, CrosshairMode } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { stocksApi } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 
@@ -10,13 +10,6 @@ interface StockItem {
   price: number | null;
   change: number | null;
   change_pct: number | null;
-  history: Array<{
-    date: string;
-    open: number;
-    high: number;
-    low: number;
-    close: number;
-  }> | null;
 }
 
 const markets = [
@@ -25,92 +18,63 @@ const markets = [
   { label: 'KOSDAQ', value: 'KOSDAQ' },
 ];
 
+// Fallback popular stocks when API fails
+const fallbackStocks: Record<string, StockItem[]> = {
+  US: [
+    { symbol: 'AAPL', name: 'Apple Inc.', price: null, change: null, change_pct: null },
+    { symbol: 'MSFT', name: 'Microsoft Corp.', price: null, change: null, change_pct: null },
+    { symbol: 'GOOGL', name: 'Alphabet Inc.', price: null, change: null, change_pct: null },
+    { symbol: 'AMZN', name: 'Amazon.com Inc.', price: null, change: null, change_pct: null },
+    { symbol: 'NVDA', name: 'NVIDIA Corp.', price: null, change: null, change_pct: null },
+    { symbol: 'META', name: 'Meta Platforms', price: null, change: null, change_pct: null },
+    { symbol: 'TSLA', name: 'Tesla Inc.', price: null, change: null, change_pct: null },
+    { symbol: 'BRK-B', name: 'Berkshire Hathaway', price: null, change: null, change_pct: null },
+  ],
+  KOSPI: [
+    { symbol: '005930', name: '삼성전자', price: null, change: null, change_pct: null },
+    { symbol: '000660', name: 'SK하이닉스', price: null, change: null, change_pct: null },
+    { symbol: '035420', name: 'NAVER', price: null, change: null, change_pct: null },
+    { symbol: '207940', name: '삼성바이오로직스', price: null, change: null, change_pct: null },
+    { symbol: '068270', name: '셀트리온', price: null, change: null, change_pct: null },
+  ],
+  KOSDAQ: [
+    { symbol: '035720', name: '카카오', price: null, change: null, change_pct: null },
+    { symbol: '095340', name: '카카오게임즈', price: null, change: null, change_pct: null },
+    { symbol: '066410', name: '아프리카TV', price: null, change: null, change_pct: null },
+  ],
+};
+
 export default function Stocks() {
   const navigate = useNavigate();
   const [stocks, setStocks] = useState<StockItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [market, setMarket] = useState('US');
-  const chartRefs = useRef<Map<string, { chart: IChartApi; series: ISeriesApi<'Candlestick'> }>>(new Map());
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchStocks();
   }, [market]);
 
-  useEffect(() => {
-    // Initialize charts after stocks are loaded
-    const timer = setTimeout(() => {
-      stocks.forEach((stock) => {
-        if (stock.history && stock.history.length > 0) {
-          initMiniChart(stock.symbol, stock.history);
-        }
-      });
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [stocks]);
-
-  useEffect(() => {
-    return () => {
-      // Cleanup charts on unmount
-      chartRefs.current.forEach(({ chart }) => chart.remove());
-      chartRefs.current.clear();
-    };
-  }, []);
-
   const fetchStocks = async () => {
     setLoading(true);
+    setError('');
+
     try {
-      const res = await stocksApi.getPopular(market, 20);
-      setStocks(res.data);
-    } catch (error) {
-      console.error('Failed to fetch stocks:', error);
+      // Try to fetch from API
+      const res = await stocksApi.getPopular(market, 10);
+      if (res.data && res.data.length > 0) {
+        setStocks(res.data);
+      } else {
+        // Use fallback if empty
+        setStocks(fallbackStocks[market] || fallbackStocks.US);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stocks:', err);
+      // Use fallback on error
+      setStocks(fallbackStocks[market] || fallbackStocks.US);
     } finally {
       setLoading(false);
     }
-  };
-
-  const initMiniChart = (symbol: string, history: StockItem['history']) => {
-    const containerId = `mini-chart-${symbol}`;
-    const container = document.getElementById(containerId);
-    if (!container || chartRefs.current.has(symbol)) return;
-
-    const chart = createChart(container, {
-      layout: {
-        background: { color: 'transparent' },
-        textColor: '#8b949e',
-      },
-      grid: {
-        vertLines: { color: 'transparent' },
-        horzLines: { color: 'transparent' },
-      },
-      crosshair: { mode: 0 },
-      rightPriceScale: { visible: false },
-      timeScale: { visible: false },
-      height: 50,
-      width: 120,
-    });
-
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#3fb950',
-      downColor: '#f85149',
-      borderUpColor: '#3fb950',
-      borderDownColor: '#f85149',
-      wickUpColor: '#3fb950',
-      wickDownColor: '#f85149',
-    });
-
-    const data: CandlestickData[] = history.map((item) => ({
-      time: item.date.split('T')[0] as Time,
-      open: item.open,
-      high: item.high,
-      low: item.low,
-      close: item.close,
-    }));
-
-    series.setData(data);
-    chart.timeScale().fitContent();
-
-    chartRefs.current.set(symbol, { chart, series });
   };
 
   const formatPrice = (num: number | null) => {
@@ -123,23 +87,23 @@ export default function Stocks() {
   };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-4 lg:p-8 space-y-4 lg:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-[#f0f6fc]">종목 목록</h1>
-        <p className="text-sm text-[#8b949e] mt-1">인기 종목을 미니 차트와 함께 확인하세요</p>
+        <h1 className="text-xl lg:text-2xl font-bold text-[#f0f6fc]">종목 목록</h1>
+        <p className="text-sm text-[#8b949e] mt-1">인기 종목을 확인하세요</p>
       </div>
 
       {/* Market Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 overflow-x-auto pb-2">
         {markets.map((m) => (
           <button
             key={m.value}
             onClick={() => setMarket(m.value)}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
               market === m.value
                 ? 'bg-[#58a6ff] text-white'
-                : 'bg-[#21262d] text-[#8b949e] hover:text-[#f0f6fc] hover:bg-[#30363d]'
+                : 'bg-[#21262d] text-[#8b949e] hover:text-[#f0f6fc]'
             }`}
           >
             {m.label}
@@ -157,53 +121,36 @@ export default function Stocks() {
         </div>
       ) : (
         <div className="bg-[#161b22] rounded-xl border border-[#30363d] overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="bg-[#21262d]">
-                  <th className="px-5 py-3 text-left text-xs font-semibold text-[#8b949e] uppercase">종목</th>
-                  <th className="px-5 py-3"></th>
-                  <th className="px-5 py-3 text-right text-xs font-semibold text-[#8b949e] uppercase">현재가</th>
-                  <th className="px-5 py-3 text-right text-xs font-semibold text-[#8b949e] uppercase">변동</th>
-                  <th className="px-5 py-3 text-right text-xs font-semibold text-[#8b949e] uppercase">등락률</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#21262d]">
-                {stocks.map((stock) => (
-                  <tr
-                    key={stock.symbol}
-                    onClick={() => handleStockClick(stock.symbol)}
-                    className="table-row cursor-pointer"
-                  >
-                    <td className="px-5 py-4">
+          <div className="divide-y divide-[#21262d]">
+            {stocks.map((stock) => (
+              <div
+                key={stock.symbol}
+                onClick={() => handleStockClick(stock.symbol)}
+                className="p-4 hover:bg-[#21262d] transition-colors cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-[#21262d] flex items-center justify-center text-[#58a6ff] font-bold text-sm">
+                      {stock.symbol.slice(0, 2)}
+                    </div>
+                    <div>
                       <div className="font-semibold text-[#f0f6fc]">{stock.symbol}</div>
                       <div className="text-xs text-[#6e7681]">{stock.name}</div>
-                    </td>
-                    <td className="px-2 py-4">
-                      <div
-                        id={`mini-chart-${stock.symbol}`}
-                        className="w-[120px] h-[50px]"
-                      />
-                    </td>
-                    <td className="px-5 py-4 text-right text-[#f0f6fc] font-medium">
-                      ${formatPrice(stock.price)}
-                    </td>
-                    <td className={`px-5 py-4 text-right font-medium ${(stock.change || 0) >= 0 ? 'text-[#3fb950]' : 'text-[#f85149]'}`}>
-                      {stock.change !== null
-                        ? `${stock.change >= 0 ? '+' : ''}${formatPrice(stock.change)}`
-                        : '-'}
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <span className={`badge ${(stock.change_pct || 0) >= 0 ? 'badge-success' : 'badge-danger'}`}>
-                        {stock.change_pct !== null
-                          ? `${stock.change_pct >= 0 ? '+' : ''}${formatPrice(stock.change_pct)}%`
-                          : '-'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-semibold text-[#f0f6fc]">
+                      {stock.price !== null ? `$${formatPrice(stock.price)}` : '-'}
+                    </div>
+                    <div className={`text-xs ${(stock.change_pct || 0) >= 0 ? 'text-[#3fb950]' : 'text-[#f85149]'}`}>
+                      {stock.change_pct !== null
+                        ? `${stock.change_pct >= 0 ? '+' : ''}${formatPrice(stock.change_pct)}%`
+                        : '---'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
