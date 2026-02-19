@@ -232,6 +232,18 @@ class TelegramNotifier:
         )
         await self.send_message(text)
 
+    async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
+        """치명적 에러 발생 알림 (연속 에러 초과, 시간 초과 등)."""
+        text = (
+            f"🔴 *치명적 에러 발생 - 매크로 중단*\n"
+            f"[{reservation['provider'].upper()}] "
+            f"{reservation['dep_station']} → {reservation['arr_station']}\n"
+            f"유형: {error_type}\n"
+            f"메시지: {error_msg[:150]}\n\n"
+            f"⚠️ 매크로 중단 - 재시작 필요"
+        )
+        await self.send_message(text)
+
 
 class EmailNotifier:
     """이메일을 통한 알림 (중요 에러용)."""

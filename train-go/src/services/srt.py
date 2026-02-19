@@ -175,6 +175,20 @@ class SRTService:
             if dep_time < time_start:
                 continue
 
+            # 좌석 유형 가용성 체크
+            # SRT API 응답에서 좌석 가용 여부 확인 (속성명: gnrm_rsv_psb_str=일반실, sprt_rsv_psb_str=특실)
+            has_general = getattr(train, "gnrm_rsv_psb_str", "Y") == "Y"
+            has_special = getattr(train, "sprt_rsv_psb_str", "Y") == "Y"
+
+            if seat_type == "special":
+                if not has_special:
+                    logger.debug(f"SRT 특실 좌석 없음: {train_name_str} {dep_time}")
+                    continue
+            else:
+                if not has_general:
+                    logger.debug(f"SRT 일반실 좌석 없음: {train_name_str} {dep_time}")
+                    continue
+
             # 가격대 필터
             if not self._matches_price_filter(train, price_range):
                 logger.debug(f"가격대 필터 제외: {train}")
