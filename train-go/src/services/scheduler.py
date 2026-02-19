@@ -24,6 +24,26 @@ class ReservationScheduler:
     STARTUP_DELAY_MAX = 8.0        # 매크로 시작 시 초기 지연 최대 (초)
     MAX_CONSECUTIVE_ERRORS = 20   # 연속 에러 시 매크로 자동 중단
 
+    # 에러 유형별 재시도 정책 (초)
+    RETRY_POLICIES = {
+        # 예상 결과 - 백오프 불필요, 즉시 재시도
+        "SEAT_NOT_AVAILABLE": {"backoff": 0, "max_retries": None},
+        "TRAIN_NOT_FOUND": {"backoff": 0, "max_retries": None},
+        # 일시적 오류 - 짧은 백오프
+        "SESSION_EXPIRED": {"backoff": 2, "max_retries": 5},
+        "NETWORK_ERROR": {"backoff": 3, "max_retries": 10},
+        "RATE_LIMIT": {"backoff": 15, "max_retries": 8},
+        "MAINTENANCE": {"backoff": 30, "max_retries": 5},
+        # 치명적 오류 - 긴 백오프, 제한된 재시도
+        "LOGIN_FAILED": {"backoff": 10, "max_retries": 3},
+        "RESERVATION_FAILED": {"backoff": 5, "max_retries": 2},
+        # 알 수 없는 오류
+        "UNKNOWN": {"backoff": 5, "max_retries": 5},
+    }
+
+    # 예상 결과 에러 코드 집합 (연속 에러 카운트에 포함 안 함)
+    EXPECTED_OUTCOMES = {"SEAT_NOT_AVAILABLE", "TRAIN_NOT_FOUND"}
+
     def __init__(
         self,
         db: Database,
@@ -92,9 +112,21 @@ class ReservationScheduler:
         interval = random.gauss(mid, std)
         return max(base_min, min(base_max, interval))
 
-    def _error_backoff(self, consecutive_errors: int) -> float:
-        """연속 에러 시 지수 백오프. 사람이 에러를 보고 점점 오래 쉬는 패턴."""
-        base = self.ERROR_BACKOFF_BASE * (2 ** min(consecutive_errors, 6))
+    def _error_backoff(self, consecutive_errors: int, error_code: str = "UNKNOWN") -> float:
+        """에러 유형별 백오프 계산.
+
+        - SEAT_NOT_AVAILABLE, TRAIN_NOT_FOUND: 즉시 재시도 (백오프 0)
+        - 정책에 정의된 에러: 정책의 백오프 값 사용
+        - 그 외: 기본 지수 백오프
+        """
+        policy = self.RETRY_POLICIES.get(error_code, self.RETRY_POLICIES["UNKNOWN"])
+
+        # 예상 결과면 즉시 재시도
+        if policy["backoff"] == 0:
+            return 0
+
+        # 정책의 백오프 적용 (연속 에러 횟수에 따라 증가)
+        base = policy["backoff"] * (2 ** min(consecutive_errors - 1, 4))
         jitter = random.uniform(0.5, 1.5)
         return min(base * jitter, self.ERROR_BACKOFF_MAX)
 
@@ -220,15 +252,23 @@ class ReservationScheduler:
                         await self.notifier.notify_reservation_success(reservation, result)
                         return
 
-                    self.db.add_search_log(reservation_id, results_count=0)
+                    self.db.add_search_log(reservation_id, results_count=0, error_code="SEAT_NOT_AVAILABLE")
                     logger.info(f"매크로 #{reservation_id} 검색 {search_count}회 — 좌석 없음")
 
                 except Exception as e:
                     search_count += 1
-                    consecutive_errors += 1
                     error_code, recoverable = classify_error(e)
                     logger.error(f"매크로 #{reservation_id} 검색 에러 [{error_code}]: {e}")
-                    self.db.add_search_log(reservation_id, error=str(e))
+
+                    # 에러 코드와 함께 로그 저장
+                    self.db.add_search_log(reservation_id, error=str(e), error_code=error_code)
+
+                    # 예상 결과(좌석 없음, 열차 없음)는 에러 카운트에 포함 안 함
+                    is_expected = error_code in self.EXPECTED_OUTCOMES
+                    if not is_expected:
+                        consecutive_errors += 1
+                    else:
+                        logger.info(f"매크로 #{reservation_id} 예상 결과: {error_code}")
 
                     # 에러 유형별 처리
                     if error_code == "SESSION_EXPIRED":
@@ -244,31 +284,39 @@ class ReservationScheduler:
 
                     elif error_code == "RATE_LIMIT":
                         # Rate limit: 긴 백오프 적용 + 알림
-                        backoff = self._error_backoff(min(consecutive_errors + 2, 8))
+                        backoff = self._error_backoff(consecutive_errors, error_code)
                         logger.info(f"매크로 #{reservation_id} Rate limit 감지, 백오프 {backoff:.1f}초")
                         await self.notifier.notify_error(reservation, error_code, f"백오프 {backoff:.1f}초")
-                        await asyncio.sleep(backoff)
+                        if backoff > 0:
+                            await asyncio.sleep(backoff)
 
                     elif error_code == "MAINTENANCE":
                         # 시스템 점검: 백오프 후 재시도 + 알림
-                        backoff = self._error_backoff(consecutive_errors)
+                        backoff = self._error_backoff(consecutive_errors, error_code)
                         logger.info(f"매크로 #{reservation_id} 시스템 점검 중, 백오프 {backoff:.1f}초")
                         await self.notifier.notify_error(reservation, error_code, f"백오프 {backoff:.1f}초")
-                        await asyncio.sleep(backoff)
+                        if backoff > 0:
+                            await asyncio.sleep(backoff)
 
                     elif error_code == "NETWORK_ERROR":
                         # 네트워크 에러: 백오프 후 재시도 + 알림
-                        backoff = self._error_backoff(consecutive_errors)
+                        backoff = self._error_backoff(consecutive_errors, error_code)
                         logger.info(f"매크로 #{reservation_id} 네트워크 에러, 백오프 {backoff:.1f}초")
                         await self.notifier.notify_error(reservation, error_code, str(e)[:100])
-                        await asyncio.sleep(backoff)
+                        if backoff > 0:
+                            await asyncio.sleep(backoff)
+
+                    elif error_code in ("SEAT_NOT_AVAILABLE", "TRAIN_NOT_FOUND"):
+                        # 예상 결과: 즉시 재시도 (백오프 없음)
+                        logger.debug(f"매크로 #{reservation_id} {error_code}, 즉시 재시도")
 
                     else:
-                        # 기타 에러: 기본 백오프 + 알림
-                        backoff = self._error_backoff(consecutive_errors)
-                        logger.info(f"매크로 #{reservation_id} 에러 백오프 {backoff:.1f}초")
+                        # 기타 에러: 정책 기반 백오프 + 알림
+                        backoff = self._error_backoff(consecutive_errors, error_code)
+                        logger.info(f"매크로 #{reservation_id} 에러 [{error_code}] 백오프 {backoff:.1f}초")
                         await self.notifier.notify_error(reservation, error_code, str(e)[:100])
-                        await asyncio.sleep(backoff)
+                        if backoff > 0:
+                            await asyncio.sleep(backoff)
 
                     # 연속 에러 한계 초과 시 매크로 중단
                     if consecutive_errors >= self.MAX_CONSECUTIVE_ERRORS:

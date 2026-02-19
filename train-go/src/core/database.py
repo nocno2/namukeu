@@ -15,6 +15,7 @@ class Database:
         self._create_tables()
 
     def _create_tables(self):
+        # 기존 테이블 생성 (error_code 없이)
         self.conn.executescript("""
             CREATE TABLE IF NOT EXISTS credentials (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,12 +36,10 @@ class Database:
                 time_range_end TEXT NOT NULL,
                 passengers TEXT NOT NULL DEFAULT '{"adult": 1}',
                 seat_type TEXT NOT NULL DEFAULT 'general',
-                -- 세분화된 필터 옵션
                 train_name TEXT,
                 train_name_exclude INTEGER DEFAULT 0,
                 seat_position TEXT DEFAULT 'any',
                 price_range TEXT,
-                -- 상태
                 status TEXT NOT NULL DEFAULT 'pending',
                 train_info TEXT,
                 error_message TEXT,
@@ -61,6 +60,18 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_search_logs_reservation_id ON search_logs(reservation_id);
         """)
         self.conn.commit()
+        self._migrate_schema()
+
+    def _migrate_schema(self):
+        """스키마 마이그레이션: 기존 테이블에 새 컬럼 추가."""
+        # search_logs 테이블에 error_code 컬럼 추가 (있는 경우 무시)
+        try:
+            self.conn.execute("ALTER TABLE search_logs ADD COLUMN error_code TEXT")
+            self.conn.commit()
+            logger.info("마이그레이션 완료: search_logs.error_code 컬럼 추가")
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
 
     # --- Credentials ---
 
@@ -180,12 +191,12 @@ class Database:
     # --- Search Logs ---
 
     def add_search_log(
-        self, reservation_id: int, results_count: int = 0, error: str | None = None
+        self, reservation_id: int, results_count: int = 0, error: str | None = None, error_code: str | None = None
     ):
         now = datetime.now().isoformat()
         self.conn.execute(
-            "INSERT INTO search_logs (reservation_id, searched_at, results_count, error) VALUES (?, ?, ?, ?)",
-            (reservation_id, now, results_count, error),
+            "INSERT INTO search_logs (reservation_id, searched_at, results_count, error, error_code) VALUES (?, ?, ?, ?, ?)",
+            (reservation_id, now, results_count, error, error_code),
         )
         self.conn.commit()
 
@@ -195,6 +206,19 @@ class Database:
             (reservation_id,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_error_stats(self, reservation_id: int | None = None) -> dict[str, int]:
+        """에러 통계 조회. 특정 예약 또는 전체에 대한 에러 유형별 발생 횟수."""
+        if reservation_id:
+            rows = self.conn.execute(
+                "SELECT error_code, COUNT(*) as count FROM search_logs WHERE error_code IS NOT NULL AND reservation_id = ? GROUP BY error_code",
+                (reservation_id,),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT error_code, COUNT(*) as count FROM search_logs WHERE error_code IS NOT NULL GROUP BY error_code",
+            ).fetchall()
+        return {dict(r)["error_code"]: dict(r)["count"] for r in rows}
 
     def cleanup_old_logs(self, keep_days: int = 7) -> int:
         """만료된 예약의 오래된 검색 로그 삭제. 삭제된 로그 수 반환."""
