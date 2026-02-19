@@ -27,6 +27,7 @@ interface ScheduleStore {
 let store: ScheduleStore = { tasks: [] };
 let tickInterval: ReturnType<typeof setInterval> | null = null;
 let onTaskDue: ((task: ScheduledTask) => Promise<void>) | null = null;
+let onTaskSkip: ((task: ScheduledTask) => Promise<void>) | null = null;
 
 const TICK_INTERVAL_MS = 60_000; // Check every 1 minute
 const QUIET_START_HOUR = 23; // 11 PM KST
@@ -67,7 +68,17 @@ async function tick(): Promise<void> {
 
   for (const task of store.tasks) {
     if (!task.enabled) continue;
-    if (quiet && task.respectQuietHours) continue;
+    if (quiet && task.respectQuietHours) {
+      // Notify about skipped task if callback is provided
+      if (onTaskSkip) {
+        try {
+          await onTaskSkip(task);
+        } catch (err) {
+          console.error(`[scheduler] Skip notification failed for "${task.name}":`, err);
+        }
+      }
+      continue;
+    }
 
     const nextRun = new Date(task.nextRunAt);
     if (now >= nextRun) {
@@ -88,9 +99,11 @@ async function tick(): Promise<void> {
 // --- Public API ---
 
 export async function initScheduler(
-  callback: (task: ScheduledTask) => Promise<void>
+  callback: (task: ScheduledTask) => Promise<void>,
+  onSkip?: (task: ScheduledTask) => Promise<void>
 ): Promise<void> {
   onTaskDue = callback;
+  onTaskSkip = onSkip || null;
   await loadStore();
 
   // Fix any tasks with past nextRunAt (e.g., after bot restart)

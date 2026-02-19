@@ -256,7 +256,8 @@ export async function createBot(): Promise<Client> {
     console.log(`Bot is running as ${c.user.tag}. Waiting for messages...`);
 
     // Initialize scheduler — scheduled tasks send prompts to channels via Claude
-    await initScheduler(async (task: ScheduledTask) => {
+    await initScheduler(
+      async (task: ScheduledTask) => {
       console.log(`[scheduler] Running task "${task.name}" in channel ${task.channelId}`);
       try {
         const channel = await client.channels.fetch(task.channelId);
@@ -322,7 +323,31 @@ export async function createBot(): Promise<Client> {
           `⚠️ 예약 작업 "${task.name}" 실패\n\`\`\`\n${String(err).slice(0, 500)}\n\`\`\``
         ).catch(() => {});
       }
-    });
+    },
+      async (task: ScheduledTask) => {
+        // Quiet hours skip notification
+        try {
+          const channel = await client.channels.fetch(task.channelId);
+          if (!channel || !channel.isTextBased()) return;
+          const textChannel = channel as TextBasedChannel;
+
+          const nextRun = new Date(task.nextRunAt).toLocaleString("ko-KR", {
+            timeZone: USER_TIMEZONE,
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+
+          await sendResponse(
+            textChannel,
+            `🌙 예약 작업 "${task.name}" — 조용한 시간(23:00-08:00)이라 건너뛰었어요.\n다음 실행: ${nextRun}`
+          ).catch(() => {});
+        } catch (err) {
+          console.error(`[scheduler] Skip notification error:`, err);
+        }
+      }
+    );
   });
 
   // --- Slash command handler ---
