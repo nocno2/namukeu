@@ -106,5 +106,22 @@ export function seedInitialTasks(taskStore: TaskStore): void {
     notifyUser: true,
   });
 
-  console.log("[agent] 5 initial tasks seeded.");
+  console.log("[agent] 6 initial tasks seeded.");
+
+  // TGBOT 팀장 — 매일 아침 8시 30분 재정 리포트
+  taskStore.createTask({
+    title: "TGBOT 일일 재정 리포트",
+    prompt:
+      "claude-telegram/data/revenue.json 파일을 읽어서 재정 상태를 보고해.\n\n" +
+      "1. 현재 월 수익, 비용, 순수입 계산\n" +
+      "2. 월간 목표 대비 진행률 (설정되어 있다면)\n" +
+      "3. 최근 수익/비용 내역 확인\n" +
+      "4. 손익 분석 및 개선 제안 (如果有)\n\n" +
+      "결과를 간결하게 요약해서 보고해.\n" +
+      "월간 목표가 0으로 설정되어 있으면 목표 설정 제안도 포함해.",
+    type: "recurring",
+    project: "GENERAL",
+    scheduleCron: "30 8 * * *",
+    notifyUser: true,
+  });
 }
