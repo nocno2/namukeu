@@ -65,6 +65,16 @@ class Config:
                 prefix="/blog",
                 public=True,
             ),
+            ServiceDef(
+                name="trade",
+                url=os.getenv("TRADE_URL", "http://127.0.0.1:8004"),
+                prefix="/api/trade",
+            ),
+            ServiceDef(
+                name="tgbot",
+                url=os.getenv("TGBOT_URL", "http://127.0.0.1:8003"),
+                prefix="/api/tgbot",
+            ),
         ]
 
         return cls(

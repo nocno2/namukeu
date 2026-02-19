@@ -172,3 +172,37 @@ async def proxy_blog(
     svc = _find_service(config, "/blog")
     assert svc is not None
     return await _proxy(request, svc, path, client)
+
+
+# --- TRADE ---
+@router.api_route(
+    "/api/trade/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+)
+async def proxy_trade(
+    path: str,
+    request: Request,
+    _user: dict = Depends(verify_jwt),
+    config: Config = Depends(get_config),
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> Response:
+    svc = _find_service(config, "/api/trade")
+    assert svc is not None
+    return await _proxy(request, svc, path, client)
+
+
+# --- TGBOT (Telegram Bot - revenue data) ---
+@router.api_route(
+    "/api/tgbot/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
+)
+async def proxy_tgbot(
+    path: str,
+    request: Request,
+    _user: dict = Depends(verify_jwt),
+    config: Config = Depends(get_config),
+    client: httpx.AsyncClient = Depends(get_http_client),
+) -> Response:
+    svc = _find_service(config, "/api/tgbot")
+    assert svc is not None
+    return await _proxy(request, svc, path, client)
