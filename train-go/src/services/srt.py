@@ -1,4 +1,6 @@
+import fnmatch
 import logging
+
 from SRT import SRT, SeatType
 from SRT import Adult, Child, Senior
 
@@ -35,6 +37,45 @@ class SRTService:
             result.append(Senior(passengers["senior"]))
         return result or [Adult(1)]
 
+    def _matches_train_name_filter(
+        self, train_name: str | None, filter_pattern: str | None, exclude: bool
+    ) -> bool:
+        """열차명이 필터 패턴과 일치하는지 확인."""
+        if not filter_pattern:
+            return True
+        if not train_name:
+            return not exclude  # 열차명 없으면: 포함모드면 통과, 제외모드면 필터
+
+        matches = fnmatch.fnmatch(train_name.lower(), filter_pattern.lower())
+        return not matches if exclude else matches
+
+    def _matches_price_filter(self, train, price_range: dict | None) -> bool:
+        """열차 가격이 필터 범위와 일치하는지 확인."""
+        if not price_range:
+            return True
+
+        # SRT 라이브러리에서 가격 정보 추출 시도
+        price = None
+        if hasattr(train, "price"):
+            price = train.price
+        elif hasattr(train, "fare"):
+            price = train.fare
+        elif hasattr(train, "total_fare"):
+            price = train.total_fare
+
+        if price is None:
+            return True  # 가격 정보 없으면 필터 통과
+
+        price_min = price_range.get("min")
+        price_max = price_range.get("max")
+
+        if price_min is not None and price < price_min:
+            return False
+        if price_max is not None and price > price_max:
+            return False
+
+        return True
+
     def search_and_reserve(
         self,
         dep: str,
@@ -44,6 +85,10 @@ class SRTService:
         time_range_end: str,
         passengers: dict,
         seat_type: str = "general",
+        train_name: str | None = None,
+        train_name_exclude: bool = False,
+        seat_position: str = "any",
+        price_range: dict | None = None,
     ) -> dict | None:
         self._ensure_logged_in()
 
@@ -69,20 +114,42 @@ class SRTService:
         passenger_list = self._build_passengers(passengers)
 
         for train in trains:
+            train_name_str = getattr(train, "train_name", None) or getattr(train, "train_name_kor", "SRT")
+
+            # 열차명 필터
+            if not self._matches_train_name_filter(train_name_str, train_name, train_name_exclude):
+                logger.debug(f"열차명 필터 제외: {train_name_str}")
+                continue
+
             dep_time = train.dep_time[:4]  # "HHMM" from "HHMMSS"
             if dep_time > time_end:
                 break
             if dep_time < time_start:
                 continue
 
+            # 가격대 필터
+            if not self._matches_price_filter(train, price_range):
+                logger.debug(f"가격대 필터 제외: {train}")
+                continue
+
             try:
+                # 좌석 위치 필터 (window/aisle)
+                seat_preference = None
+                if seat_position == "window":
+                    seat_preference = " Window"
+                elif seat_position == "aisle":
+                    seat_preference = "Aisle"
+
                 reservation = self._client.reserve(
-                    train, passengers=passenger_list, special_seat=special
+                    train,
+                    passengers=passenger_list,
+                    special_seat=special,
+                    seat_preference=seat_preference,
                 )
                 logger.info(f"SRT 예약 성공: {reservation}")
                 return {
                     "provider": "srt",
-                    "train_name": getattr(train, "train_name", "SRT"),
+                    "train_name": train_name_str,
                     "train_number": getattr(train, "train_number", ""),
                     "dep_station": dep,
                     "arr_station": arr,

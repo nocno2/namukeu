@@ -175,6 +175,17 @@ class ReservationScheduler:
             startup_delay = random.uniform(self.STARTUP_DELAY_MIN, self.STARTUP_DELAY_MAX)
             await asyncio.sleep(startup_delay)
 
+            # 필터 옵션 파싱
+            train_name = reservation.get("train_name")
+            train_name_exclude = bool(reservation.get("train_name_exclude", 0))
+            seat_position = reservation.get("seat_position", "any")
+            price_range = None
+            if reservation.get("price_range"):
+                try:
+                    price_range = json.loads(reservation["price_range"])
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
             # 반복 검색
             while datetime.now() < deadline:
                 try:
@@ -188,6 +199,10 @@ class ReservationScheduler:
                             time_range_end=reservation["time_range_end"],
                             passengers=passengers,
                             seat_type=reservation["seat_type"],
+                            train_name=train_name,
+                            train_name_exclude=train_name_exclude,
+                            seat_position=seat_position,
+                            price_range=price_range,
                         ),
                         timeout=30.0,
                     )
