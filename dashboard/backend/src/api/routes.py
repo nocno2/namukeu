@@ -59,6 +59,49 @@ async def service_status(
     return results[0] if results else {"error": "Check failed"}
 
 
+@router.get("/services/{name}/type")
+def service_type(
+    name: str,
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+    db: Database = Depends(get_db),
+):
+    """Get service type (ktlo or evolving). DB overrides config default."""
+    svc = next((s for s in config.services if s.name == name), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    # DB value overrides config default
+    db_type = db.get_service_type(name)
+    service_type = db_type if db_type else svc.service_type
+    return {"service": name, "type": service_type}
+
+
+class ServiceTypeUpdate(BaseModel):
+    type: str  # "ktlo" or "evolving"
+
+
+@router.put("/services/{name}/type")
+def update_service_type(
+    name: str,
+    body: ServiceTypeUpdate,
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+    db: Database = Depends(get_db),
+):
+    """Update service type (ktlo or evolving)."""
+    svc = next((s for s in config.services if s.name == name), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    if body.type not in ("ktlo", "evolving"):
+        raise HTTPException(status_code=400, detail="type must be 'ktlo' or 'evolving'")
+
+    db.set_service_type(name, body.type)
+    logger.info(f"Updated service type: {name} -> {body.type}")
+    return {"service": name, "type": body.type}
+
+
 @router.get("/services/{name}/commits")
 def service_commits(
     name: str,
@@ -1093,6 +1136,7 @@ async def agent_task_history(
 
 N8N_BASE_URL = "https://n8n.namukeu.com"
 N8N_API_KEY = os.environ.get("N8N_API_KEY", "")
+N8N_SSL_VERIFY = os.environ.get("N8N_SSL_VERIFY", "true").lower() != "false"
 
 
 def _get_n8n_headers() -> dict:
@@ -1108,7 +1152,7 @@ async def n8n_status(_=Depends(verify_session)):
     import logging
     logger = logging.getLogger(__name__)
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient(verify=N8N_SSL_VERIFY) as client:
         # 1. Health check
         health_status = "down"
         try:
