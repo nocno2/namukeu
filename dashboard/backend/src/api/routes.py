@@ -1183,3 +1183,112 @@ async def n8n_status(_=Depends(verify_session)):
 
 # Note: SPA fallback is handled separately in main.py
 # Note: SPA fallback is handled in main.py
+
+
+# --- Data Export ---
+
+@router.get("/services/{name}/export")
+def export_service_data(
+    name: str,
+    format: str = "json",  # "json" or "csv"
+    data_type: str = "all",  # "all", "uptime", or "incidents"
+    days: int = 30,
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+    db: Database = Depends(get_db),
+):
+    """서비스 uptime/incidents 데이터를 JSON 또는 CSV로 내보내기"""
+    svc = next((s for s in config.services if s.name == name), None)
+    if not svc:
+        raise HTTPException(status_code=404, detail="Service not found")
+
+    if format not in ("json", "csv"):
+        raise HTTPException(status_code=400, detail="Invalid format. Use 'json' or 'csv'")
+
+    if data_type not in ("all", "uptime", "incidents"):
+        raise HTTPException(status_code=400, detail="Invalid data_type. Use 'all', 'uptime', or 'incidents'")
+
+    days = min(days, 90)
+    since = datetime.now() - timedelta(days=days)
+
+    result = {}
+
+    # Uptime 데이터
+    if data_type in ("all", "uptime"):
+        uptime_hours = min(days * 24, 168)  # max 7 days for uptime blocks
+        uptime_since = datetime.now() - timedelta(hours=uptime_hours)
+        metrics = db.get_metrics(name, uptime_since)
+
+        if metrics:
+            result["uptime"] = {
+                "service": name,
+                "exported_at": datetime.now().isoformat(),
+                "period_days": days,
+                "metrics": [
+                    {
+                        "timestamp": m["timestamp"],
+                        "status": m["status"],
+                        "response_time_ms": m.get("response_time_ms"),
+                    }
+                    for m in metrics
+                ],
+            }
+
+            # Uptime percentage calculation
+            total = len(metrics)
+            running = sum(1 for m in metrics if m["status"] == "running")
+            if total > 0:
+                result["uptime"]["uptime_percent"] = round((running / total) * 100, 2)
+
+    # Incidents 데이터
+    if data_type in ("all", "incidents"):
+        incidents = db.get_incidents(name, since)
+        result["incidents"] = {
+            "service": name,
+            "exported_at": datetime.now().isoformat(),
+            "period_days": days,
+            "incidents": incidents,
+        }
+
+    # CSV 변환
+    if format == "csv":
+        import csv
+        import io
+
+        output = io.StringIO()
+
+        if data_type == "uptime" or (data_type == "all" and "uptime" in result):
+            writer = csv.writer(output)
+            writer.writerow(["# Uptime Data"])
+            writer.writerow(["Service", name])
+            writer.writerow(["Exported At", result.get("uptime", {}).get("exported_at", "")])
+            if "uptime_percent" in result.get("uptime", {}):
+                writer.writerow(["Uptime %", result["uptime"]["uptime_percent"]])
+            writer.writerow([])
+            writer.writerow(["timestamp", "status", "response_time_ms"])
+            for m in result.get("uptime", {}).get("metrics", []):
+                writer.writerow([m["timestamp"], m["status"], m.get("response_time_ms", "")])
+
+        if data_type == "incidents" or (data_type == "all" and "incidents" in result):
+            if output.tell() > 0:
+                output.write("\n")
+            writer = csv.writer(output)
+            writer.writerow(["# Incidents Data"])
+            writer.writerow([])
+            writer.writerow(["start_time", "end_time", "duration_minutes", "description"])
+            for inc in result.get("incidents", {}).get("incidents", []):
+                writer.writerow([
+                    inc.get("start_time", ""),
+                    inc.get("end_time", ""),
+                    inc.get("duration_minutes", ""),
+                    inc.get("description", ""),
+                ])
+
+        return PlainTextResponse(
+            output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={name}_{data_type}_{datetime.now().strftime('%Y%m%d')}.csv"},
+        )
+
+    # JSON 반환
+    return result

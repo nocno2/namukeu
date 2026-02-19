@@ -246,6 +246,15 @@ export const api = {
     return request<N8nStatus>("/api/n8n/status");
   },
 
+  // 데이터 내보내기
+  exportServiceData(name: string, format: "json" | "csv" = "json", dataType: "all" | "uptime" | "incidents" = "all", days = 30) {
+    const params = new URLSearchParams();
+    params.set("format", format);
+    params.set("data_type", dataType);
+    params.set("days", days.toString());
+    window.open(`/api/services/${name}/export?${params.toString()}`, "_blank");
+  },
+
   // COIN 백테스트 API (proxy through dashboard backend)
   coinBacktestResults(limit = 20) {
     return request<BacktestResult[]>(`/api/proxy/coin/api/backtest/results?limit=${limit}`);
