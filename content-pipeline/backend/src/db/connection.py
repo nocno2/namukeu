@@ -297,11 +297,11 @@ class Database:
             )
             self.conn.commit()
 
-    def get_task_history(self, task_id: str, limit: int = 20) -> list[dict]:
+    def get_task_history(self, task_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
         with self._lock:
             rows = self.conn.execute(
-                "SELECT * FROM execution_history WHERE task_id = ? ORDER BY started_at DESC LIMIT ?",
-                (task_id, limit),
+                "SELECT * FROM execution_history WHERE task_id = ? ORDER BY started_at DESC LIMIT ? OFFSET ?",
+                (task_id, limit, offset),
             ).fetchall()
         return [dict(r) for r in rows]
 

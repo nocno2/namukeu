@@ -12,8 +12,17 @@ class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
+async function request<T>(path: string, options?: RequestInit & { params?: Record<string, number | string> }): Promise<T> {
+  let url = `${BASE}${path}`;
+  if (options?.params) {
+    const searchParams = new URLSearchParams();
+    for (const [key, value] of Object.entries(options.params)) {
+      searchParams.append(key, String(value));
+    }
+    url += `?${searchParams.toString()}`;
+    delete options.params;
+  }
+  const res = await fetch(url, {
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...options,
@@ -192,6 +201,11 @@ export const api = {
   agentDeleteTask(taskId: string) {
     return request<{ ok: boolean }>(`/api/agent/tasks/${taskId}`, {
       method: "DELETE",
+    });
+  },
+  agentTaskHistory(taskId: string, limit: number = 10, offset: number = 0) {
+    return request<{ history: TaskHistoryItem[] }>(`/api/agent/tasks/${taskId}/history`, {
+      params: { limit, offset },
     });
   },
   agentCreateTask(task: {
@@ -451,6 +465,19 @@ export interface AgentTask {
   requires_approval: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface TaskHistoryItem {
+  id: number;
+  task_id: string;
+  prompt: string | null;
+  result: string | null;
+  status: string;
+  started_at: string;
+  completed_at: string | null;
+  error: string | null;
+  cost: number | null;
+  tokens: number | null;
 }
 
 export interface AgentGoal {

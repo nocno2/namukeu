@@ -1061,6 +1061,27 @@ async def agent_delete_task(task_id: str, _=Depends(verify_session)):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
 
 
+@router.get("/agent/tasks/{task_id}/history")
+async def agent_task_history(
+    task_id: str,
+    limit: int = 10,
+    offset: int = 0,
+    _=Depends(verify_session),
+):
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(
+                f"{AGENT_API_BASE}/api/history/task/{task_id}",
+                params={"limit": limit, "offset": offset},
+                headers=_agent_headers(), timeout=10.0,
+            )
+            if r.status_code == 404:
+                raise HTTPException(status_code=404, detail="Task not found")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
 # --- n8n Status ---
 
 N8N_BASE_URL = "https://n8n.namukeu.com"

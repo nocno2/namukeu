@@ -75,6 +75,8 @@ const TYPE_LABELS: Record<string, string> = {
   event: "이벤트",
 };
 
+import { type TaskHistoryItem } from "../lib/api";
+
 function TaskDetail({
   task,
   onBack,
@@ -84,6 +86,7 @@ function TaskDetail({
   onPause,
   onResume,
   onDelete,
+  onLoadHistory,
   actionLoading,
 }: {
   task: TaskItem;
@@ -94,6 +97,7 @@ function TaskDetail({
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onDelete: (id: string) => void;
+  onLoadHistory: (taskId: string, limit: number, offset: number) => Promise<TaskHistoryItem[]>;
   actionLoading: boolean;
 }) {
   const [editing, setEditing] = useState(false);
@@ -102,6 +106,32 @@ function TaskDetail({
   const [editPrompt, setEditPrompt] = useState(task.prompt || "");
   const [editScheduleCron, setEditScheduleCron] = useState(task.scheduleCron || "");
   const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState<TaskHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const loadHistory = async (page: number) => {
+    setHistoryLoading(true);
+    try {
+      const items = await onLoadHistory(task.id, 5, page * 5);
+      if (page === 0) {
+        setHistory(items);
+      } else {
+        setHistory((prev) => [...prev, ...items]);
+      }
+      setHistoryPage(page);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const toggleHistory = async () => {
+    if (!showHistory && history.length === 0) {
+      await loadHistory(0);
+    }
+    setShowHistory(!showHistory);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -255,6 +285,71 @@ function TaskDetail({
           )}
         </div>
 
+        {/* 실행 기록 */}
+        <div className="pt-2 border-t border-border">
+          <button
+            onClick={toggleHistory}
+            className="text-xs text-primary hover:text-primary/80 flex items-center gap-1"
+          >
+            <Clock size={12} />
+            {showHistory ? "기록 숨기기" : "실행 기록 보기"}
+            {task.runCount > 0 && ` (${task.runCount}회)`}
+          </button>
+
+          {showHistory && (
+            <div className="mt-2 space-y-2">
+              {historyLoading && history.length === 0 ? (
+                <div className="text-xs text-text-muted py-2">로딩 중...</div>
+              ) : history.length === 0 ? (
+                <div className="text-xs text-text-muted py-2">실행 기록이 없습니다</div>
+              ) : (
+                <>
+                  {history.map((h, idx) => (
+                    <div key={h.id || idx} className="text-xs bg-bg rounded-lg p-2 border border-border">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded ${
+                          h.status === "completed" ? "bg-success/10 text-success" :
+                          h.status === "failed" ? "bg-danger/10 text-danger" :
+                          "bg-warning/10 text-warning"
+                        }`}>
+                          {h.status === "completed" ? "성공" : h.status === "failed" ? "실패" : "대기"}
+                        </span>
+                        <span className="text-text-muted">
+                          {h.started_at ? new Date(h.started_at).toLocaleString("ko-KR", {
+                            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit"
+                          }) : "-"}
+                        </span>
+                      </div>
+                      {h.prompt && (
+                        <div className="text-text-muted mb-1">프롬프트: {h.prompt.substring(0, 50)}...</div>
+                      )}
+                      {h.result && (
+                        <div className="text-text whitespace-pre-wrap max-h-16 overflow-y-auto">
+                          {h.result.substring(0, 200)}{h.result.length > 200 ? "..." : ""}
+                        </div>
+                      )}
+                      {h.error && (
+                        <div className="text-danger whitespace-pre-wrap max-h-12 overflow-y-auto">
+                          오류: {h.error.substring(0, 100)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {history.length >= 5 && (
+                    <button
+                      onClick={() => loadHistory(historyPage + 1)}
+                      disabled={historyLoading}
+                      className="w-full text-xs text-primary hover:text-primary/80 disabled:opacity-50 py-1"
+                    >
+                      {historyLoading ? "로딩 중..." : "더 보기"}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* 작업 버튼 */}
         <div className="flex gap-2 pt-2 border-t border-border">
           {task.status === "running" || task.status === "pending" ? (
@@ -315,6 +410,7 @@ function AgentTasksModal({
   onDelete,
   onPause,
   onResume,
+  onLoadHistory,
   actionLoading,
 }: {
   tasks: TaskItem[];
@@ -325,6 +421,7 @@ function AgentTasksModal({
   onDelete: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
+  onLoadHistory: (taskId: string, limit: number, offset: number) => Promise<TaskHistoryItem[]>;
   actionLoading: boolean;
 }) {
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
@@ -342,6 +439,7 @@ function AgentTasksModal({
             onPause={onPause}
             onResume={onResume}
             onDelete={onDelete}
+            onLoadHistory={onLoadHistory}
             actionLoading={actionLoading}
           />
         </div>
@@ -725,6 +823,11 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
     }
   };
 
+  const handleLoadHistory = async (taskId: string, limit: number, offset: number) => {
+    const result = await api.agentTaskHistory(taskId, limit, offset);
+    return result.history;
+  };
+
   // 통계
   const todayTaskCount = agentStatus?.todayTaskCount || 0;
   const activeGoals = goals.filter((g) => g.status === "active");
@@ -955,6 +1058,7 @@ export function AutomationHub({ collapsed, pinned, onToggleCollapse, onTogglePin
           onDelete={handleDeleteTask}
           onPause={handlePauseTask}
           onResume={handleResumeTask}
+          onLoadHistory={handleLoadHistory}
           actionLoading={actionLoading}
         />
       )}
