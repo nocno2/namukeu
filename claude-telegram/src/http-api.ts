@@ -3,6 +3,17 @@
  * Runs alongside the Telegram bot on port 8003.
  */
 import type { Heartbeat, TaskStore, GoalStore, AuditLog, ForbiddenActions } from "@namukeu/agent-core";
+import {
+  getRevenueStatus,
+  getRevenueHistory,
+  getRevenueForecast,
+  getProfitSummary,
+  getRevenueBySource,
+  setMonthlyTarget,
+  addRevenue,
+  addCost,
+  type RevenueData,
+} from "./revenue";
 
 const PORT = parseInt(process.env.AGENT_API_PORT || "8003", 10);
 const API_TOKEN = process.env.AGENT_API_TOKEN || "agent-api-token";
@@ -165,6 +176,123 @@ async function handleRequest(req: Request): Promise<Response> {
     if (!deps.goalStore) return json({ error: "Goals not initialized" }, 500);
     const ok = deps.goalStore.deleteGoal(id);
     return ok ? json({ ok: true }) : notFound();
+  }
+
+  // --- Revenue ---
+  if (path === "/api/revenue/status" && method === "GET") {
+    const status = await getRevenueStatus();
+    return json({ status });
+  }
+
+  if (path === "/api/revenue/history" && method === "GET") {
+    const months = parseInt(new URL(req.url).searchParams.get("months") || "6", 10);
+    const history = await getRevenueHistory(months);
+    return json({ history });
+  }
+
+  if (path === "/api/revenue/forecast" && method === "GET") {
+    const forecast = await getRevenueForecast();
+    return json({ forecast });
+  }
+
+  if (path === "/api/revenue/profit" && method === "GET") {
+    const months = parseInt(new URL(req.url).searchParams.get("months") || "6", 10);
+    const profit = await getProfitSummary(months);
+    return json({ profit });
+  }
+
+  if (path === "/api/revenue/by-source" && method === "GET") {
+    const months = parseInt(new URL(req.url).searchParams.get("months") || "12", 10);
+    const bySource = await getRevenueBySource(months);
+    return json({ bySource });
+  }
+
+  if (path === "/api/revenue/target" && method === "POST") {
+    const body = await parseBody(req);
+    if (!body.amount || typeof body.amount !== "number") {
+      return json({ error: "amount (number) required" }, 400);
+    }
+    const result = await setMonthlyTarget(body.amount);
+    return json({ result });
+  }
+
+  if (path === "/api/revenue" && method === "POST") {
+    const body = await parseBody(req);
+    if (!body.amount || !body.source) {
+      return json({ error: "amount (number) and source (string) required" }, 400);
+    }
+    const result = await addRevenue(body.amount, body.source);
+    return json({ result });
+  }
+
+  if (path === "/api/revenue/cost" && method === "POST") {
+    const body = await parseBody(req);
+    if (!body.amount || !body.category) {
+      return json({ error: "amount (number) and category (string) required" }, 400);
+    }
+    const result = await addCost(body.amount, body.category, body.description);
+    return json({ result });
+  }
+
+  // Raw data endpoint for dashboard visualization
+  if (path === "/api/revenue/data" && method === "GET") {
+    // Read revenue.json directly for dashboard visualization
+    const { readFile } = await import("fs/promises");
+    const { join } = await import("path");
+    const dataDir = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
+    try {
+      const raw = await readFile(join(dataDir, "revenue.json"), "utf-8");
+      const data: RevenueData = JSON.parse(raw);
+
+      // Process data for visualization
+      const now = new Date();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const monthRecords = data.records.filter((r) => r.date.startsWith(currentMonth));
+      const monthCosts = data.costs.filter((c) => c.date.startsWith(currentMonth));
+
+      const currentRevenue = monthRecords.reduce((sum, r) => sum + r.amount, 0);
+      const currentCost = monthCosts.reduce((sum, c) => sum + c.amount, 0);
+      const netIncome = currentRevenue - currentCost;
+
+      // Calculate monthly data for the last 6 months
+      const monthlyData: { month: string; revenue: number; cost: number; profit: number }[] = [];
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const month = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+        const monthRev = data.records.filter((r) => r.date.startsWith(month)).reduce((sum, r) => sum + r.amount, 0);
+        const monthCost = data.costs.filter((c) => c.date.startsWith(month)).reduce((sum, c) => sum + c.amount, 0);
+        monthlyData.push({ month, revenue: monthRev, cost: monthCost, profit: monthRev - monthCost });
+      }
+
+      // Calculate forecast
+      const today = now.getDate();
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const remainingDays = daysInMonth - today;
+      const dailyRevenue = today > 0 ? currentRevenue / today : 0;
+      const projectedRevenue = Math.round(dailyRevenue * daysInMonth);
+      const projectedProfit = projectedRevenue - currentCost;
+
+      return json({
+        monthlyTarget: data.monthlyTarget,
+        currentRevenue,
+        currentCost,
+        netIncome,
+        targetProgress: data.monthlyTarget > 0 ? Math.round((netIncome / data.monthlyTarget) * 100) : 0,
+        monthlyData,
+        forecast: {
+          projectedRevenue,
+          projectedCost: currentCost,
+          projectedProfit,
+          remainingDays,
+          daysInMonth,
+          today,
+        },
+        recentRecords: data.records.slice(-5).reverse(),
+        recentCosts: monthCosts.slice(-3).reverse(),
+      });
+    } catch (err) {
+      return json({ error: "Failed to load revenue data", detail: String(err) }, 500);
+    }
   }
 
   return notFound();
