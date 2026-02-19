@@ -52,6 +52,13 @@ export default async function CategoryPage({ params }: Props) {
     tagsByPostId.get(t.postId)!.push({ name: t.name, slug: t.slug });
   }
 
+  const MID_AD_THRESHOLD = 6; // posts가 6개 이상일 때 중간 광고 표시
+
+  // posts를 3개씩 나누기 (중간 광고용)
+  const postsWithMidAd: (typeof posts[number] | "AD")[] = posts.length >= MID_AD_THRESHOLD
+    ? [...posts.slice(0, 3), "AD" as const, ...posts.slice(3)]
+    : posts;
+
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
       <header className="mb-10">
@@ -65,19 +72,23 @@ export default async function CategoryPage({ params }: Props) {
         <p className="text-[var(--text-tertiary)] text-center py-12">이 카테고리에 게시된 글이 없습니다.</p>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {posts.map((post) => (
-            <PostCard
-              key={post.id}
-              title={post.title}
-              slug={post.slug}
-              excerpt={post.excerpt}
-              categoryName={category.name}
-              categorySlug={category.slug}
-              publishedAt={post.publishedAt}
-              featuredImage={post.featuredImage}
-              tags={tagsByPostId.get(post.id)}
-            />
-          ))}
+          {postsWithMidAd.map((item, idx) =>
+            item === "AD" ? (
+              <AdBanner key="mid-ad" slot="category-mid" format="auto" className="sm:col-span-2 lg:col-span-3 my-4" />
+            ) : (
+              <PostCard
+                key={item.id}
+                title={item.title}
+                slug={item.slug}
+                excerpt={item.excerpt}
+                categoryName={category.name}
+                categorySlug={category.slug}
+                publishedAt={item.publishedAt}
+                featuredImage={item.featuredImage}
+                tags={tagsByPostId.get(item.id)}
+              />
+            )
+          )}
         </div>
       )}
 
