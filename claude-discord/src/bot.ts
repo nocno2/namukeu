@@ -368,25 +368,33 @@ export async function createBot(): Promise<Client> {
       }
     );
 
-    // Check for expiring sessions and notify user
-    const expiringSessions = getExpiringSessions(sessions.sessions);
-    if (expiringSessions.length > 0) {
-      console.log(`[session] Found ${expiringSessions.length} expiring session(s)`);
-      for (const session of expiringSessions) {
-        const days = getDaysSinceLastActivity(session);
-        const channel = await client.channels.fetch(session.channelId);
-        if (channel && channel.isTextBased()) {
-          const textChannel = channel as TextBasedChannel;
-          await sendResponse(
-            textChannel,
-            `⚠️ **세션 만료 경고**\n` +
-            `이 채널의 세션이 ${days}일 동안 활동이 없습니다.\n` +
-            `Claude CLI 세션이 만료되면 대화가 초기화됩니다.\n` +
-            `계속하려면 \`/reset\` 명령어로 새 세션을 시작하세요.`
-          ).catch(() => {});
+    // Periodically check for expiring sessions (every hour)
+    const SESSION_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
+
+    setInterval(async () => {
+      const expiringSessions = getExpiringSessions(sessions.sessions);
+      if (expiringSessions.length > 0) {
+        console.log(`[session] Found ${expiringSessions.length} expiring session(s)`);
+        for (const session of expiringSessions) {
+          const days = getDaysSinceLastActivity(session);
+          if (days === null) continue;
+          const channel = await client.channels.fetch(session.channelId);
+          if (channel && channel.isTextBased()) {
+            const textChannel = channel as TextBasedChannel;
+            const warningMsg = days >= 7
+              ? `⚠️ **세션 만료 경고**\n` +
+                `이 채널의 세션이 ${days}일 동안 활동이 없습니다.\n` +
+                `Claude CLI 세션이 만료되면 대화가 초기화됩니다.\n` +
+                `계속하려면 \`/reset\` 명령어로 새 세션을 시작하세요.`
+              : `⏰ **세션 만료 임박**\n` +
+                `이 채널의 세션이 ${days}일 동안 활동이 없습니다.\n` +
+                `곧 7일 limite에 도달하면 세션이 만료됩니다.\n` +
+                `계속하려면 \`/reset\` 명령어로 새 세션을 시작하세요.`;
+            await sendResponse(textChannel, warningMsg).catch(() => {});
+          }
         }
       }
-    }
+    }, SESSION_CHECK_INTERVAL_MS);
   });
 
   // --- Slash command handler ---
