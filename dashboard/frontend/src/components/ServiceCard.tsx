@@ -279,9 +279,12 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
           </div>
 
           {/* Details */}
-          {service.details && (
+          {(service.details || service.latency_ms) && (
             <div className="space-y-1.5 border-t border-border/60 pt-3">
-              {formatDetails(service.details).map(([label, value]) => (
+              {service.latency_ms && (
+                <DetailItem label="latency" value={`${service.latency_ms}ms`} />
+              )}
+              {service.details && formatDetails(service.details).map(([label, value]) => (
                 <DetailItem key={label} label={label} value={value} />
               ))}
             </div>

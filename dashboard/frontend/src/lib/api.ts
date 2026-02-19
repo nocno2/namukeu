@@ -304,6 +304,7 @@ export interface ServiceStatus {
   type: string;
   port: number | null;
   status: "running" | "down";
+  latency_ms: number | null;
   details: Record<string, unknown> | null;
   dashboard_url: string | null;
   checked_at: string;

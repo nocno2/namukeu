@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import subprocess
+import time
 from datetime import datetime
 
 import httpx
@@ -24,12 +25,16 @@ async def check_http_service(service: ServiceDef, client: httpx.AsyncClient) -> 
     }
 
     # Health check
+    start_time = time.time()
     try:
         resp = await client.get(service.health_url, timeout=5.0)
+        latency_ms = round((time.time() - start_time) * 1000)
+        result["latency_ms"] = latency_ms
         if resp.status_code == 200:
             result["status"] = "running"
     except Exception:
         result["status"] = "down"
+        result["latency_ms"] = round((time.time() - start_time) * 1000)
         return result
 
     # Status (detailed info)
