@@ -646,7 +646,7 @@ class Database:
         return dict(row)
 
     def get_paper_trading_pnl(self, initial_capital: float = 1_000_000) -> dict:
-        """Calculate P&L from paper trading orders."""
+        """Calculate P&L from paper trading orders with detailed statistics."""
         # Get all completed dry-run orders sorted by time
         rows = self.conn.execute("""
             SELECT ticker, side, price, volume, amount_krw, created_at
@@ -665,12 +665,23 @@ class Database:
                 "wins": 0,
                 "losses": 0,
                 "win_rate": 0,
+                "avg_win": 0,
+                "avg_loss": 0,
+                "largest_win": 0,
+                "largest_loss": 0,
+                "profit_factor": 0,
+                "gross_profit": 0,
+                "gross_loss": 0,
             }
 
         capital = initial_capital
         position: dict | None = None  # {ticker, volume, entry_price}
         wins = 0
         losses = 0
+        gross_profit = 0.0
+        gross_loss = 0.0
+        win_amounts = []
+        loss_amounts = []
 
         for row in rows:
             side = row["side"]
@@ -688,8 +699,12 @@ class Database:
                 capital += proceeds
                 if pnl > 0:
                     wins += 1
+                    gross_profit += pnl
+                    win_amounts.append(pnl)
                 else:
                     losses += 1
+                    gross_loss += abs(pnl)
+                    loss_amounts.append(abs(pnl))
                 position = None
 
         # Close any remaining position at last price
@@ -702,6 +717,11 @@ class Database:
         total_pnl = capital - initial_capital
         total_pnl_pct = (total_pnl / initial_capital) * 100 if initial_capital > 0 else 0
         win_rate = (wins / total_trades * 100) if total_trades > 0 else 0
+        avg_win = sum(win_amounts) / len(win_amounts) if win_amounts else 0
+        avg_loss = sum(loss_amounts) / len(loss_amounts) if loss_amounts else 0
+        largest_win = max(win_amounts) if win_amounts else 0
+        largest_loss = max(loss_amounts) if loss_amounts else 0
+        profit_factor = gross_profit / gross_loss if gross_loss > 0 else (gross_profit if gross_profit > 0 else 0)
 
         return {
             "initial_capital": initial_capital,
@@ -712,6 +732,13 @@ class Database:
             "wins": wins,
             "losses": losses,
             "win_rate": round(win_rate, 2),
+            "avg_win": round(avg_win, 2),
+            "avg_loss": round(avg_loss, 2),
+            "largest_win": round(largest_win, 2),
+            "largest_loss": round(largest_loss, 2),
+            "profit_factor": round(profit_factor, 2),
+            "gross_profit": round(gross_profit, 2),
+            "gross_loss": round(gross_loss, 2),
         }
 
     def close(self):

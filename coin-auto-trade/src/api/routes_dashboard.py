@@ -468,7 +468,9 @@ def transition_checklist(
 
     # 2. 페이퍼 트레이딩 결과 조회
     paper_pnl = db.get_paper_trading_pnl()
-    paper_passed = paper_pnl.get("win_rate", 0) > 50 if paper_pnl else False
+    win_rate_ok = paper_pnl.get("win_rate", 0) > 50 if paper_pnl else False
+    profit_factor_ok = paper_pnl.get("profit_factor", 0) > 1.0 if paper_pnl else False
+    paper_passed = win_rate_ok and profit_factor_ok
 
     paper_details = {
         "total_trades": paper_pnl.get("completed_trades", 0),
@@ -477,6 +479,13 @@ def transition_checklist(
         "win_rate": paper_pnl.get("win_rate", 0),
         "total_pnl": paper_pnl.get("total_pnl", 0),
         "total_pnl_pct": paper_pnl.get("total_pnl_pct", 0),
+        "avg_win": paper_pnl.get("avg_win", 0),
+        "avg_loss": paper_pnl.get("avg_loss", 0),
+        "largest_win": paper_pnl.get("largest_win", 0),
+        "largest_loss": paper_pnl.get("largest_loss", 0),
+        "profit_factor": paper_pnl.get("profit_factor", 0),
+        "gross_profit": paper_pnl.get("gross_profit", 0),
+        "gross_loss": paper_pnl.get("gross_loss", 0),
     }
 
     # 3. 종합 판정
@@ -505,7 +514,8 @@ def transition_checklist(
         "paper_trading": {
             "passed": paper_passed,
             "conditions": {
-                "win_rate_gt_50pct": paper_passed,
+                "win_rate_gt_50pct": win_rate_ok,
+                "profit_factor_gt_1": profit_factor_ok,
             },
             "details": paper_details,
         },
