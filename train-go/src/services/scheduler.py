@@ -282,6 +282,10 @@ class ReservationScheduler:
                         await self.notifier.notify_reservation_failed(
                             reservation, f"연속 에러 {consecutive_errors}회 초과로 중단"
                         )
+                        # 치명적 에러: 이메일 알림도 전송
+                        await self.notifier.notify_critical_error(
+                            reservation, "연속 에러 초과", f"{consecutive_errors}회 연속 에러 발생으로 매크로 중단"
+                        )
                         return
 
                     # 주기적 진행 알림 체크 (에러 경로에서도)
@@ -323,6 +327,10 @@ class ReservationScheduler:
                 reservation_id, "failed", error_message="검색 시간 초과"
             )
             await self.notifier.notify_reservation_failed(reservation, "검색 시간 초과")
+            # 시간 초과 시에도 이메일 알림
+            await self.notifier.notify_critical_error(
+                reservation, "시간 초과", f"{self.max_duration_hours}시간 동안 좌석을 찾지 못했습니다"
+            )
 
         except asyncio.CancelledError:
             self.db.update_reservation_status(reservation_id, "cancelled")

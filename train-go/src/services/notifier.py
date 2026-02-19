@@ -1,5 +1,8 @@
 import json
 import logging
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 import httpx
 
@@ -215,6 +218,105 @@ class TelegramNotifier:
         await self.send_message(text)
 
 
+class EmailNotifier:
+    """이메일을 통한 알림 (중요 에러용)."""
+
+    def __init__(
+        self,
+        smtp_host: str,
+        smtp_port: int,
+        smtp_user: str,
+        smtp_password: str,
+        smtp_from: str,
+        smtp_to: str,
+    ):
+        self._smtp_host = smtp_host
+        self._smtp_port = smtp_port
+        self._smtp_user = smtp_user
+        self._smtp_password = smtp_password
+        self._smtp_from = smtp_from
+        self._smtp_to = smtp_to
+
+    def _send_email(self, subject: str, body: str):
+        """이메일 전송."""
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = self._smtp_from
+            msg["To"] = self._smtp_to
+
+            part = MIMEText(body, "plain", "utf-8")
+            msg.attach(part)
+
+            with smtplib.SMTP(self._smtp_host, self._smtp_port) as server:
+                server.starttls()
+                server.login(self._smtp_user, self._smtp_password)
+                server.send_message(msg)
+            logger.info(f"이메일 전송 성공: {subject}")
+        except Exception as e:
+            logger.error(f"이메일 전송 실패: {e}")
+
+    async def notify_reservation_success(self, reservation: dict, train_info: dict):
+        provider = train_info.get("provider", "").upper()
+        dep = reservation["dep_station"]
+        arr = reservation["arr_station"]
+        date = reservation["date"]
+        time = train_info.get("dep_time", "")
+        time_fmt = f"{time[:2]}:{time[2:4]}" if len(time) >= 4 else time
+
+        subject = f"[TRAIN] 🚄 예약 성공 - {provider}"
+        body = (
+            f"예약이 성공적으로 완료되었습니다.\n\n"
+            f"운행사: {provider}\n"
+            f"구간: {dep} → {arr}\n"
+            f"날짜/시간: {date} {time_fmt}\n"
+            f"좌석タイプ: {reservation.get('seat_type', 'general')}\n\n"
+            f"⚠️ 결제 기한 내 직접 결제해 주세요."
+        )
+        self._send_email(subject, body)
+
+    async def notify_reservation_failed(self, reservation: dict, reason: str):
+        provider = reservation["provider"].upper()
+        subject = f"[TRAIN] ❌ 예약 실패 - {provider}"
+        body = (
+            f"예약이 실패했습니다.\n\n"
+            f"운행사: {provider}\n"
+            f"구간: {reservation['dep_station']} → {reservation['arr_station']}\n"
+            f"날짜: {reservation['date']}\n"
+            f"실패 사유: {reason}"
+        )
+        self._send_email(subject, body)
+
+    async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
+        """에러 발생 알림 (이메일)."""
+        provider = reservation["provider"].upper()
+        subject = f"[TRAIN] ⚠️ 매크로 에러 - {provider}"
+        body = (
+            f"매크로 실행 중 에러가 발생했습니다.\n\n"
+            f"운행사: {provider}\n"
+            f"구간: {reservation['dep_station']} → {reservation['arr_station']}\n"
+            f"날짜: {reservation['date']}\n"
+            f"에러 유형: {error_type}\n"
+            f"메시지: {error_msg}"
+        )
+        self._send_email(subject, body)
+
+    async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
+        """치명적 에러 발생 알림 (별도 메소드)."""
+        provider = reservation["provider"].upper()
+        subject = f"[TRAIN] 🔴 치명적 에러 - {provider}"
+        body = (
+            f"매크로 실행 중 치명적 에러가 발생하여 중단되었습니다.\n\n"
+            f"운행사: {provider}\n"
+            f"구간: {reservation['dep_station']} → {reservation['arr_station']}\n"
+            f"날짜: {reservation['date']}\n"
+            f"에러 유형: {error_type}\n"
+            f"메시지: {error_msg}\n\n"
+            f"매크로를 재시작해 주세요."
+        )
+        self._send_email(subject, body)
+
+
 class CompositeNotifier:
     """여러 알림 채널을 동시에 지원하는 컴포지트 노티파이어."""
 
@@ -245,4 +347,14 @@ class CompositeNotifier:
             else:
                 # 텔레그램은 notify_error가 없으면 일반 실패 알림
                 await notifier.notify_reservation_failed(reservation, f"{error_type}: {error_msg[:50]}")
+
+    async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
+        """치명적 에러 발생 알림 (이메일 등 주요 채널)."""
+        for notifier in self._notifiers:
+            if hasattr(notifier, "notify_critical_error"):
+                await notifier.notify_critical_error(reservation, error_type, error_msg)
+            elif hasattr(notifier, "notify_error"):
+                await notifier.notify_error(reservation, error_type, error_msg)
+            else:
+                await notifier.notify_reservation_failed(reservation, f"{error_type}: {error_msg[:100]}")
 

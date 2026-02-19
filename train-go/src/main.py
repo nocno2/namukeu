@@ -13,7 +13,7 @@ from src.api.routes import router, get_db, get_crypto, get_scheduler, get_token
 from src.core.config import Config
 from src.core.crypto import CryptoManager
 from src.core.database import Database
-from src.services.notifier import CompositeNotifier, DiscordNotifier, TelegramNotifier
+from src.services.notifier import CompositeNotifier, DiscordNotifier, EmailNotifier, TelegramNotifier
 from src.services.scheduler import ReservationScheduler
 
 LOG_DIR = Path("data/logs")
@@ -39,11 +39,21 @@ async def lifespan(app: FastAPI):
     db = Database(config.db_path)
     crypto = CryptoManager(config.encryption_key)
 
-    # 알림 채널 설정 (텔레그램 + Discord)
+    # 알림 채널 설정 (텔레그램 + Discord + Email)
     notifiers = [TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id)]
     if config.discord_webhook_url:
         notifiers.append(DiscordNotifier(config.discord_webhook_url))
         logger.info("Discord 웹훅 알림 활성화")
+    if config.smtp_host and config.smtp_user and config.smtp_password:
+        notifiers.append(EmailNotifier(
+            smtp_host=config.smtp_host,
+            smtp_port=config.smtp_port,
+            smtp_user=config.smtp_user,
+            smtp_password=config.smtp_password,
+            smtp_from=config.smtp_from,
+            smtp_to=config.smtp_to,
+        ))
+        logger.info("이메일 알림 활성화")
     notifier = CompositeNotifier(notifiers) if len(notifiers) > 1 else notifiers[0]
 
     scheduler = ReservationScheduler(
