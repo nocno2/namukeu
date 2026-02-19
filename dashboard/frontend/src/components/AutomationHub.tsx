@@ -71,7 +71,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const TYPE_LABELS: Record<string, string> = {
   recurring: "주기적",
-  one_time: "一次性",
+  one_time: "원샷",
   event: "이벤트",
 };
 
@@ -493,7 +493,7 @@ function TaskForm({
         value={type}
         onChange={(e) => setType(e.target.value as "one-time" | "recurring" | "event")}
       >
-        <option value="one-time">一次性 (One-time)</option>
+        <option value="one-time">원샷 (One-time)</option>
         <option value="recurring">주기적 (Recurring)</option>
         <option value="event">이벤트 (Event)</option>
       </select>
