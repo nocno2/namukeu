@@ -27,6 +27,7 @@ class TransitionChecker:
     MIN_BACKTEST_RETURN = 0.0  # %
     MIN_PAPER_WIN_RATE = 50.0  # %
     MAX_DRAWDOWN = 10.0  # %
+    MIN_TRADES = 10  # 최소 거래 횟수
 
     def __init__(self, db: Database):
         self.db = db
@@ -60,9 +61,24 @@ class TransitionChecker:
         )
 
     def _check_backtest(self, strategy_name: str | None = None, ticker: str | None = None) -> bool:
-        """백테스트 수익률 > 0 검증."""
-        query = "SELECT MAX(total_return_pct) as max_return FROM backtest_results WHERE 1=1"
-        params: list = []
+        """백테스트가 페이퍼 트레이딩 조건을 만족하는지 검증.
+
+        조건: 수익률 > 0, 승률 >= 50%, 최대낙폭 <= 10%, 거래 횟수 >= 10
+        """
+        query = """
+            SELECT MAX(total_return_pct) as max_return
+            FROM backtest_results
+            WHERE total_return_pct > ?
+              AND win_rate >= ?
+              AND max_drawdown_pct <= ?
+              AND total_trades >= ?
+        """
+        params: list = [
+            self.MIN_BACKTEST_RETURN,  # 0.0
+            self.MIN_PAPER_WIN_RATE,    # 50.0
+            self.MAX_DRAWDOWN,          # 10.0
+            self.MIN_TRADES,            # 10
+        ]
 
         if strategy_name:
             query += " AND strategy_name = ?"
@@ -73,16 +89,16 @@ class TransitionChecker:
 
         row = self.db.conn.execute(query, params).fetchone()
         if not row or row["max_return"] is None:
-            return False  # 백테스트 결과가 없으면 False
+            return False  # 조건을 만족하는 백테스트가 없으면 False
 
-        return row["max_return"] > self.MIN_BACKTEST_RETURN
+        return True
 
     def _check_paper_trading(self, ticker: str | None = None) -> tuple[bool, dict]:
         """페이퍼 트레이딩 승률 > 50% 검증."""
         stats = self.db.get_paper_trading_pnl()
 
         # 거래가 있어야 검증 가능
-        if stats.get("completed_trades", 0) < 5:
+        if stats.get("completed_trades", 0) < self.MIN_TRADES:
             return False, stats
 
         win_rate = stats.get("win_rate", 0)
@@ -90,14 +106,15 @@ class TransitionChecker:
 
     def _check_drawdown(self) -> tuple[bool, float]:
         """최대낙폭 < 10% 검증."""
-        # performance_snapshots에서 최대 낙폭 계산
+        # performance_snapshots에서 최대 낙폭 계산 (0 equity 제외)
         rows = self.db.conn.execute("""
             SELECT total_equity FROM performance_snapshots
+            WHERE total_equity > 0
             ORDER BY timestamp ASC
         """).fetchall()
 
         if not rows:
-            # 스냅샷이 없으면 기본값 (추정)
+            # 유효한 스냅샷이 없으면 기본값 (추정)
             return True, 0.0
 
         peak = rows[0]["total_equity"]
