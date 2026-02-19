@@ -264,13 +264,84 @@ async function handleRequest(req: Request): Promise<Response> {
         monthlyData.push({ month, revenue: monthRev, cost: monthCost, profit: monthRev - monthCost });
       }
 
-      // Calculate forecast
+      // Calculate forecast with multiple methods
       const today = now.getDate();
       const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
       const remainingDays = daysInMonth - today;
-      const dailyRevenue = today > 0 ? currentRevenue / today : 0;
-      const projectedRevenue = Math.round(dailyRevenue * daysInMonth);
-      const projectedProfit = projectedRevenue - currentCost;
+
+      // Helper: calculate moving average
+      const calculateMovingAverage = (values: number[], days: number): number => {
+        if (values.length === 0) return 0;
+        const recent = values.slice(-days);
+        if (recent.length === 0) return 0;
+        return recent.reduce((a, b) => a + b, 0) / recent.length;
+      };
+
+      // Simple average based on current month
+      const simpleDailyRevenue = today > 0 ? currentRevenue / today : 0;
+      const simpleDailyCost = today > 0 ? currentCost / today : 0;
+
+      // Moving averages based on all records
+      const dailyRevenueValues = data.records.map((r) => r.amount);
+      const dailyCostValues = data.costs.map((c) => c.amount);
+
+      const ma7Revenue = calculateMovingAverage(dailyRevenueValues, 7);
+      const ma7Cost = calculateMovingAverage(dailyCostValues, 7);
+      const ma14Revenue = calculateMovingAverage(dailyRevenueValues, 14);
+      const ma14Cost = calculateMovingAverage(dailyCostValues, 14);
+
+      // Projections for each method
+      const projSimple = {
+        method: "simple",
+        label: "단순 평균",
+        projectedRevenue: Math.round(simpleDailyRevenue * daysInMonth),
+        projectedCost: Math.round(simpleDailyCost * daysInMonth),
+        projectedProfit: Math.round(simpleDailyRevenue * daysInMonth) - Math.round(simpleDailyCost * daysInMonth),
+      };
+      const proj7d = {
+        method: "ma7",
+        label: "7일 이동평균",
+        projectedRevenue: Math.round(ma7Revenue * daysInMonth),
+        projectedCost: Math.round(ma7Cost * daysInMonth),
+        projectedProfit: Math.round(ma7Revenue * daysInMonth) - Math.round(ma7Cost * daysInMonth),
+      };
+      const proj14d = {
+        method: "ma14",
+        label: "14일 이동평균",
+        projectedRevenue: Math.round(ma14Revenue * daysInMonth),
+        projectedCost: Math.round(ma14Cost * daysInMonth),
+        projectedProfit: Math.round(ma14Revenue * daysInMonth) - Math.round(ma14Cost * daysInMonth),
+      };
+
+      // Choose best prediction (prioritize 7-day if enough data)
+      const hasEnoughData = monthRecords.length >= 7;
+      const bestForecast = hasEnoughData ? proj7d : projSimple;
+
+      // Trend indicator
+      const trend = ma7Revenue > ma14Revenue ? "up" : ma7Revenue < ma14Revenue ? "down" : "stable";
+      const trendLabel = trend === "up" ? "상승" : trend === "down" ? "하락" : "持平";
+
+      // Calculate by-source breakdown for recent months
+      const recentMonths: string[] = [];
+      for (let i = 0; i < 6; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        recentMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+      }
+
+      const bySource: Record<string, number> = {};
+      for (const r of data.records) {
+        const month = r.date.substring(0, 7);
+        if (recentMonths.includes(month)) {
+          bySource[r.source] = (bySource[r.source] || 0) + r.amount;
+        }
+      }
+
+      // Convert to sorted array
+      const bySourceArray = Object.entries(bySource)
+        .map(([source, amount]) => ({ source, amount }))
+        .sort((a, b) => b.amount - a.amount);
+
+      const totalBySource = bySourceArray.reduce((sum, item) => sum + item.amount, 0);
 
       return json({
         monthlyTarget: data.monthlyTarget,
@@ -280,13 +351,21 @@ async function handleRequest(req: Request): Promise<Response> {
         targetProgress: data.monthlyTarget > 0 ? Math.round((netIncome / data.monthlyTarget) * 100) : 0,
         monthlyData,
         forecast: {
-          projectedRevenue,
-          projectedCost: currentCost,
-          projectedProfit,
+          projectedRevenue: bestForecast.projectedRevenue,
+          projectedCost: bestForecast.projectedCost,
+          projectedProfit: bestForecast.projectedProfit,
           remainingDays,
           daysInMonth,
           today,
+          methods: [projSimple, proj7d, proj14d],
+          bestMethod: bestForecast.method,
+          trend,
+          trendLabel,
         },
+        bySource: bySourceArray.map((item) => ({
+          ...item,
+          percent: totalBySource > 0 ? Math.round((item.amount / totalBySource) * 100) : 0,
+        })),
         recentRecords: data.records.slice(-5).reverse(),
         recentCosts: monthCosts.slice(-3).reverse(),
       });

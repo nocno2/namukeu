@@ -24,7 +24,18 @@ interface RevenueData {
     remainingDays: number;
     daysInMonth: number;
     today: number;
+    methods: {
+      method: string;
+      label: string;
+      projectedRevenue: number;
+      projectedCost: number;
+      projectedProfit: number;
+    }[];
+    bestMethod: string;
+    trend: "up" | "down" | "stable";
+    trendLabel: string;
   };
+  bySource: { source: string; amount: number; percent: number }[];
   recentRecords: { date: string; amount: number; source: string }[];
   recentCosts: { date: string; amount: number; category: string }[];
 }
@@ -105,7 +116,7 @@ export function RevenueDashboard({ collapsed, pinned, onToggleCollapse, onToggle
 
   if (!data) return null;
 
-  const { monthlyTarget, currentRevenue, currentCost, netIncome, targetProgress, monthlyData, forecast, recentRecords, recentCosts } = data;
+  const { monthlyTarget, currentRevenue, currentCost, netIncome, targetProgress, monthlyData, forecast, bySource, recentRecords, recentCosts } = data;
   const isProfit = netIncome >= 0;
 
   // Calculate max for chart scaling
@@ -248,8 +259,17 @@ export function RevenueDashboard({ collapsed, pinned, onToggleCollapse, onToggle
 
           {/* Forecast */}
           <div className="bg-surface-hover rounded-lg p-3">
-            <div className="text-[10px] text-text-muted mb-2 flex items-center gap-1">
-              월말 예측 (오늘 기준)
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[10px] text-text-muted flex items-center gap-1">
+                월말 예측 ({forecast.today}/{forecast.daysInMonth}일)
+              </div>
+              {forecast.trend && (
+                <div className={`text-[10px] flex items-center gap-1 ${
+                  forecast.trend === "up" ? "text-success" : forecast.trend === "down" ? "text-danger" : "text-text-muted"
+                }`}>
+                  {forecast.trend === "up" ? "↗" : forecast.trend === "down" ? "↘" : "→"} {forecast.trendLabel}
+                </div>
+              )}
             </div>
             <div className="flex gap-4 text-xs">
               <div>
@@ -263,6 +283,29 @@ export function RevenueDashboard({ collapsed, pinned, onToggleCollapse, onToggle
                 </span>
               </div>
             </div>
+
+            {/* Forecast methods comparison */}
+            {forecast.methods && forecast.methods.length > 0 && (
+              <div className="mt-2 pt-2 border-t border-border/30">
+                <div className="text-[9px] text-text-muted mb-1">예측 방법별 순수입:</div>
+                <div className="flex gap-2 text-[10px]">
+                  {forecast.methods.map((m) => (
+                    <div
+                      key={m.method}
+                      className={`flex-1 p-1.5 rounded ${
+                        m.method === forecast.bestMethod ? "bg-primary/10 border border-primary/30" : "bg-surface/50"
+                      }`}
+                    >
+                      <div className="text-[8px] text-text-muted">{m.label}</div>
+                      <div className={`font-mono ${m.projectedProfit >= 0 ? "text-success" : "text-danger"}`}>
+                        ₩{m.projectedProfit.toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {monthlyTarget > 0 && (
               <div className="text-[10px] text-text-muted mt-1">
                 {forecast.projectedProfit >= monthlyTarget
@@ -301,6 +344,34 @@ export function RevenueDashboard({ collapsed, pinned, onToggleCollapse, onToggle
               </div>
             )}
           </div>
+
+          {/* By Source Analysis */}
+          {bySource && bySource.length > 0 && (
+            <div>
+              <div className="text-[10px] text-text-muted mb-2 flex items-center gap-1">
+                수익 원별 (최근 6개월)
+              </div>
+              <div className="space-y-1.5">
+                {bySource.map((s) => (
+                  <div key={s.source} className="flex items-center gap-2">
+                    <div className="flex-1 flex items-center gap-2">
+                      <div
+                        className="h-1.5 rounded-full bg-primary transition-all"
+                        style={{ width: `${Math.max(s.percent, 5)}%` }}
+                      />
+                      <span className="text-[10px] text-text truncate w-12">{s.source}</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-text-muted w-16 text-right">
+                      ₩{s.amount.toLocaleString()}
+                    </span>
+                    <span className="text-[9px] text-text-muted/60 w-8 text-right">
+                      {s.percent}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
