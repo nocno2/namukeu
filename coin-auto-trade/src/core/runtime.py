@@ -18,6 +18,10 @@ if TYPE_CHECKING:
 
 config: Config | None = None
 
+# Dry-run override: if set, this takes precedence over config.dry_run
+# None = use config.dry_run, True = force dry-run, False = force live
+dry_run_override: bool | None = None
+
 # Multi-exchange support: keyed by provider name ("upbit", "binance")
 exchanges: dict[str, Exchange] = {}
 schedulers: dict[str, TradingScheduler] = {}
