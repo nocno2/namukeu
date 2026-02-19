@@ -78,7 +78,7 @@ export default async function HomePage() {
       </section>
 
       <div className="mx-auto max-w-4xl px-6 py-12">
-        <AdBanner slot="home-top" format="horizontal" className="mb-10" />
+        <AdBanner slot="home-hero" format="horizontal" className="mb-10" />
 
         {/* Popular Tags */}
         {popularTags.length > 0 && (
