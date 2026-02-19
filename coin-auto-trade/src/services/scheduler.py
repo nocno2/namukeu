@@ -113,8 +113,8 @@ class TradingScheduler:
         try:
             while True:
                 try:
-                    # 1. 데이터 수집
-                    df = await self.exchange.get_ohlcv(ticker, interval="minute60", count=200)
+                    # 1. 데이터 수집 (200MA + RSI period = 220개 이상 필요)
+                    df = await self.exchange.get_ohlcv(ticker, interval="minute60", count=250)
                     if df is None or df.empty or len(df) < strategy.required_candle_count:
                         logger.warning(f"{ticker} 데이터 부족, 건너뜀")
                         await asyncio.sleep(self.trading_interval)
