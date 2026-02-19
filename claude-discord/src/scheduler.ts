@@ -29,6 +29,9 @@ let tickInterval: ReturnType<typeof setInterval> | null = null;
 let onTaskDue: ((task: ScheduledTask) => Promise<void>) | null = null;
 let onTaskSkip: ((task: ScheduledTask) => Promise<void>) | null = null;
 
+// Track tasks that have been notified during quiet hours (to prevent spam)
+const quietHoursSkippedTasks: Set<string> = new Set();
+
 const TICK_INTERVAL_MS = 60_000; // Check every 1 minute
 const QUIET_START_HOUR = 23; // 11 PM KST
 const QUIET_END_HOUR = 8;   // 8 AM KST
@@ -66,11 +69,17 @@ async function tick(): Promise<void> {
   const now = new Date();
   const quiet = isQuietHours();
 
+  // Clear skip tracking when exiting quiet hours (so notifications can resume)
+  if (!quiet && quietHoursSkippedTasks.size > 0) {
+    quietHoursSkippedTasks.clear();
+  }
+
   for (const task of store.tasks) {
     if (!task.enabled) continue;
     if (quiet && task.respectQuietHours) {
-      // Notify about skipped task if callback is provided
-      if (onTaskSkip) {
+      // Notify about skipped task only once per quiet hours period
+      if (onTaskSkip && !quietHoursSkippedTasks.has(task.id)) {
+        quietHoursSkippedTasks.add(task.id);
         try {
           await onTaskSkip(task);
         } catch (err) {
