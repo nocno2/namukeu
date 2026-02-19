@@ -62,18 +62,33 @@ class ReservationScheduler:
     def get_active_ids(self) -> list[int]:
         return list(self._tasks.keys())
 
-    def _random_interval(self) -> float:
+    def _random_interval(self, minutes_until_departure: int | None = None) -> float:
         """사람처럼 보이는 랜덤 간격 생성.
         - 기본: 가우시안 분포 (중앙값 근처에 밀집)
         - 10% 확률로 15~30초 긴 휴식 (사람이 잠깐 다른 거 하는 것처럼)
         - 최솟값 보장
+        - minutes_until_departure: 출발까지 남은 시간(분). None이면 기본 간격.
         """
+        # 적응형 간격: 출발 시간逼近시 더 자주 검색
+        if minutes_until_departure is not None:
+            if minutes_until_departure < 30:
+                # 30분 미만: 1~3초 (积极)
+                base_min, base_max = 1, 3
+            elif minutes_until_departure < 60:
+                # 1시간 미만: 2~5초
+                base_min, base_max = 2, 5
+            else:
+                # 1시간 이상: 기본 간격
+                base_min, base_max = self.search_interval_min, self.search_interval_max
+        else:
+            base_min, base_max = self.search_interval_min, self.search_interval_max
+
         if random.random() < 0.1:
             return random.uniform(15, 30)
-        mid = (self.search_interval_min + self.search_interval_max) / 2
-        std = (self.search_interval_max - self.search_interval_min) / 4
+        mid = (base_min + base_max) / 2
+        std = (base_max - base_min) / 4
         interval = random.gauss(mid, std)
-        return max(self.search_interval_min, min(self.search_interval_max, interval))
+        return max(base_min, min(base_max, interval))
 
     def _error_backoff(self, consecutive_errors: int) -> float:
         """연속 에러 시 지수 백오프. 사람이 에러를 보고 점점 오래 쉬는 패턴."""
@@ -86,6 +101,17 @@ class ReservationScheduler:
         return self.SESSION_REFRESH_INTERVAL + random.randint(
             -self.SESSION_REFRESH_JITTER, self.SESSION_REFRESH_JITTER
         )
+
+    def _get_minutes_until_departure(self, date: str, time_start: str) -> int | None:
+        """출발 시간까지 남은分钟수 계산. 유효하지 않으면 None 반환."""
+        try:
+            # date: YYYYMMDD, time_start: HH:MM
+            dep_datetime = datetime.strptime(f"{date} {time_start}", "%Y%m%d %H:%M")
+            now = datetime.now()
+            delta = dep_datetime - now
+            return max(0, int(delta.total_seconds() // 60))
+        except (ValueError, TypeError):
+            return None
 
     async def _refresh_session(self, service, login_id: str, login_pw: str, reservation_id: int):
         """세션 갱신: 로그아웃 후 잠시 쉬고 재로그인 (장기 세션 탐지 회피)"""
@@ -226,7 +252,12 @@ class ReservationScheduler:
                     last_report = now
 
                 # 랜덤 간격 대기 (가우시안 분포 + 가끔 긴 휴식)
-                interval = self._random_interval()
+                # 출발 시간까지 남은 시간 계산 (적응형 간격用)
+                minutes_until = self._get_minutes_until_departure(
+                    reservation["date"], reservation["time_range_start"]
+                )
+                interval = self._random_interval(minutes_until)
+                logger.debug(f"매크로 #{reservation_id} 출발까지 {minutes_until}분, 간격 {interval:.1f}초")
                 await asyncio.sleep(interval)
 
             # 시간 초과
