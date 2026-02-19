@@ -5,6 +5,7 @@ import { AutomationHub } from "./AutomationHub";
 import { BlogTraffic } from "./BlogTraffic";
 import { ClaudeUsage } from "./ClaudeUsage";
 import { CoinBacktestStatus } from "./CoinBacktestStatus";
+import { CoinProfitCard } from "./CoinProfitCard";
 import { CommitPanel } from "./CommitPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { Header } from "./Header";
@@ -51,6 +52,7 @@ type CardItem =
   | { type: "automation"; id: string }
   | { type: "n8n"; id: string }
   | { type: "coin"; id: string }
+  | { type: "coinProfit"; id: string }
   | { type: "revenue"; id: string };
 
 export function Dashboard({ username, onLogout }: Props) {
@@ -121,6 +123,7 @@ export function Dashboard({ username, onLogout }: Props) {
     ...services.map((svc): CardItem => ({ type: "service", id: svc.name, service: svc })),
     { type: "train", id: "train-status" },
     { type: "coin", id: "coin-backtest" },
+    { type: "coinProfit", id: "coin-profit" },
     { type: "blog", id: "blog-traffic" },
     { type: "revenue", id: "revenue-dashboard" },
     { type: "claude", id: "claude-usage" },
@@ -260,6 +263,9 @@ export function Dashboard({ username, onLogout }: Props) {
                   break;
                 case "coin":
                   content = <CoinBacktestStatus {...cardProps(card.id)} />;
+                  break;
+                case "coinProfit":
+                  content = <CoinProfitCard {...cardProps(card.id)} />;
                   break;
                 case "revenue":
                   content = <RevenueDashboard {...cardProps(card.id)} />;

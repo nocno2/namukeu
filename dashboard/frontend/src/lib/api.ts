@@ -289,6 +289,16 @@ export const api = {
       { method: "POST" },
     );
   },
+
+  // COIN PnL (수익률)
+  coinPnL(initialCapital = 1000000) {
+    return request<CoinPnLData>(`/api/proxy/coin/api/trading/paper-pnl?initial_capital=${initialCapital}`);
+  },
+
+  // COIN 통계
+  coinStats() {
+    return request<CoinStatsData>("/api/proxy/coin/api/trading/paper-stats");
+  },
 };
 
 export interface BacktestResult {
@@ -559,4 +569,43 @@ export interface TradingMode {
     per_exchange: boolean | null;
     effective: boolean;
   }>;
+}
+
+export interface CoinPnLData {
+  initial_capital: number;
+  final_capital: number;
+  total_pnl: number;
+  total_pnl_pct: number;
+  completed_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  gross_profit: number;
+  gross_loss: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
+  trades: Array<{
+    ticker: string;
+    side: string;
+    entry_price: number;
+    exit_price: number;
+    volume: number;
+    pnl: number;
+    pnl_pct: number;
+    entry_time: string;
+    exit_time: string;
+  }>;
+}
+
+export interface CoinStatsData {
+  completed_trades: number;
+  winning_trades: number;
+  losing_trades: number;
+  win_rate: number;
+  total_pnl: number;
+  total_pnl_pct: number;
+  gross_profit: number;
+  gross_loss: number;
+  profit_factor: number;
+  max_drawdown_pct: number;
 }
