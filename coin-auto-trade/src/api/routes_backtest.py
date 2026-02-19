@@ -165,6 +165,67 @@ def get_result(
     return result
 
 
+@router.get("/results/best/profitable")
+def get_best_profitable_result(
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """수익성最高的 백테스트 결과 조회 (페이퍼/라이브 트레이딩 시작용).
+
+    조건: total_return_pct > 0, total_trades >= 10
+    정렬: total_return_pct DESC
+    """
+    row = db.conn.execute("""
+        SELECT id, strategy_name, ticker, interval, params,
+               total_return_pct, max_drawdown_pct, win_rate, total_trades,
+               sharpe_ratio, profit_factor
+        FROM backtest_results
+        WHERE total_return_pct > 0 AND total_trades >= 10
+        ORDER BY total_return_pct DESC
+        LIMIT 1
+    """).fetchone()
+
+    if not row:
+        # 조건放宽: 거래 10회 이상만
+        row = db.conn.execute("""
+            SELECT id, strategy_name, ticker, interval, params,
+                   total_return_pct, max_drawdown_pct, win_rate, total_trades,
+                   sharpe_ratio, profit_factor
+            FROM backtest_results
+            WHERE total_return_pct > 0
+            ORDER BY total_return_pct DESC
+            LIMIT 1
+        """).fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="수익성 백테스트 결과가 없습니다. 먼저 백테스트를 실행하세요.",
+            )
+
+    params = json.loads(row["params"]) if isinstance(row["params"], str) else row["params"]
+
+    return {
+        "result_id": row["id"],
+        "strategy_name": row["strategy_name"],
+        "ticker": row["ticker"],
+        "interval": row["interval"],
+        "params": params,
+        "metrics": {
+            "total_return_pct": row["total_return_pct"],
+            "max_drawdown_pct": row["max_drawdown_pct"],
+            "win_rate": row["win_rate"],
+            "total_trades": row["total_trades"],
+            "sharpe_ratio": row["sharpe_ratio"],
+            "profit_factor": row["profit_factor"],
+        },
+        "next_action": {
+            "paper_trading": f"/backtest/results/{row['id']}/start-paper",
+            "validate": f"/backtest/results/{row['id']}/validate",
+        },
+    }
+
+
 @router.get("/results/{result_id}/validate")
 def validate_for_trading(
     result_id: int,
@@ -325,6 +386,7 @@ async def start_paper_trading(
 async def start_live_trading(
     result_id: int,
     exchange: str = "upbit",
+    max_position_pct: float = 5.0,
     _=Depends(verify),
     db: Database = Depends(get_db),
 ):
@@ -333,6 +395,7 @@ async def start_live_trading(
     - 백테스트 결과 검증 수행 (모든 조건 충족 필요)
     - strategy config 생성 후 활성화
     - live 모드로 trading 시작
+    - max_position_pct: 단일 포지션당 최대 금액 비율 (기본 5%, 소액 거래용)
     """
     from src.services.risk_manager import RiskManager, RiskLimits, TradingChecklist
     from src.models.strategy import StrategyConfigCreate
@@ -341,11 +404,15 @@ async def start_live_trading(
     if not result:
         raise HTTPException(status_code=404, detail="백테스트 결과를 찾을 수 없습니다")
 
+    # 포지션 사이즈 유효성 검증
+    if max_position_pct <= 0 or max_position_pct > 100:
+        raise HTTPException(status_code=400, detail="max_position_pct는 0~100 사이여야 합니다")
+
     # params 파싱
     params = json.loads(result["params"]) if isinstance(result["params"], str) else result["params"]
 
-    # 검증 수행
-    limits = RiskLimits()
+    # 검증 수행 - 포지션 사이즈 제한 적용
+    limits = RiskLimits(max_position_size_pct=max_position_pct)
     risk_manager = RiskManager(db, limits)
     checklist = TradingChecklist(
         min_backtest_return_pct=0.0,
@@ -394,10 +461,13 @@ async def start_live_trading(
     for exc in runtime.exchanges.values():
         exc.dry_run = False
 
-    # trading 시작
+    # trading 시작 - 포지션 사이즈 제한 적용
     sched = runtime.schedulers.get(exchange)
     if not sched:
         raise HTTPException(status_code=503, detail=f"{exchange} 거래소가 초기화되지 않았습니다")
+
+    # RiskManager의 limits를 scheduler에 적용
+    sched.risk_manager = risk_manager
 
     sched.start_trading(result["ticker"], result["strategy_name"], params, strategy_id)
 
@@ -407,6 +477,7 @@ async def start_live_trading(
         "strategy_id": strategy_id,
         "exchange": exchange,
         "dry_run": False,
+        "max_position_pct": max_position_pct,
         "validation": {
             "can_live_trade": eligibility.eligible,
             "can_paper_trade": eligibility.can_paper_trade,
