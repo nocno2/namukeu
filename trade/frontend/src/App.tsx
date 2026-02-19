@@ -41,6 +41,16 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
+          {/* Full-screen chart route */}
+          <Route
+            path="/chart-full/:symbol?"
+            element={
+              <ProtectedRoute>
+                <Chart />
+              </ProtectedRoute>
+            }
+          />
+
           <Route
             path="/"
             element={
