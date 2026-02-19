@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useSearchParams, useParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { createChart, CandlestickSeries, HistogramSeries, LineSeries, AreaSeries, CrosshairMode } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, CandlestickData, Time, HistogramData, LineData, IPriceLine } from 'lightweight-charts';
-import { stocksApi } from '../api/client';
+import { stocksApi, alertsApi } from '../api/client';
 
 const periods = [
   { label: '1분', value: '1m' },
@@ -28,6 +28,13 @@ const indicators = [
   { label: '볼륨', value: 'volume', color: '#58a6ff' },
   { label: 'RSI', value: 'rsi', color: '#3fb950' },
   { label: 'MACD', value: 'macd', color: '#f0883e' },
+];
+
+const drawingTools = [
+  { label: '↔', value: 'trendline', title: ' 트렌드선' },
+  { label: '━', value: 'priceLine', title: '가격선' },
+  { label: '🔔', value: 'alert', title: '알림' },
+  { label: '✕', value: 'clear', title: '초기화' },
 ];
 
 // Calculate Bollinger Bands
@@ -66,7 +73,6 @@ function calculateMACD(data: any[], fast = 12, slow = 26, signal = 9) {
   const fastEMA = ema(closes, fast);
   const slowEMA = ema(closes, slow);
   const macdLine = fastEMA.map((f, i) => f - slowEMA[i]);
-
   const signalEMA = ema(macdLine, signal);
   const histogram = macdLine.map((m, i) => m - signalEMA[i]);
 
@@ -141,10 +147,8 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
   const bbUpperRef = useRef<ISeriesApi<'Line'> | null>(null);
   const bbMiddleRef = useRef<ISeriesApi<'Line'> | null>(null);
   const bbLowerRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const rsiSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const macdSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const signalSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const histogramSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
+
+  const priceLinesRef = useRef<IPriceLine[]>([]);
 
   const [symbol, setSymbol] = useState(initialSymbol || searchParams.get('symbol') || 'AAPL');
   const [searchInput, setSearchInput] = useState(symbol);
@@ -152,10 +156,12 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showSearch, setShowSearch] = useState(false);
+  const [showAlertForm, setShowAlertForm] = useState(false);
+  const [alertPrice, setAlertPrice] = useState('');
+  const [alertCondition, setAlertCondition] = useState('above');
+  const [alertMessage, setAlertMessage] = useState('');
 
-  // Calculate sub-chart heights based on indicators
   const indicatorCount = activeIndicators.length;
-  const mainChartHeight = indicatorCount > 0 ? 60 - indicatorCount * 10 : 80;
 
   // Initialize main chart
   useEffect(() => {
@@ -186,6 +192,16 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
       },
     });
 
+    // Click handler for adding price lines
+    chart.subscribeClick((param) => {
+      if (param.point && param.time) {
+        const price = candlestickSeriesRef.current?.coordinateToPrice(param.point.y);
+        if (price) {
+          addPriceLine(price);
+        }
+      }
+    });
+
     chartRef.current = chart;
 
     const handleResize = () => {
@@ -206,17 +222,37 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
     };
   }, [indicatorCount]);
 
+  const addPriceLine = (priceValue: number) => {
+    if (!chartRef.current || !candlestickSeriesRef.current) return;
+
+    const priceLine = candlestickSeriesRef.current.createPriceLine({
+      price: priceValue,
+      color: '#58a6ff',
+      lineWidth: 1,
+      lineStyle: 2, // Dashed
+      axisLabelVisible: true,
+      title: `$${priceValue.toFixed(2)}`,
+    });
+
+    priceLinesRef.current.push(priceLine);
+  };
+
+  const clearPriceLines = () => {
+    priceLinesRef.current.forEach((pl) => {
+      candlestickSeriesRef.current?.removePriceLine(pl);
+    });
+    priceLinesRef.current = [];
+  };
+
   // Create series based on chart type
   useEffect(() => {
     if (!chartRef.current) return;
 
-    // Remove existing series
     if (candlestickSeriesRef.current) {
       chartRef.current.removeSeries(candlestickSeriesRef.current);
       candlestickSeriesRef.current = null;
     }
 
-    // Create main series
     switch (chartType) {
       case 'candle':
         const candleSeries = chartRef.current.addSeries(CandlestickSeries, {
@@ -241,7 +277,6 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
         break;
     }
 
-    // Add MA
     if (activeIndicators.includes('ma')) {
       const maSeries = chartRef.current.addSeries(LineSeries, {
         color: '#d29922', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
@@ -249,7 +284,6 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
       maSeriesRef.current = maSeries;
     }
 
-    // Add Bollinger Bands
     if (activeIndicators.includes('bb')) {
       const upper = chartRef.current.addSeries(LineSeries, { color: 'rgba(163, 113, 247, 0.5)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
       const middle = chartRef.current.addSeries(LineSeries, { color: '#a371f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
@@ -308,7 +342,6 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
         return;
       }
 
-      // Main chart data
       const candleData: CandlestickData[] = history.map((item: any) => ({
         time: item.date.split('T')[0] as Time,
         open: item.open, high: item.high, low: item.low, close: item.close,
@@ -324,17 +357,14 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
         color: item.close >= item.open ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)',
       }));
 
-      // Update main chart
       if (candlestickSeriesRef.current) {
         candlestickSeriesRef.current.setData(chartType === 'candle' ? candleData : lineData);
       }
 
-      // MA
       if (maSeriesRef.current) {
         maSeriesRef.current.setData(calculateMA(history, 20));
       }
 
-      // Bollinger Bands
       if (bbUpperRef.current && bbMiddleRef.current && bbLowerRef.current) {
         const bb = calculateBollingerBands(history);
         bbUpperRef.current.setData(bb.upper);
@@ -344,7 +374,6 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
 
       chartRef.current?.timeScale().fitContent();
 
-      // Volume
       if (volumeSeriesRef.current) {
         volumeSeriesRef.current.setData(volumeData);
       }
@@ -368,7 +397,7 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
         const res = await stocksApi.getPrice(symbol);
         setPrice(res.data);
       } catch (e) {}
-    }, 10000); // Update every 10 seconds
+    }, 10000);
     return () => clearInterval(interval);
   }, [symbol]);
 
@@ -378,6 +407,24 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
       setSymbol(searchInput.toUpperCase().trim());
       fetchData(searchInput.toUpperCase().trim(), period);
       setShowSearch(false);
+    }
+  };
+
+  const handleCreateAlert = async () => {
+    if (!alertPrice || !symbol) return;
+
+    try {
+      await alertsApi.create({
+        symbol,
+        condition: alertCondition,
+        target_value: parseFloat(alertPrice),
+      });
+      setAlertMessage('알림이 등록되었습니다!');
+      setAlertPrice('');
+      setShowAlertForm(false);
+      setTimeout(() => setAlertMessage(''), 3000);
+    } catch (err: any) {
+      setAlertMessage(err.response?.data?.detail || '알림 등록 실패');
     }
   };
 
@@ -405,6 +452,48 @@ function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators
               {(price?.change_pct || 0) >= 0 ? '+' : ''}{formatPrice(price?.change_pct)}%
             </span>
           </div>
+        </div>
+
+        {/* Alert Button */}
+        <div className="relative">
+          <button
+            onClick={() => setShowAlertForm(!showAlertForm)}
+            className="px-3 py-1 bg-[#f0883e]/20 text-[#f0883e] rounded-lg text-sm hover:bg-[#f0883e]/30"
+          >
+            🔔 알림
+          </button>
+
+          {showAlertForm && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-[#161b22] border border-[#30363d] rounded-lg p-4 z-50 shadow-xl">
+              <div className="text-sm font-medium text-[#f0f6fc] mb-3">가격 알림 설정</div>
+              {alertMessage && (
+                <div className="mb-2 p-2 text-xs bg-[#3fb950]/20 text-[#3fb950] rounded">{alertMessage}</div>
+              )}
+              <div className="space-y-2">
+                <input
+                  type="number"
+                  value={alertPrice}
+                  onChange={(e) => setAlertPrice(e.target.value)}
+                  placeholder="가격 입력"
+                  className="w-full px-3 py-2 bg-[#21262d] border border-[#30363d] rounded text-sm text-[#f0f6fc]"
+                />
+                <select
+                  value={alertCondition}
+                  onChange={(e) => setAlertCondition(e.target.value)}
+                  className="w-full px-3 py-2 bg-[#21262d] border border-[#30363d] rounded text-sm text-[#f0f6fc]"
+                >
+                  <option value="above">이상</option>
+                  <option value="below">이하</option>
+                </select>
+                <button
+                  onClick={handleCreateAlert}
+                  className="w-full py-2 bg-[#58a6ff] text-white rounded text-sm font-medium hover:bg-[#58a6ff]/90"
+                >
+                  알림 등록
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -436,6 +525,7 @@ export default function ChartMulti() {
   const [chartType, setChartType] = useState('candle');
   const [activeIndicators, setActiveIndicators] = useState<string[]>(['volume']);
   const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
+  const [drawingMode, setDrawingMode] = useState<string | null>(null);
 
   const toggleIndicator = (ind: string) => {
     setActiveIndicators(prev =>
@@ -447,7 +537,7 @@ export default function ChartMulti() {
     <div className="h-screen flex flex-col bg-[#0d1117]">
       {/* Top Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
-        {/* Left: Symbol & Search */}
+        {/* Left: Symbol */}
         <div className="flex items-center gap-2">
           <span className="text-lg font-bold text-[#f0f6fc]">{symbol}</span>
         </div>
