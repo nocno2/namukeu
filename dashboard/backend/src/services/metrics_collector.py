@@ -29,6 +29,7 @@ class MetricsCollector:
         self._recovery_attempts: dict[str, int] = {}  # service_name -> attempt count
         self._telegram_bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         self._telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+        self._discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
 
     async def start(self):
         # Load initial status to avoid false alerts on startup
@@ -167,8 +168,7 @@ class MetricsCollector:
 
     async def _send_down_alert(self, service: dict):
         if not self._telegram_bot_token or not self._telegram_chat_id:
-            logger.warning("Telegram credentials not configured, skipping alert")
-            return
+            logger.warning("Telegram credentials not configured, skipping Telegram alert")
 
         text = (
             f"🔴 *서비스 다운 감지*\n\n"
@@ -177,9 +177,10 @@ class MetricsCollector:
             f"시각: {service['checked_at']}"
         )
         await self._send_telegram(text)
+        await self._send_discord(text, 0xFF0000)  # Red
 
     async def _send_recovery_alert(self, service: dict, auto_recovered: bool = False):
-        if not self._telegram_bot_token or not self._telegram_chat_id:
+        if not self._telegram_bot_token and not self._telegram_chat_id:
             return
 
         recovery_note = " (자동 복구)" if auto_recovered else ""
@@ -190,9 +191,10 @@ class MetricsCollector:
             f"시각: {service['checked_at']}"
         )
         await self._send_telegram(text)
+        await self._send_discord(text, 0x00FF00)  # Green
 
     async def _send_restart_alert(self, service: dict, success: bool):
-        if not self._telegram_bot_token or not self._telegram_chat_id:
+        if not self._telegram_bot_token and not self._telegram_chat_id:
             return
 
         emoji = "🔄" if success else "❌"
@@ -204,8 +206,11 @@ class MetricsCollector:
             f"시각: {service['checked_at']}"
         )
         await self._send_telegram(text)
+        await self._send_discord(text, 0xFFA500 if success else 0xFF0000)  # Orange or Red
 
     async def _send_telegram(self, text: str):
+        if not self._telegram_bot_token or not self._telegram_chat_id:
+            return
         url = f"https://api.telegram.org/bot{self._telegram_bot_token}/sendMessage"
         payload = {
             "chat_id": self._telegram_chat_id,
@@ -219,3 +224,15 @@ class MetricsCollector:
                     logger.error(f"Telegram send failed: {resp.status_code} {resp.text}")
         except Exception as e:
             logger.error(f"Telegram send error: {e}")
+
+    async def _send_discord(self, content: str, color: int = 0):
+        if not self._discord_webhook_url:
+            return
+        payload = {"content": content}
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(self._discord_webhook_url, json=payload, timeout=10.0)
+                if resp.status_code not in (200, 204):
+                    logger.error(f"Discord send failed: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.error(f"Discord send error: {e}")
