@@ -9,20 +9,13 @@ const LOG_CHANNEL_ID = process.env.LOG_CHANNEL_ID ? parseInt(process.env.LOG_CHA
 // Match approval notification: extract 8-char task ID from /approve <id>
 const APPROVE_PATTERN = /실행하려면 \/approve ([a-f0-9]{8})$/;
 
-// Log message patterns - messages matching these will be auto-deleted after 5 minutes
-const LOG_PATTERNS = [
-  /^\[PROGRESS:/,
-  /^\[AUTO\//,
-  /^\[HEARTBEAT/,
-  /^처리중/,
-  /^(running|editing|working|thinking)\b/i,
-  /^⏳/,
-  /^🔄/,
-];
+// Log message pattern - messages starting with [LOG] will be auto-deleted after 5 minutes
+// No tag = never deleted (safe by default)
+const LOG_PATTERN = /^\[LOG\]/;
 
-// Check if message is a log message
+// Check if message is a log message (must start with [LOG])
 function isLogMessage(text: string): boolean {
-  return LOG_PATTERNS.some((pattern) => pattern.test(text.trim()));
+  return LOG_PATTERN.test(text.trim());
 }
 
 // Store pending deletions: messageId -> timeout

@@ -2,20 +2,13 @@ import type { TextBasedChannel, GuildTextBasedChannel, Message } from "discord.j
 
 const MAX_LENGTH = 1900; // Leave buffer under Discord's 2000 limit
 
-// Log message patterns - messages matching these will be auto-deleted after 5 minutes
-const LOG_PATTERNS = [
-  /^\[PROGRESS:/,
-  /^\[AUTO\//,
-  /^\[HEARTBEAT/,
-  /^처리중/,
-  /^(running|editing|working|thinking)\b/i,
-  /^⏳/,
-  /^🔄/,
-];
+// Log message pattern - messages starting with [LOG] will be auto-deleted after 5 minutes
+// No tag = never deleted (safe by default)
+const LOG_PATTERN = /^\[LOG\]/;
 
-// Check if message is a log message
+// Check if message is a log message (must start with [LOG])
 function isLogMessage(text: string): boolean {
-  return LOG_PATTERNS.some((pattern) => pattern.test(text.trim()));
+  return LOG_PATTERN.test(text.trim());
 }
 
 // Store pending deletions: messageId -> timeout
