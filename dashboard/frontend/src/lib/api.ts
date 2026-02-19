@@ -255,6 +255,18 @@ export const api = {
     window.open(`/api/services/${name}/export?${params.toString()}`, "_blank");
   },
 
+  // 서비스 타입 조회/설정
+  serviceType(name: string) {
+    return request<{ service: string; type: string }>(`/api/services/${name}/type`);
+  },
+
+  setServiceType(name: string, type: "ktlo" | "evolving") {
+    return request<{ service: string; type: string }>(`/api/services/${name}/type`, {
+      method: "PUT",
+      body: JSON.stringify({ type }),
+    });
+  },
+
   // COIN 백테스트 API (proxy through dashboard backend)
   coinBacktestResults(limit = 20) {
     return request<BacktestResult[]>(`/api/proxy/coin/api/backtest/results?limit=${limit}`);
@@ -362,6 +374,8 @@ export interface ServiceStatus {
   details: Record<string, unknown> | null;
   dashboard_url: string | null;
   checked_at: string;
+  service_type?: string;
+  launchd_label?: string | null;
 }
 
 export interface Commit {

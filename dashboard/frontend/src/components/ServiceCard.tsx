@@ -13,6 +13,7 @@ import {
   PinOff,
   RefreshCw,
   Server,
+  Settings,
   Terminal,
 } from "lucide-react";
 import { api, type Incident, type ServiceStatus, type UptimeBlock } from "../lib/api";
@@ -296,11 +297,13 @@ function timeAgo(dateStr: string): string {
 
 export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, onToggleCollapse, onTogglePin, onShowLogs, badge }: Props) {
   const isRunning = service.status === "running";
-  const canRestart = service.type !== "self";
+  const canRestart = service.type !== "self" && !!service.launchd_label;
   const [restarting, setRestarting] = useState(false);
   const [uptimeBlocks, setUptimeBlocks] = useState<UptimeBlock[]>([]);
   const [uptimePercent, setUptimePercent] = useState<number | null>(null);
   const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [serviceType, setServiceType] = useState<string>(service.service_type || "evolving");
+  const [showTypeMenu, setShowTypeMenu] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -403,7 +406,7 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
           <p className="text-xs text-text-muted mt-2 ml-5">{service.description}</p>
 
           {/* Meta */}
-          <div className="flex gap-2 mt-3 mb-3">
+          <div className="flex gap-2 mt-3 mb-3 flex-wrap">
             <span className="text-[10px] text-text-muted bg-surface-hover px-2.5 py-1 rounded-lg border border-border/50 flex items-center gap-1.5">
               {TYPE_ICONS[service.type] || <Server size={12} />}
               {TYPE_LABELS[service.type] || service.type}
@@ -413,6 +416,56 @@ export function ServiceCard({ service, collapsed, pinned, onClick, onRefresh, on
                 :{service.port}
               </span>
             )}
+            {/* Service Type */}
+            <div className="relative">
+              <button
+                onClick={(e) => { e.stopPropagation(); setShowTypeMenu(!showTypeMenu); }}
+                className={`text-[10px] px-2.5 py-1 rounded-lg border flex items-center gap-1.5 cursor-pointer transition-colors ${
+                  serviceType === "ktlo"
+                    ? "bg-warning/10 text-warning border-warning/30 hover:bg-warning/20"
+                    : "bg-success/10 text-success border-success/30 hover:bg-success/20"
+                }`}
+              >
+                {serviceType === "ktlo" ? "KTLO" : "EVOLVING"}
+                <Settings size={10} />
+              </button>
+              {showTypeMenu && (
+                <div className="absolute left-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await api.setServiceType(service.name, "evolving");
+                        setServiceType("evolving");
+                      } catch (err) {
+                        alert(`타입 변경 실패: ${err instanceof Error ? err.message : "알 수 없는 오류"}`);
+                      }
+                      setShowTypeMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-success" />
+                    EVOLVING
+                  </button>
+                  <button
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await api.setServiceType(service.name, "ktlo");
+                        setServiceType("ktlo");
+                      } catch (err) {
+                        alert(`타입 변경 실패: ${err instanceof Error ? err.message : "알 수 없는 오류"}`);
+                      }
+                      setShowTypeMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover flex items-center gap-2"
+                  >
+                    <span className="w-2 h-2 rounded-full bg-warning" />
+                    KTLO
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Details */}

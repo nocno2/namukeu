@@ -22,6 +22,8 @@ async def check_http_service(service: ServiceDef, client: httpx.AsyncClient) -> 
         "details": None,
         "dashboard_url": service.dashboard_url,
         "checked_at": datetime.now().isoformat(),
+        "service_type": service.service_type,
+        "launchd_label": service.launchd_label,
     }
 
     # Health check
@@ -64,6 +66,8 @@ def check_process_service(service: ServiceDef) -> dict:
         "details": None,
         "dashboard_url": service.dashboard_url,
         "checked_at": datetime.now().isoformat(),
+        "service_type": service.service_type,
+        "launchd_label": service.launchd_label,
     }
 
     if not service.launchd_label and not service.process_cwd:
@@ -136,6 +140,8 @@ async def check_all_services(services: list[ServiceDef]) -> list[dict]:
                     "details": None,
                     "dashboard_url": svc.dashboard_url,
                     "checked_at": datetime.now().isoformat(),
+                    "service_type": svc.service_type,
+                    "launchd_label": svc.launchd_label,
                 })
 
         # Run HTTP checks concurrently
