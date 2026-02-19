@@ -74,13 +74,11 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function UptimeBar({ blocks, uptimePercent, serviceName }: { blocks: UptimeBlock[]; uptimePercent: number | null; serviceName: string }) {
-  const handleExport = () => {
-    const data = {
-      service: serviceName,
-      exported_at: new Date().toISOString(),
-      uptime_blocks: blocks,
-      uptime_percent: uptimePercent,
-    };
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handleExportJSON = async () => {
+    // Fetch full 7 days data for export
+    const data = await api.serviceUptime(serviceName, 168); // 7 days
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -88,6 +86,23 @@ function UptimeBar({ blocks, uptimePercent, serviceName }: { blocks: UptimeBlock
     a.download = `${serviceName}-uptime-${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+  };
+
+  const handleExportCSV = async () => {
+    const data = await api.serviceUptime(serviceName, 168); // 7 days
+    // Convert blocks to CSV
+    const headers = ["start_time", "status"];
+    const rows = data.blocks.map((b: UptimeBlock) => [b.start, b.status]);
+    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${serviceName}-uptime-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowExportMenu(false);
   };
 
   return (
@@ -98,13 +113,31 @@ function UptimeBar({ blocks, uptimePercent, serviceName }: { blocks: UptimeBlock
           24h 업타임
         </span>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleExport}
-            className="text-[10px] text-text-muted/50 hover:text-primary flex items-center gap-1 transition-colors"
-            title="업타임 내보내기"
-          >
-            <Download size={10} />
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="text-[10px] text-text-muted/50 hover:text-primary flex items-center gap-1 transition-colors"
+              title="데이터 내보내기"
+            >
+              <Download size={10} />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+                <button
+                  onClick={handleExportJSON}
+                  className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
+                >
+                  JSON (7일)
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
+                >
+                  CSV (7일)
+                </button>
+              </div>
+            )}
+          </div>
           {uptimePercent !== null && (
             <span className={`text-[10px] font-mono font-medium ${uptimePercent >= 99 ? "text-success" : uptimePercent >= 90 ? "text-warning" : "text-danger"}`}>
               {uptimePercent}%
@@ -139,12 +172,10 @@ function formatDuration(sec: number | null): string {
 }
 
 function IncidentList({ incidents, serviceName }: { incidents: Incident[]; serviceName: string }) {
-  const handleExport = () => {
-    const data = {
-      service: serviceName,
-      exported_at: new Date().toISOString(),
-      incidents: incidents,
-    };
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const handleExportJSON = async () => {
+    const data = await api.serviceIncidents(serviceName, 90); // 90 days
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -152,6 +183,29 @@ function IncidentList({ incidents, serviceName }: { incidents: Incident[]; servi
     a.download = `${serviceName}-incidents-${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+  };
+
+  const handleExportCSV = async () => {
+    const data = await api.serviceIncidents(serviceName, 90); // 90 days
+    const headers = ["id", "started_at", "resolved_at", "duration_sec", "auto_recovered", "recovery_attempt_count"];
+    const rows = data.incidents.map((inc: Incident) => [
+      inc.id,
+      inc.started_at,
+      inc.resolved_at || "",
+      inc.duration_sec || "",
+      inc.auto_recovered ? "true" : "false",
+      inc.recovery_attempt_count,
+    ]);
+    const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${serviceName}-incidents-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowExportMenu(false);
   };
 
   return (
@@ -162,13 +216,31 @@ function IncidentList({ incidents, serviceName }: { incidents: Incident[]; servi
           최근 인시던트
         </span>
         {incidents.length > 0 && (
-          <button
-            onClick={handleExport}
-            className="text-[10px] text-text-muted/50 hover:text-primary flex items-center gap-1 transition-colors"
-            title="인시던트 내보내기"
-          >
-            <Download size={10} />
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="text-[10px] text-text-muted/50 hover:text-primary flex items-center gap-1 transition-colors"
+              title="데이터 내보내기"
+            >
+              <Download size={10} />
+            </button>
+            {showExportMenu && (
+              <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
+                <button
+                  onClick={handleExportJSON}
+                  className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
+                >
+                  JSON (90일)
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
+                >
+                  CSV (90일)
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
       <div className="space-y-1.5">
