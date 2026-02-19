@@ -278,6 +278,45 @@ export async function getProfitSummary(months: number = 6): Promise<string> {
   return lines.join("\n");
 }
 
+// Helper: calculate moving average
+function calculateMovingAverage(values: number[], days: number): number {
+  if (values.length === 0) return 0;
+  const recent = values.slice(-days);
+  if (recent.length === 0) return 0;
+  return recent.reduce((a, b) => a + b, 0) / recent.length;
+}
+
+// Get daily averages for revenue and cost
+// For moving averages, we use ALL records (not just current month) to get better trend
+function getDailyAverages(monthRecords: RevenueRecord[], monthCosts: CostRecord[], allRecords: RevenueRecord[], allCosts: CostRecord[], today: number) {
+  const currentRevenue = monthRecords.reduce((sum, r) => sum + r.amount, 0);
+  const currentCost = monthCosts.reduce((sum, c) => sum + c.amount, 0);
+
+  // Simple daily average (based on current month only)
+  const simpleDailyRevenue = today > 0 ? currentRevenue / today : 0;
+  const simpleDailyCost = today > 0 ? currentCost / today : 0;
+
+  // Moving averages (based on ALL records to capture trend)
+  const dailyRevenueValues = allRecords.map((r) => r.amount);
+  const dailyCostValues = allCosts.map((c) => c.amount);
+
+  const ma7Revenue = calculateMovingAverage(dailyRevenueValues, 7);
+  const ma7Cost = calculateMovingAverage(dailyCostValues, 7);
+  const ma14Revenue = calculateMovingAverage(dailyRevenueValues, 14);
+  const ma14Cost = calculateMovingAverage(dailyCostValues, 14);
+
+  return {
+    currentRevenue,
+    currentCost,
+    simpleDailyRevenue,
+    simpleDailyCost,
+    ma7Revenue,
+    ma7Cost,
+    ma14Revenue,
+    ma14Cost,
+  };
+}
+
 export async function getRevenueForecast(): Promise<string> {
   const data = await loadRevenue();
 
@@ -292,62 +331,84 @@ export async function getRevenueForecast(): Promise<string> {
     return "이번 달 데이터가 없습니다. 예측을 할 수 없습니다.";
   }
 
-  // Calculate daily average
   const today = now.getDate(); // 1~31
-  const currentRevenue = monthRecords.reduce((sum, r) => sum + r.amount, 0);
-  const currentCost = monthCosts.reduce((sum, c) => sum + c.amount, 0);
-  const dailyRevenueAvg = today > 0 ? currentRevenue / today : 0;
-  const dailyCostAvg = today > 0 ? currentCost / today : 0;
-
-  // Days in current month
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const remainingDays = daysInMonth - today;
 
-  // Linear projection
-  const projectedRevenue = Math.round(dailyRevenueAvg * daysInMonth);
-  const projectedCost = Math.round(dailyCostAvg * daysInMonth);
-  const projectedProfit = projectedRevenue - projectedCost;
+  // Use the helper function for all calculations
+  // Pass all records for moving average calculation
+  const {
+    currentRevenue,
+    currentCost,
+    simpleDailyRevenue,
+    simpleDailyCost,
+    ma7Revenue,
+    ma7Cost,
+    ma14Revenue,
+    ma14Cost,
+  } = getDailyAverages(monthRecords, monthCosts, data.records, data.costs, today);
 
-  const lines: string[] = ["📊 월말 예측 (일 평균 기반):"];
+  // Projections for each method
+  const projSimple = {
+    revenue: Math.round(simpleDailyRevenue * daysInMonth),
+    cost: Math.round(simpleDailyCost * daysInMonth),
+    profit: Math.round(simpleDailyRevenue * daysInMonth) - Math.round(simpleDailyCost * daysInMonth),
+  };
+  const proj7d = {
+    revenue: Math.round(ma7Revenue * daysInMonth),
+    cost: Math.round(ma7Cost * daysInMonth),
+    profit: Math.round(ma7Revenue * daysInMonth) - Math.round(ma7Cost * daysInMonth),
+  };
+  const proj14d = {
+    revenue: Math.round(ma14Revenue * daysInMonth),
+    cost: Math.round(ma14Cost * daysInMonth),
+    profit: Math.round(ma14Revenue * daysInMonth) - Math.round(ma14Cost * daysInMonth),
+  };
 
-  lines.push(`\n현재까지 (${today}일):`);
+  const lines: string[] = ["📊 월말 예측 (다중 방법):"];
+
+  lines.push(`\n현재까지 (${today}/${daysInMonth}일):`);
   lines.push(`- 수익: ₩${currentRevenue.toLocaleString()}`);
   lines.push(`- 비용: ₩${currentCost.toLocaleString()}`);
   lines.push(`- 순수입: ₩${(currentRevenue - currentCost).toLocaleString()}`);
 
-  lines.push(`\n일 평균:`);
-  lines.push(`- 수익: ₩${Math.round(dailyRevenueAvg).toLocaleString()}/일`);
-  lines.push(`- 비용: ₩${Math.round(dailyCostAvg).toLocaleString()}/일`);
+  lines.push(`\n📈 예측 방법별 월말 순수입:`);
+  lines.push(`- 단순 평균: ₩${projSimple.profit.toLocaleString()}`);
+  lines.push(`- 7일 이동평균: ₩${proj7d.profit.toLocaleString()}`);
+  lines.push(`- 14일 이동평균: ₩${proj14d.profit.toLocaleString()}`);
 
-  lines.push(`\n월말 예측 (${daysInMonth}일 전체):`);
-  lines.push(`- 예상 수익: ₩${projectedRevenue.toLocaleString()}`);
-  lines.push(`- 예상 비용: ₩${projectedCost.toLocaleString()}`);
-  const profitMark = projectedProfit >= 0 ? "+" : "";
-  lines.push(`- 예상 순수입: ₩${profitMark}${projectedProfit.toLocaleString()}`);
+  // Choose best prediction (prioritize 7-day if enough data, else simple)
+  const hasEnoughData = monthRecords.length >= 7;
+  const bestProj = hasEnoughData ? proj7d : projSimple;
+  const bestMethod = hasEnoughData ? "7일 이동평균" : "단순 평균";
+
+  lines.push(`\n🎯 ${bestMethod} 기반:`);
+  lines.push(`- 예상 수익: ₩${bestProj.revenue.toLocaleString()}`);
+  lines.push(`- 예상 비용: ₩${bestProj.cost.toLocaleString()}`);
+  const profitMark = bestProj.profit >= 0 ? "+" : "";
+  lines.push(`- 예상 순수입: ₩${profitMark}${bestProj.profit.toLocaleString()}`);
 
   if (data.monthlyTarget > 0) {
     const currentPercent = Math.round(((currentRevenue - currentCost) / data.monthlyTarget) * 100);
-    const projectedPercent = Math.round((projectedProfit / data.monthlyTarget) * 100);
+    const projectedPercent = Math.round((bestProj.profit / data.monthlyTarget) * 100);
 
     lines.push(`\n월 목표 (₩${data.monthlyTarget.toLocaleString()}):`);
     lines.push(`- 현재: ${currentPercent}%`);
     lines.push(`- 예측: ${projectedPercent}%`);
 
-    if (projectedProfit >= data.monthlyTarget) {
+    if (bestProj.profit >= data.monthlyTarget) {
       lines.push("\n🎯 예측 달성 가능!");
     } else {
-      const needed = data.monthlyTarget - projectedProfit;
+      const needed = data.monthlyTarget - bestProj.profit;
       const avgNeeded = remainingDays > 0 ? Math.ceil(needed / remainingDays) : 0;
       lines.push(`\n남은 ${remainingDays}일에 하루 ₩${avgNeeded.toLocaleString()}씩 필요`);
     }
   }
 
-  // Trend indicator based on recent records
-  if (monthRecords.length >= 3) {
-    const recent = monthRecords.slice(-3);
-    const recentAvg = recent.reduce((s, r) => s + r.amount, 0) / recent.length;
-    const trend = dailyRevenueAvg > recentAvg ? "📈 증가" : dailyRevenueAvg < recentAvg ? "📉 감소" : "➡️持平";
-    lines.push(`\n최근 추세: ${trend}`);
+  // Trend indicator
+  if (hasEnoughData) {
+    const trend = ma7Revenue > ma14Revenue ? "📈 상승" : ma7Revenue < ma14Revenue ? "📉 하락" : "➡️持平";
+    lines.push(`\n추세 (7일 vs 14일): ${trend}`);
   }
 
   return lines.join("\n");
