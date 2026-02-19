@@ -75,16 +75,17 @@ class StockService:
     ) -> List[dict]:
         """Fetch US stock historical data."""
         try:
+            loop = asyncio.get_event_loop()
             ticker = yf.Ticker(symbol)
-            hist = ticker.history(period=period)
+            hist = await loop.run_in_executor(None, lambda: ticker.history(period=period))
 
             return [
                 {
-                    "date": row.index.to_pydatetime(),
-                    "open": row["Open"],
-                    "high": row["High"],
-                    "low": row["Low"],
-                    "close": row["Close"],
+                    "date": row.index.to_pydatetime().isoformat(),
+                    "open": float(row["Open"]),
+                    "high": float(row["High"]),
+                    "low": float(row["Low"]),
+                    "close": float(row["Close"]),
                     "volume": int(row["Volume"]),
                 }
                 for row in hist.itertuples()

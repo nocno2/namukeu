@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { createChart, CandlestickSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi, CandlestickData, Time } from 'lightweight-charts';
 import { stocksApi } from '../api/client';
@@ -15,12 +16,14 @@ const periods = [
 ];
 
 export default function Chart() {
+  const [searchParams] = useSearchParams();
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
 
-  const [symbol, setSymbol] = useState('AAPL');
-  const [searchInput, setSearchInput] = useState('AAPL');
+  const initialSymbol = searchParams.get('symbol') || 'AAPL';
+  const [symbol, setSymbol] = useState(initialSymbol);
+  const [searchInput, setSearchInput] = useState(initialSymbol);
   const [price, setPrice] = useState<any>(null);
   const [period, setPeriod] = useState('1y');
   const [loading, setLoading] = useState(false);

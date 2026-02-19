@@ -49,6 +49,8 @@ export const stocksApi = {
   getPrice: (symbol: string) => api.get(`/stocks/${symbol}`),
   getHistory: (symbol: string, period: string = '1y') =>
     api.get(`/stocks/${symbol}/history`, { params: { period } }),
+  getPopular: (market: string = 'US', limit: number = 20) =>
+    api.get('/stocks/popular/', { params: { market, limit } }),
 };
 
 // Trading

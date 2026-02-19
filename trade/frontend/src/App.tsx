@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Portfolio from './pages/Portfolio';
 import Chart from './pages/Chart';
+import Stocks from './pages/Stocks';
 import Trading from './pages/Trading';
 import Strategies from './pages/Strategies';
 import News from './pages/News';
@@ -51,6 +52,7 @@ function App() {
             <Route index element={<Dashboard />} />
             <Route path="portfolio" element={<Portfolio />} />
             <Route path="chart" element={<Chart />} />
+            <Route path="stocks" element={<Stocks />} />
             <Route path="trading" element={<Trading />} />
             <Route path="strategies" element={<Strategies />} />
             <Route path="news" element={<News />} />

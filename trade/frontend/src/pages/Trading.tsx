@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { tradingApi, stocksApi } from '../api/client';
 
 interface Order {
@@ -22,6 +23,7 @@ interface Stock {
 }
 
 export default function Trading() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,6 +36,9 @@ export default function Trading() {
   const [price, setPrice] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
+
+  // Quick select popular stocks
+  const popularStocks = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA'];
 
   useEffect(() => {
     fetchOrders();
@@ -138,17 +143,47 @@ export default function Trading() {
             <label className="block text-sm text-[#8b949e] mb-2">
               종목
             </label>
-            <input
-              type="text"
-              value={symbol}
-              onChange={(e) => {
-                setSymbol(e.target.value);
-                searchStock(e.target.value);
-              }}
-              onFocus={() => symbol.length > 0 && searchStock(symbol)}
-              placeholder="종목코드 검색"
-              className="input-field"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={symbol}
+                onChange={(e) => {
+                  setSymbol(e.target.value);
+                  searchStock(e.target.value);
+                }}
+                onFocus={() => symbol.length > 0 && searchStock(symbol)}
+                placeholder="종목코드 검색"
+                className="input-field flex-1"
+              />
+              <button
+                type="button"
+                onClick={() => navigate('/stocks')}
+                className="btn-secondary px-3"
+                title="종목 목록 보기"
+              >
+                📊
+              </button>
+            </div>
+            {/* Quick select */}
+            <div className="flex flex-wrap gap-1 mt-2">
+              {popularStocks.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    setSymbol(s);
+                    searchStock(s);
+                  }}
+                  className={`px-2 py-1 text-xs rounded ${
+                    symbol === s
+                      ? 'bg-[#58a6ff] text-white'
+                      : 'bg-[#21262d] text-[#8b949e] hover:text-[#f0f6fc]'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
             {searchResults.length > 0 && (
               <div className="absolute top-full left-0 right-0 mt-1 bg-[#21262d] border border-[#30363d] rounded-lg overflow-hidden z-10">
                 {searchResults.map((stock) => (

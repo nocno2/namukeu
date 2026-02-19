@@ -5,6 +5,7 @@ const navItems = [
   { path: '/', label: '대시보드', icon: '◈' },
   { path: '/portfolio', label: '포트폴리오', icon: '◉' },
   { path: '/chart', label: '차트', icon: '📈' },
+  { path: '/stocks', label: '종목', icon: '📊' },
   { path: '/trading', label: '주문', icon: '💳' },
   { path: '/strategies', label: '전략', icon: '⚡' },
   { path: '/news', label: '뉴스', icon: '📰' },

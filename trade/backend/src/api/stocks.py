@@ -41,6 +41,15 @@ class StockPriceResponse(BaseModel):
     previous_close: Optional[float] = None
 
 
+class StockListItem(BaseModel):
+    symbol: str
+    name: str
+    price: Optional[float] = None
+    change: Optional[float] = None
+    change_pct: Optional[float] = None
+    history: Optional[List[dict]] = None
+
+
 class PriceHistoryResponse(BaseModel):
     date: str
     open: float
@@ -98,6 +107,69 @@ async def list_stocks(
         )
         for s in stocks
     ]
+
+
+@router.get("/popular/", response_model=List[StockListItem])
+async def get_popular_stocks(
+    market: Optional[str] = "US",
+    limit: int = Query(20, le=50),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get popular stocks with price and mini chart data."""
+    stock_service = StockService(db)
+    market_type = MarketType(market) if market else None
+
+    # Get popular symbols based on market
+    if market_type == MarketType.US:
+        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "BRK-B",
+                   "JPM", "V", "UNH", "HD", "MA", "PG", "JNJ", "XOM", "CVX",
+                   "ABBV", "PEP", "KO"]
+    elif market_type == MarketType.KOSPI:
+        symbols = ["005930", "000660", "035420", "207940", "068270", "005380",
+                   "012330", "096770", "028260", "004020"]
+    elif market_type == MarketType.KOSDAQ:
+        symbols = ["035720", "095340", "066410", "058470", "047810", "214370",
+                   "078150", "011070", "029460", "036830"]
+    else:
+        symbols = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA"]
+
+    symbols = symbols[:limit]
+
+    result = []
+    for symbol in symbols:
+        try:
+            # Get price
+            price_data = await stock_service.fetch_us_stock_price(symbol) if market_type == MarketType.US else await stock_service.fetch_korean_stock_price(symbol)
+            if not price_data:
+                continue
+
+            # Get mini chart (last 30 days)
+            history = await stock_service.fetch_us_stock_history(symbol, "1mo") if market_type == MarketType.US else []
+
+            # Calculate change
+            if history and len(history) >= 2:
+                first_close = history[0]["close"]
+                last_close = history[-1]["close"]
+                change = last_close - first_close
+                change_pct = (change / first_close * 100) if first_close > 0 else 0
+            else:
+                change = price_data.get("change", 0)
+                change_pct = 0
+
+            result.append(StockListItem(
+                symbol=symbol,
+                name=price_data.get("name", symbol),
+                price=price_data.get("price"),
+                change=change,
+                change_pct=change_pct,
+                history=history[-30:] if history else None,
+            ))
+        except Exception as e:
+            print(f"Error fetching {symbol}: {e}")
+            continue
+
+    return result
 
 
 @router.get("/{symbol}", response_model=StockPriceResponse)
