@@ -116,6 +116,21 @@ class DiscordNotifier:
         }
         await self.send_message("⚠️ **매크로 에러 발생**", embed=embed)
 
+    async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
+        """치명적 에러 발생 알림 (연속 에러 초과, 시간 초과 등)."""
+        embed = {
+            "title": "🔴 치명적 에러",
+            "color": 0xFF0000,
+            "fields": [
+                {"name": "열차", "value": f"[{reservation['provider'].upper()}]", "inline": True},
+                {"name": "구간", "value": f"{reservation['dep_station']} → {reservation['arr_station']}", "inline": True},
+                {"name": "에러 유형", "value": error_type, "inline": True},
+                {"name": "메시지", "value": error_msg[:150], "inline": False},
+            ],
+            "footer": {"text": "매크로 중단 - 재시작 필요"},
+        }
+        await self.send_message("🔴 **치명적 에러 발생 - 매크로 중단**", embed=embed)
+
 
 class TelegramNotifier:
     def __init__(self, bot_token: str, chat_id: str):
