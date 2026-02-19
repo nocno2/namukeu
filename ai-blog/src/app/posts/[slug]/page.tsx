@@ -14,6 +14,11 @@ import type { Metadata } from "next";
 
 export const revalidate = 3600;
 
+const adSlotArticleTop = process.env.NEXT_PUBLIC_AD_SLOT_ARTICLE_TOP;
+const adSlotArticleBottom = process.env.NEXT_PUBLIC_AD_SLOT_ARTICLE_BOTTOM;
+const adSlotBeforeRelated = process.env.NEXT_PUBLIC_AD_SLOT_BEFORE_RELATED;
+const adSlotAfterRelated = process.env.NEXT_PUBLIC_AD_SLOT_AFTER_RELATED;
+
 interface Props {
   params: Promise<{ slug: string }>;
 }
@@ -160,13 +165,13 @@ export default async function PostPage({ params }: Props) {
           </address>
         </header>
 
-        <AdBanner slot="article-top" format="auto" className="my-6" />
+        {adSlotArticleTop && <AdBanner slot={adSlotArticleTop} format="auto" className="my-6" />}
 
         <section className="article-body">
           <PostContent html={html} showInArticleAd={true} />
         </section>
 
-        <AdBanner slot="article-bottom" format="rectangle" className="my-8" />
+        {adSlotArticleBottom && <AdBanner slot={adSlotArticleBottom} format="rectangle" className="my-8" />}
 
         {tags.length > 0 && (
           <footer className="mt-12 pt-8 border-t border-[var(--border-light)]">
@@ -189,7 +194,7 @@ export default async function PostPage({ params }: Props) {
           <LikeButton postId={post.id} initialCount={likeCount} />
         </div>
 
-        <AdBanner slot="before-related" format="auto" className="mt-8" />
+        {adSlotBeforeRelated && <AdBanner slot={adSlotBeforeRelated} format="auto" className="mt-8" />}
 
         {/* 댓글 섹션 */}
         <CommentSection postId={post.id} initialCount={commentCount} />
@@ -224,7 +229,7 @@ export default async function PostPage({ params }: Props) {
           </section>
         )}
 
-        <AdBanner slot="after-related" format="auto" className="mt-8" />
+        {adSlotAfterRelated && <AdBanner slot={adSlotAfterRelated} format="auto" className="mt-8" />}
       </article>
     </>
   );

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCookie } from "cookies-next";
-import { auth } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 
 export async function POST(request: NextRequest) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -58,7 +57,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function GET() {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
