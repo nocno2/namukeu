@@ -11,6 +11,7 @@ import { ErrorBoundary } from "./ErrorBoundary";
 import { Header } from "./Header";
 import { LogViewer } from "./LogViewer";
 import { N8nStatus } from "./N8nStatus";
+import { ProjectGoals } from "./ProjectGoals";
 import { RevenueDashboard } from "./RevenueDashboard";
 import { ServiceCard } from "./ServiceCard";
 import { SystemResources } from "./SystemResources";
@@ -53,7 +54,8 @@ type CardItem =
   | { type: "n8n"; id: string }
   | { type: "coin"; id: string }
   | { type: "coinProfit"; id: string }
-  | { type: "revenue"; id: string };
+  | { type: "revenue"; id: string }
+  | { type: "goals"; id: string };
 
 export function Dashboard({ username, onLogout }: Props) {
   const [services, setServices] = useState<ServiceStatus[]>([]);
@@ -120,6 +122,7 @@ export function Dashboard({ username, onLogout }: Props) {
 
   const allCards: CardItem[] = [
     { type: "system", id: "system-resources" },
+    { type: "goals", id: "project-goals" },
     ...services.map((svc): CardItem => ({ type: "service", id: svc.name, service: svc })),
     { type: "train", id: "train-status" },
     { type: "coin", id: "coin-backtest" },
@@ -251,6 +254,9 @@ export function Dashboard({ username, onLogout }: Props) {
                   break;
                 case "system":
                   content = <SystemResources {...cardProps(card.id)} />;
+                  break;
+                case "goals":
+                  content = <ProjectGoals {...cardProps(card.id)} />;
                   break;
                 case "claude":
                   content = <ClaudeUsage {...cardProps(card.id)} />;
