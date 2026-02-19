@@ -4,7 +4,7 @@ import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { killActiveChild } from "./claude";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
-import { getRevenueStatus, checkGoalAlerts, getFormattedDailyReport, generateDailyReport, getFormattedInsights } from "./revenue";
+import { getRevenueStatus, checkGoalAlerts, getFormattedDailyReport, generateDailyReport, getFormattedInsights, startAutoSyncScheduler } from "./revenue";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -116,6 +116,11 @@ async function main(): Promise<void> {
 
   // Start daily report scheduler
   scheduleDailyReport();
+
+  // Start auto revenue sync scheduler (daily at 8 AM KST)
+  startAutoSyncScheduler((result) => {
+    console.log("[auto-sync] Daily sync completed:", result);
+  }, 8);
 
   console.log("Claude Telegram Relay v2 starting...");
   console.log("Agent system delegated to content-pipeline (port 8003)");

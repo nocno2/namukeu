@@ -1056,3 +1056,60 @@ export async function getFormattedInsights(): Promise<string> {
 
   return lines.join("\n");
 }
+
+// --- Auto Sync Scheduler ---
+
+// Start automatic revenue sync scheduler
+// Runs daily at specified hour (default: 8 AM KST)
+export function startAutoSyncScheduler(
+  onSyncComplete?: (result: string) => void,
+  hour: number = 8
+): void {
+  const sync = async () => {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const data = await loadRevenue();
+
+    // Check if already synced today
+    const alreadySynced = data.records.some(
+      (r) => r.date === today && (r.source === "COIN" || r.source === "BLOG")
+    );
+
+    if (alreadySynced) {
+      console.log(`[auto-sync] Already synced today, skipping`);
+      return;
+    }
+
+    console.log(`[auto-sync] Starting daily revenue sync...`);
+    try {
+      const result = await syncAllRevenue();
+      console.log(`[auto-sync] Result: ${result.replace(/\n/g, " | ")}`);
+      if (onSyncComplete) {
+        onSyncComplete(result);
+      }
+    } catch (err) {
+      console.error("[auto-sync] Error:", err);
+    }
+  };
+
+  // Initial sync (with delay)
+  setTimeout(sync, 10000); // Run 10 seconds after start
+
+  // Check every hour
+  setInterval(sync, 60 * 60 * 1000);
+
+  // Also trigger at the specific hour
+  const scheduleAtHour = () => {
+    const now = new Date();
+    const targetHour = hour; // KST hour (9 = 9 AM KST = UTC+9, so we use hour directly)
+
+    if (now.getHours() === targetHour) {
+      sync();
+    }
+  };
+
+  // Check every minute during the target hour
+  setInterval(scheduleAtHour, 60 * 1000);
+
+  console.log(`[auto-sync] Scheduler started (target: ${hour}:00 KST)`);
+}
