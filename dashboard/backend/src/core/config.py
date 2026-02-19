@@ -18,6 +18,7 @@ class ServiceDef:
     process_cwd: str | None = None  # fallback: check by working directory
     dashboard_url: str | None = None  # proxy URL for built-in dashboard
     error_log_path: str | None = None
+    service_type: str = "evolving"  # "ktlo" or "evolving"
 
 
 @dataclass
@@ -76,6 +77,7 @@ class Config:
                 git_dir=project_root,
                 git_codename="TRAIN",
                 error_log_path=f"{log_base}/train-go.error.log",
+                service_type="ktlo",
             ),
             ServiceDef(
                 name="claude-telegram",
@@ -144,6 +146,9 @@ class Config:
                 port=5678,
                 health_url="http://127.0.0.1:5678/health",
                 dashboard_url="http://127.0.0.1:5678",
+                git_dir=project_root,
+                git_codename="N8N",
+                error_log_path=f"{log_base}/n8n.error.log",
             ),
         ]
 
