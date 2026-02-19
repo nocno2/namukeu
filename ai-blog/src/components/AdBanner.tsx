@@ -18,6 +18,9 @@ export default function AdBanner({ slot, format = "auto", className }: AdBannerP
   const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
   const pushed = useRef(false);
 
+  // slot 또는 adsenseId가 없으면广告を表示しない
+  if (!adsenseId || !slot) return null;
+
   useEffect(() => {
     if (pushed.current) return;
     try {
@@ -27,8 +30,6 @@ export default function AdBanner({ slot, format = "auto", className }: AdBannerP
       // AdSense not loaded yet
     }
   }, []);
-
-  if (!adsenseId) return null;
 
   return (
     <div className={className} aria-hidden="true">
