@@ -76,21 +76,22 @@ const STATUS_COLORS: Record<string, string> = {
 function UptimeBar({ blocks, uptimePercent, serviceName }: { blocks: UptimeBlock[]; uptimePercent: number | null; serviceName: string }) {
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  const handleExportJSON = async () => {
-    // Fetch full 7 days data for export
-    const data = await api.serviceUptime(serviceName, 168); // 7 days
+  const handleExportJSON = async (days: number = 7) => {
+    const hours = days * 24;
+    const data = await api.serviceUptime(serviceName, hours);
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${serviceName}-uptime-${new Date().toISOString().split("T")[0]}.json`;
+    a.download = `${serviceName}-uptime-${days}d-${new Date().toISOString().split("T")[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
     setShowExportMenu(false);
   };
 
-  const handleExportCSV = async () => {
-    const data = await api.serviceUptime(serviceName, 168); // 7 days
+  const handleExportCSV = async (days: number = 7) => {
+    const hours = days * 24;
+    const data = await api.serviceUptime(serviceName, hours);
     // Convert blocks to CSV
     const headers = ["start_time", "status"];
     const rows = data.blocks.map((b: UptimeBlock) => [b.start, b.status]);
@@ -99,7 +100,7 @@ function UptimeBar({ blocks, uptimePercent, serviceName }: { blocks: UptimeBlock
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${serviceName}-uptime-${new Date().toISOString().split("T")[0]}.csv`;
+    a.download = `${serviceName}-uptime-${days}d-${new Date().toISOString().split("T")[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     setShowExportMenu(false);
@@ -124,16 +125,28 @@ function UptimeBar({ blocks, uptimePercent, serviceName }: { blocks: UptimeBlock
             {showExportMenu && (
               <div className="absolute right-0 top-full mt-1 bg-surface border border-border rounded-lg shadow-lg py-1 z-10 min-w-[120px]">
                 <button
-                  onClick={handleExportJSON}
+                  onClick={() => handleExportJSON(7)}
                   className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
                 >
                   JSON (7일)
                 </button>
                 <button
-                  onClick={handleExportCSV}
+                  onClick={() => handleExportJSON(90)}
+                  className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
+                >
+                  JSON (90일)
+                </button>
+                <button
+                  onClick={() => handleExportCSV(7)}
                   className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
                 >
                   CSV (7일)
+                </button>
+                <button
+                  onClick={() => handleExportCSV(90)}
+                  className="w-full text-left px-3 py-1.5 text-xs text-text hover:bg-surface-hover"
+                >
+                  CSV (90일)
                 </button>
               </div>
             )}
