@@ -1157,7 +1157,7 @@ async def n8n_status(_=Depends(verify_session)):
         health_status = "down"
         try:
             resp = await client.get(f"{N8N_BASE_URL}/health", timeout=5.0)
-            logger.info(f"n8n health response: {resp.status_code}, body: {resp.text[:100]}")
+            logger.debug(f"n8n health response: {resp.status_code}, body: {resp.text[:100]}")
             if resp.status_code == 200:
                 health_status = "running"
         except (httpx.ConnectError, httpx.TimeoutException) as e:
@@ -1176,10 +1176,10 @@ async def n8n_status(_=Depends(verify_session)):
                 headers=_get_n8n_headers(),
                 timeout=5.0,
             )
-            logger.info(f"n8n workflows response: {resp.status_code}")
+            logger.debug(f"n8n workflows response: {resp.status_code}")
             if resp.status_code == 200:
                 data = resp.json()
-                logger.info(f"n8n workflows data: {data}")
+                logger.debug(f"n8n workflows data: {data}")
                 # n8n v1.x returns {"data": [...]}
                 workflows = data.get("data", [])
                 active_workflows = len(workflows)
