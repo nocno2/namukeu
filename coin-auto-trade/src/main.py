@@ -108,6 +108,7 @@ async def lifespan(app: FastAPI):
             max_total_loss_pct=config.max_loss_percent,
             min_order_value=exc.info.min_order_value,
             trailing_stop_pct=config.trailing_stop_pct,
+            partial_profit_take_pct=config.partial_profit_take_pct,
         ))
         logger.info(f"{provider}: trailing_stop_pct={config.trailing_stop_pct}")
         portfolio = PortfolioTracker(db, exc)

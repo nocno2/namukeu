@@ -20,6 +20,7 @@ class Config:
     db_path: str = "data/coin-auto-trade.db"
     active_exchanges: list[str] = field(default_factory=lambda: ["upbit"])
     trailing_stop_pct: float | None = 3.0  # trailing stop: close when price drops this % from peak
+    partial_profit_take_pct: float | None = 2.0  # partial profit taking (예: 2% 수익에서 50% 청산)
     futures_leverage: int = 20
     futures_margin_type: str = "ISOLATED"
 
@@ -43,6 +44,7 @@ class Config:
                 e.strip() for e in os.environ.get("ACTIVE_EXCHANGES", "upbit").split(",") if e.strip()
             ],
             trailing_stop_pct=float(v) if (v := os.environ.get("TRAILING_STOP_PCT")) else 3.0,
+            partial_profit_take_pct=float(v) if (v := os.environ.get("PARTIAL_PROFIT_TAKE_PCT")) else 2.0,
             futures_leverage=int(os.environ.get("FUTURES_LEVERAGE", "20")),
             futures_margin_type=os.environ.get("FUTURES_MARGIN_TYPE", "ISOLATED"),
         )
