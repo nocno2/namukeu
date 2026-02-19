@@ -21,6 +21,8 @@ import {
   getProfitSummary,
   getRevenueForecast,
   getRevenueBySource,
+  syncAllRevenue,
+  getRevenueStatusAll,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -499,12 +501,23 @@ export async function createBot(): Promise<Bot> {
         const months = parseInt(parts[1] || "12", 10);
         const sources = await getRevenueBySource(months);
         await sendResponse(ctx, sources);
+      } else if (subcommand === "sync") {
+        // /revenue sync - sync from COIN and BLOG
+        await ctx.reply("수익 동기화 중...");
+        const result = await syncAllRevenue();
+        await sendResponse(ctx, result);
+      } else if (subcommand === "statusall") {
+        // /revenue statusall - show current status from all sources
+        const status = await getRevenueStatusAll();
+        await sendResponse(ctx, status);
       } else if (subcommand === "help") {
         await ctx.reply(
           "수익 추적 명령어:\n\n" +
             "/revenue — 현재 상태 확인\n" +
             "/revenue set 50000 — 월 목표 설정\n" +
             "/revenue add 10000 adsense — 수익 추가\n" +
+            "/revenue sync — COIN/BLOG에서 자동 동기화\n" +
+            "/revenue statusall — 모든 출처 현황 조회\n" +
             "/revenue history — 월별 이력 확인\n" +
             "/revenue profit — 손익 요약\n" +
             "/revenue forecast — 월말 예측\n" +

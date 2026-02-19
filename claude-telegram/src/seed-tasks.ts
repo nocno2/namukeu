@@ -108,6 +108,20 @@ export function seedInitialTasks(taskStore: TaskStore): void {
 
   console.log("[agent] 6 initial tasks seeded.");
 
+  // TGBOT 팀장 — 매일 아침 7시 수익 자동 동기화
+  taskStore.createTask({
+    title: "수익 자동 동기화",
+    prompt:
+      "COIN과 BLOG에서 수익 데이터를 자동으로 동기화합니다.\n\n" +
+      "1. /revenue sync 명령어를 실행하여 COIN(거래)과 BLOG(AdSense) 수익을 동기화\n" +
+      "2. 결과를 간단히 요약해서 보고\n\n" +
+      "이 작업은 revenue.json에 오늘 날짜의 수익을 추가합니다. 중복 추가는 자동으로 방지됩니다.",
+    type: "recurring",
+    project: "GENERAL",
+    scheduleCron: "0 7 * * *",
+    notifyUser: false,
+  });
+
   // TGBOT 팀장 — 매일 아침 8시 30분 재정 리포트 + 월말 예측
   taskStore.createTask({
     title: "TGBOT 일일 재정 리포트 (예측 포함)",
@@ -120,8 +134,8 @@ export function seedInitialTasks(taskStore: TaskStore): void {
       "   - 오늘 날짜 기준으로月末까지 예상 순수입 계산\n" +
       "   - 월간 목표 달성 가능 여부 판단\n" +
       "   - 남은 기간(일) 동안 하루 평균 얼마씩 벌어야 하는지 계산\n" +
-      "5. 손익 분석 및 개선 제안\n "결과를 간\n" +
-     결하게 요약해서 보고해.\n" +
+      "5. 손익 분석 및 개선 제안\n" +
+      "결과를 간결하게 요약해서 보고해.\n" +
       "월간 목표가 0으로 설정되어 있으면 목표 설정 제안도 포함해.",
     type: "recurring",
     project: "GENERAL",

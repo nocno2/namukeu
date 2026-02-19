@@ -4,6 +4,9 @@ import { join } from "path";
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const REVENUE_FILE = join(DATA_DIR, "revenue.json");
 
+const COIN_API_URL = process.env.COIN_API_URL || "http://localhost:8001";
+const BLOG_API_URL = process.env.BLOG_API_URL || "http://localhost:3100";
+
 export interface RevenueRecord {
   date: string; // YYYY-MM-DD
   amount: number;
@@ -480,6 +483,152 @@ export async function getRevenueForecast(): Promise<string> {
   if (hasEnoughData) {
     const trend = ma7Revenue > ma14Revenue ? "📈 상승" : ma7Revenue < ma14Revenue ? "📉 하락" : "➡️持平";
     lines.push(`\n추세 (7일 vs 14일): ${trend}`);
+  }
+
+  return lines.join("\n");
+}
+
+// --- Auto fetch functions ---
+
+export async function fetchCoinRevenue(): Promise<{ success: boolean; amount?: number; error?: string }> {
+  try {
+    // Fetch portfolio summary from COIN server
+    const response = await fetch(`${COIN_API_URL}/portfolio/summary`, {
+      headers: {
+        "Authorization": `Bearer ${process.env.INTERNAL_API_KEY || "dev-secret"}`,
+        "X-Internal-Key": process.env.INTERNAL_API_KEY || "dev-secret",
+      },
+    });
+
+    if (!response.ok) {
+      return { success: false, error: `COIN API 오류: ${response.status}` };
+    }
+
+    const data = await response.json();
+    // portfolio summary returns total_equity
+    const totalEquity = data.total_equity || 0;
+
+    return { success: true, amount: Math.round(totalEquity) };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "알 수 없는 오류";
+    console.error("[revenue] COIN fetch error:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+export async function fetchBlogRevenue(): Promise<{ success: boolean; amount?: number; error?: string }> {
+  try {
+    // Fetch manual revenue from BLOG server
+    const response = await fetch(`${BLOG_API_URL}/api/admin/revenue`);
+
+    if (!response.ok) {
+      return { success: false, error: `BLOG API 오류: ${response.status}` };
+    }
+
+    const data = await response.json();
+    const records = data.records || [];
+
+    // Get this month's total
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const monthRecords = records.filter((r: { date: string }) => r.date.startsWith(currentMonth));
+    const total = monthRecords.reduce((sum: number, r: { amount: number }) => sum + r.amount, 0);
+
+    return { success: true, amount: total };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "알 수 없는 오류";
+    console.error("[revenue] BLOG fetch error:", msg);
+    return { success: false, error: msg };
+  }
+}
+
+// Fetch all revenue sources and add to records
+export async function syncAllRevenue(): Promise<string> {
+  const results: string[] = [];
+  const now = new Date();
+  const date = now.toISOString().split("T")[0];
+
+  // Fetch COIN revenue
+  const coinResult = await fetchCoinRevenue();
+  if (coinResult.success && coinResult.amount !== undefined) {
+    const data = await loadRevenue();
+
+    // Check if already synced today (avoid duplicate)
+    const alreadySynced = data.records.some(
+      (r) => r.date === date && r.source === "COIN"
+    );
+
+    if (!alreadySynced && coinResult.amount > 0) {
+      data.records.push({
+        date,
+        amount: coinResult.amount,
+        source: "COIN",
+      });
+      await saveRevenue(data);
+      results.push(`COIN: ₩${coinResult.amount.toLocaleString()} 추가됨`);
+    } else if (alreadySynced) {
+      results.push(`COIN: 이미 동기화됨 (₩${coinResult.amount.toLocaleString()})`);
+    } else {
+      results.push(`COIN: ₩0 (자산 부족)`);
+    }
+  } else {
+    results.push(`COIN: 실패 - ${coinResult.error}`);
+  }
+
+  // Fetch BLOG revenue (AdSense)
+  const blogResult = await fetchBlogRevenue();
+  if (blogResult.success && blogResult.amount !== undefined) {
+    const data = await loadRevenue();
+
+    // Check if already synced today
+    const alreadySynced = data.records.some(
+      (r) => r.date === date && r.source === "BLOG"
+    );
+
+    if (!alreadySynced && blogResult.amount > 0) {
+      data.records.push({
+        date,
+        amount: blogResult.amount,
+        source: "BLOG",
+      });
+      await saveRevenue(data);
+      results.push(`BLOG: ₩${blogResult.amount.toLocaleString()} 추가됨`);
+    } else if (alreadySynced) {
+      results.push(`BLOG: 이미 동기화됨 (₩${blogResult.amount.toLocaleString()})`);
+    } else {
+      results.push(`BLOG: ₩0 (수익 없음)`);
+    }
+  } else {
+    results.push(`BLOG: 실패 - ${blogResult.error}`);
+  }
+
+  return results.join("\n");
+}
+
+// Get current status from all sources (without saving)
+export async function getRevenueStatusAll(): Promise<string> {
+  const lines: string[] = ["📊 수익 현황:"];
+
+  // COIN
+  const coinResult = await fetchCoinRevenue();
+  if (coinResult.success) {
+    lines.push(`- COIN: ₩${(coinResult.amount || 0).toLocaleString()}`);
+  } else {
+    lines.push(`- COIN: 오류 (${coinResult.error})`);
+  }
+
+  // BLOG
+  const blogResult = await fetchBlogRevenue();
+  if (blogResult.success) {
+    lines.push(`- BLOG: ₩${(blogResult.amount || 0).toLocaleString()}`);
+  } else {
+    lines.push(`- BLOG: 오류 (${blogResult.error})`);
+  }
+
+  // Total
+  if (coinResult.success && blogResult.success) {
+    const total = (coinResult.amount || 0) + (blogResult.amount || 0);
+    lines.push(`\n📈 총계: ₩${total.toLocaleString()}`);
   }
 
   return lines.join("\n");

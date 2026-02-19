@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from src.api.auth import verify
+from src.api.auth import verify, verify_internal
 from src.core.database import Database
 from src.core import runtime
 from src.models.dashboard import PortfolioSummary
@@ -406,6 +406,7 @@ async def partial_positions(request: Request, show_dust: bool = False, db: Datab
 @router.get("/portfolio/summary", response_model=PortfolioSummary)
 def portfolio_summary(
     _=Depends(verify),
+    __=Depends(verify_internal),
     db: Database = Depends(get_db),
 ):
     ctx = _get_context(db)
