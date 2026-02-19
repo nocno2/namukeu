@@ -394,6 +394,7 @@ export interface SystemResources {
 export interface BlogTraffic {
   today_views: number;
   total_views: number;
+  monthly_target?: number;
   top_posts: { slug: string; title: string; views: number }[];
   daily_trend: { date: string; views: number }[];
 }

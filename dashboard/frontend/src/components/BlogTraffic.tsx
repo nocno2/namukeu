@@ -72,6 +72,11 @@ export function BlogTraffic({ collapsed, pinned, onToggleCollapse, onTogglePin, 
 
   if (!data) return null;
 
+  // 월간 조회수 목표 진행률 계산
+  const monthlyViews = data.daily_trend.reduce((sum, d) => sum + d.views, 0);
+  const monthlyTarget = data.monthly_target;
+  const targetProgress = monthlyTarget ? Math.round((monthlyViews / monthlyTarget) * 100) : null;
+
   const maxTrend = Math.max(...data.daily_trend.map((d) => d.views), 1);
 
   return (
@@ -135,6 +140,34 @@ export function BlogTraffic({ collapsed, pinned, onToggleCollapse, onTogglePin, 
               <div className="text-[10px] text-text-muted">전체</div>
             </div>
           </div>
+
+          {/* Monthly Target Progress Bar */}
+          {monthlyTarget && (
+            <div>
+              <div className="flex items-center justify-between text-[10px] text-text-muted mb-1">
+                <span>월간 목표</span>
+                <span>
+                  월간 {monthlyTarget.toLocaleString()} ({targetProgress}%)
+                </span>
+              </div>
+              <div className="h-2 bg-surface-hover rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all ${
+                    targetProgress! >= 100 ? "bg-success" : targetProgress! >= 50 ? "bg-primary" : "bg-danger"
+                  }`}
+                  style={{ width: `${Math.min(targetProgress!, 100)}%` }}
+                />
+              </div>
+              {targetProgress! < 100 && (
+                <div className="text-[10px] text-text-muted mt-1">
+                  목표까지 {monthlyTarget - monthlyViews} 조회수 남음
+                </div>
+              )}
+              {targetProgress! >= 100 && (
+                <div className="text-[10px] text-success mt-1">목표 달성!</div>
+              )}
+            </div>
+          )}
 
           {/* 7-day trend */}
           {data.daily_trend.length > 0 && (
