@@ -1057,6 +1057,169 @@ export async function getFormattedInsights(): Promise<string> {
   return lines.join("\n");
 }
 
+// --- Auto Action System ---
+
+export interface RevenueAutoAction {
+  id: string;
+  type: "alert" | "sync" | "adjust";
+  priority: "low" | "medium" | "high" | "critical";
+  title: string;
+  description: string;
+  triggered: boolean;
+  createdAt: string;
+}
+
+const AUTO_ACTION_FILE = join(DATA_DIR, "auto_actions.json");
+
+async function loadAutoActions(): Promise<RevenueAutoAction[]> {
+  try {
+    const raw = await readFile(AUTO_ACTION_FILE, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return [];
+  }
+}
+
+async function saveAutoActions(actions: RevenueAutoAction[]): Promise<void> {
+  await writeFile(AUTO_ACTION_FILE, JSON.stringify(actions, null, 2));
+}
+
+export async function getAutoActions(): Promise<RevenueAutoAction[]> {
+  return loadAutoActions();
+}
+
+export async function clearAutoActions(): Promise<void> {
+  await saveAutoActions([]);
+}
+
+// Generate automatic actions based on insights
+export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
+  const actions: RevenueAutoAction[] = [];
+  const data = await loadRevenue();
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const today = now.getDate();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const remainingDays = daysInMonth - today;
+
+  // Get current month data
+  const monthRecords = data.records.filter((r) => r.date.startsWith(currentMonth));
+  const monthCosts = data.costs.filter((c) => c.date.startsWith(currentMonth));
+  const currentRevenue = monthRecords.reduce((sum, r) => sum + r.amount, 0);
+  const currentCost = monthCosts.reduce((sum, c) => sum + c.amount, 0);
+  const netIncome = currentRevenue - currentCost;
+
+  // Action 1: Check if goal is achievable
+  if (data.monthlyTarget > 0 && netIncome < data.monthlyTarget) {
+    const needed = data.monthlyTarget - netIncome;
+    const dailyNeeded = remainingDays > 0 ? Math.ceil(needed / remainingDays) : needed;
+
+    // Critical if daily needed is more than 10x average daily revenue
+    const avgDailyRevenue = currentRevenue / Math.max(today, 1);
+    const priority = dailyNeeded > avgDailyRevenue * 10 ? "critical" :
+                     dailyNeeded > avgDailyRevenue * 5 ? "high" : "medium";
+
+    actions.push({
+      id: `goal_${currentMonth}`,
+      type: "alert",
+      priority,
+      title: "목표 달성 어려움",
+      description: `남은 ${remainingDays}일에 하루 ₩${dailyNeeded.toLocaleString()} 필요 (평균 ₩${Math.round(avgDailyRevenue).toLocaleString()}/일)`,
+      triggered: false,
+      createdAt: now.toISOString(),
+    });
+  }
+
+  // Action 2: Check cost ratio
+  if (currentRevenue > 0) {
+    const costRatio = (currentCost / currentRevenue) * 100;
+    if (costRatio > 50) {
+      actions.push({
+        id: `cost_${currentMonth}`,
+        type: "alert",
+        priority: costRatio > 70 ? "high" : "medium",
+        title: "비용 비율 과다",
+        description: `비용이 수익의 ${Math.round(costRatio)}% (목표: 30% 이하)`,
+        triggered: false,
+        createdAt: now.toISOString(),
+      });
+    }
+  }
+
+  // Action 3: Check revenue diversity
+  const sourceTotals: Record<string, number> = {};
+  for (const r of data.records) {
+    sourceTotals[r.source] = (sourceTotals[r.source] || 0) + r.amount;
+  }
+  if (Object.keys(sourceTotals).length === 1) {
+    actions.push({
+      id: `diversity_${currentMonth}`,
+      type: "adjust",
+      priority: "low",
+      title: "수익원 다각화 필요",
+      description: `${Object.keys(sourceTotals)[0]}에만 의존 중. 새 수익원 추가를検討하세요.`,
+      triggered: false,
+      createdAt: now.toISOString(),
+    });
+  }
+
+  // Action 4: Check for duplicate sync (prevent missed syncs)
+  const recentRecords = data.records.filter((r) => {
+    const recordDate = new Date(r.date);
+    const diffDays = Math.floor((now.getTime() - recordDate.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDays <= 3;
+  });
+  const hasRecentSync = recentRecords.some((r) => r.source === "COIN" || r.source === "BLOG");
+  if (!hasRecentSync) {
+    actions.push({
+      id: `sync_${currentMonth}`,
+      type: "sync",
+      priority: "medium",
+      title: "수익 동기화 필요",
+      description: "최근 3일内有功可圖 수익 데이터 없음. /revenue sync 실행 권장",
+      triggered: false,
+      createdAt: now.toISOString(),
+    });
+  }
+
+  // Action 5: Monthly target achieved
+  if (data.monthlyTarget > 0 && netIncome >= data.monthlyTarget) {
+    actions.push({
+      id: `achieved_${currentMonth}`,
+      type: "alert",
+      priority: "low",
+      title: "월 목표 달성!",
+      description: `₩${netIncome.toLocaleString()} 달성 (${Math.round((netIncome / data.monthlyTarget) * 100)}%)`,
+      triggered: false,
+      createdAt: now.toISOString(),
+    });
+  }
+
+  // Save actions
+  await saveAutoActions(actions);
+  return actions;
+}
+
+// Format auto actions for Telegram
+export async function getFormattedAutoActions(): Promise<string> {
+  const actions = await generateAutoActions();
+
+  if (actions.length === 0) {
+    return "실행할 자동 조치가 없습니다.";
+  }
+
+  const lines: string[] = ["⚡ 자동 조치:"];
+  for (const action of actions) {
+    const icon = action.priority === "critical" ? "🚨" :
+                 action.priority === "high" ? "⚠️" :
+                 action.priority === "medium" ? "🔔" : "ℹ️";
+    lines.push(`${icon} [${action.priority.toUpperCase()}] ${action.title}`);
+    lines.push(`   ${action.description}`);
+  }
+
+  return lines.join("\n");
+}
+
 // --- Auto Sync Scheduler ---
 
 // Start automatic revenue sync scheduler

@@ -4,7 +4,7 @@ import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { killActiveChild } from "./claude";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
-import { getRevenueStatus, checkGoalAlerts, getFormattedDailyReport, generateDailyReport, getFormattedInsights, startAutoSyncScheduler } from "./revenue";
+import { getRevenueStatus, checkGoalAlerts, getFormattedDailyReport, generateDailyReport, getFormattedInsights, startAutoSyncScheduler, generateAutoActions, getFormattedAutoActions } from "./revenue";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -121,6 +121,25 @@ async function main(): Promise<void> {
   startAutoSyncScheduler((result) => {
     console.log("[auto-sync] Daily sync completed:", result);
   }, 8);
+
+  // Start auto actions generator (every 6 hours)
+  const generateAutoActionsPeriodically = async () => {
+    try {
+      const actions = await generateAutoActions();
+      console.log(`[auto-action] Generated ${actions.length} actions`);
+      // Send critical/high priority actions to user
+      const criticalActions = actions.filter(a => a.priority === "critical" || a.priority === "high");
+      if (criticalActions.length > 0 && botInstance) {
+        const userId = parseInt(process.env.TELEGRAM_USER_ID!, 10);
+        const formatted = await getFormattedAutoActions();
+        await botInstance.api.sendMessage(userId, `⚡ 중요 자동 조치:\n\n${formatted}`);
+      }
+    } catch (err) {
+      console.error("[auto-action] Failed to generate actions:", err);
+    }
+  };
+  setInterval(generateAutoActionsPeriodically, 6 * 60 * 60 * 1000); // Every 6 hours
+  setTimeout(generateAutoActionsPeriodically, 30000); // Initial check after 30 seconds
 
   console.log("Claude Telegram Relay v2 starting...");
   console.log("Agent system delegated to content-pipeline (port 8003)");

@@ -25,6 +25,9 @@ import {
   syncAllRevenue,
   getRevenueStatusAll,
   checkGoalAlerts,
+  getFormattedAutoActions,
+  getAutoActions,
+  clearAutoActions,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -280,7 +283,8 @@ export async function createBot(): Promise<Bot> {
         "/revenue add <amount> <source> — Add revenue\n" +
         "/revenue history — Show history\n" +
         "/forecast — Monthly forecast\n" +
-        "/insights — AI revenue insights\n\n" +
+        "/insights — AI revenue insights\n" +
+        "/actions — Auto actions based on insights\n\n" +
         "Cost Tracking:\n" +
         "/cost — Show cost status\n" +
         "/cost add <amount> <category> — Add cost\n" +
@@ -602,6 +606,22 @@ export async function createBot(): Promise<Bot> {
     try {
       const insights = await getFormattedInsights();
       await sendResponse(ctx, insights);
+    } catch (err) {
+      await ctx.reply(`오류: ${err}`);
+    }
+  });
+
+  // Auto actions command
+  bot.command("actions", async (ctx) => {
+    const args = ctx.match?.trim() || "";
+    try {
+      if (args === "clear") {
+        await clearAutoActions();
+        await ctx.reply("자동 조치가 초기화되었습니다.");
+      } else {
+        const actions = await getFormattedAutoActions();
+        await sendResponse(ctx, actions);
+      }
     } catch (err) {
       await ctx.reply(`오류: ${err}`);
     }
