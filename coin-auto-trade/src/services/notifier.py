@@ -82,3 +82,14 @@ class TelegramNotifier:
             f"  - 기준: {drawdown.get('threshold', 0):.1f}% 이하"
         )
         await self.send_message(text)
+
+    async def notify_paper_win_rate_threshold(self, win_rate: float, total_trades: int, total_pnl: float):
+        """페이퍼 트레이딩 승률 50% 이상 충족 시 알림."""
+        text = (
+            f"🎉 *페이퍼 트레이딩 승률 목표 달성!*\n\n"
+            f"✅ 승률: {win_rate:.1f}% (기준: 50%)\n"
+            f"📊 거래 횟수: {total_trades}회\n"
+            f"💰 총 수익: {total_pnl:,.0f} KRW\n\n"
+            f"라이브 트레이딩 전환을 검토하세요!"
+        )
+        await self.send_message(text)

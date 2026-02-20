@@ -107,6 +107,14 @@ class TradingScheduler:
             result = self.transition_checker.get_readiness_report()
             await self.notifier.notify_transition_check(result)
 
+            # 페이퍼 트레이딩 승률 50% 이상 시 별도 알림
+            paper = result.get("paper_trading", {})
+            win_rate = paper.get("win_rate", 0)
+            total_trades = paper.get("completed_trades", 0)
+            total_pnl = paper.get("total_pnl", 0)
+            if win_rate >= 50 and total_trades >= 10:
+                await self.notifier.notify_paper_win_rate_threshold(win_rate, total_trades, total_pnl)
+
         while True:
             now = datetime.datetime.now()
             target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
