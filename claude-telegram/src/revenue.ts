@@ -1094,13 +1094,17 @@ export async function clearAutoActions(): Promise<void> {
 
 // Generate automatic actions based on insights
 export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
-  const actions: RevenueAutoAction[] = [];
   const data = await loadRevenue();
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const today = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
   const remainingDays = daysInMonth - today;
+
+  // Load existing actions to merge (not replace)
+  const existingActions = await loadAutoActions();
+  const newActions: RevenueAutoAction[] = [];
+  const existingIds = new Set(existingActions.map(a => a.id));
 
   // Get current month data
   const monthRecords = data.records.filter((r) => r.date.startsWith(currentMonth));
@@ -1119,7 +1123,7 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
     const priority = dailyNeeded > avgDailyRevenue * 10 ? "critical" :
                      dailyNeeded > avgDailyRevenue * 5 ? "high" : "medium";
 
-    actions.push({
+    const action: RevenueAutoAction = {
       id: `goal_${currentMonth}`,
       type: "alert",
       priority,
@@ -1127,14 +1131,17 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
       description: `남은 ${remainingDays}일에 하루 ₩${dailyNeeded.toLocaleString()} 필요 (평균 ₩${Math.round(avgDailyRevenue).toLocaleString()}/일)`,
       triggered: false,
       createdAt: now.toISOString(),
-    });
+    };
+    if (!existingIds.has(action.id)) {
+      newActions.push(action);
+    }
   }
 
   // Action 2: Check cost ratio
   if (currentRevenue > 0) {
     const costRatio = (currentCost / currentRevenue) * 100;
     if (costRatio > 50) {
-      actions.push({
+      const action: RevenueAutoAction = {
         id: `cost_${currentMonth}`,
         type: "alert",
         priority: costRatio > 70 ? "high" : "medium",
@@ -1142,7 +1149,10 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
         description: `비용이 수익의 ${Math.round(costRatio)}% (목표: 30% 이하)`,
         triggered: false,
         createdAt: now.toISOString(),
-      });
+      };
+      if (!existingIds.has(action.id)) {
+        newActions.push(action);
+      }
     }
   }
 
@@ -1152,7 +1162,7 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
     sourceTotals[r.source] = (sourceTotals[r.source] || 0) + r.amount;
   }
   if (Object.keys(sourceTotals).length === 1) {
-    actions.push({
+    const action: RevenueAutoAction = {
       id: `diversity_${currentMonth}`,
       type: "adjust",
       priority: "low",
@@ -1160,7 +1170,10 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
       description: `${Object.keys(sourceTotals)[0]}에만 의존 중. 새 수익원 추가를検討하세요.`,
       triggered: false,
       createdAt: now.toISOString(),
-    });
+    };
+    if (!existingIds.has(action.id)) {
+      newActions.push(action);
+    }
   }
 
   // Action 4: Check for duplicate sync (prevent missed syncs)
@@ -1171,7 +1184,7 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
   });
   const hasRecentSync = recentRecords.some((r) => r.source === "COIN" || r.source === "BLOG");
   if (!hasRecentSync) {
-    actions.push({
+    const action: RevenueAutoAction = {
       id: `sync_${currentMonth}`,
       type: "sync",
       priority: "medium",
@@ -1179,12 +1192,15 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
       description: "최근 3일内有功可圖 수익 데이터 없음. /revenue sync 실행 권장",
       triggered: false,
       createdAt: now.toISOString(),
-    });
+    };
+    if (!existingIds.has(action.id)) {
+      newActions.push(action);
+    }
   }
 
   // Action 5: Monthly target achieved
   if (data.monthlyTarget > 0 && netIncome >= data.monthlyTarget) {
-    actions.push({
+    const action: RevenueAutoAction = {
       id: `achieved_${currentMonth}`,
       type: "alert",
       priority: "low",
@@ -1192,29 +1208,258 @@ export async function generateAutoActions(): Promise<RevenueAutoAction[]> {
       description: `₩${netIncome.toLocaleString()} 달성 (${Math.round((netIncome / data.monthlyTarget) * 100)}%)`,
       triggered: false,
       createdAt: now.toISOString(),
-    });
+    };
+    if (!existingIds.has(action.id)) {
+      newActions.push(action);
+    }
   }
 
-  // Save actions
-  await saveAutoActions(actions);
-  return actions;
+  // Merge new actions with existing (keep triggered status of existing)
+  const mergedActions = [...existingActions, ...newActions];
+
+  // Save merged actions (not replace)
+  await saveAutoActions(mergedActions);
+
+  // Return only new actions (for notification)
+  return newActions;
 }
 
 // Format auto actions for Telegram
 export async function getFormattedAutoActions(): Promise<string> {
-  const actions = await generateAutoActions();
+  // Load all existing actions (not generate new ones)
+  const actions = await loadAutoActions();
 
   if (actions.length === 0) {
     return "실행할 자동 조치가 없습니다.";
   }
+
+  // Sort by priority (critical > high > medium > low)
+  const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+  actions.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
 
   const lines: string[] = ["⚡ 자동 조치:"];
   for (const action of actions) {
     const icon = action.priority === "critical" ? "🚨" :
                  action.priority === "high" ? "⚠️" :
                  action.priority === "medium" ? "🔔" : "ℹ️";
-    lines.push(`${icon} [${action.priority.toUpperCase()}] ${action.title}`);
+    const check = action.triggered ? "✅" : "⬜";
+    lines.push(`${check} ${icon} [${action.priority.toUpperCase()}] ${action.title}`);
     lines.push(`   ${action.description}`);
+  }
+
+  lines.push("\n💡 `/actions_ack`로 조치 확인 가능");
+
+  return lines.join("\n");
+}
+
+// Acknowledge an action (mark as triggered)
+export async function acknowledgeAction(actionId: string): Promise<boolean> {
+  const actions = await loadAutoActions();
+  const action = actions.find(a => a.id === actionId);
+
+  if (!action) {
+    return false;
+  }
+
+  action.triggered = true;
+  await saveAutoActions(actions);
+  return true;
+}
+
+// Acknowledge all actions
+export async function acknowledgeAllActions(): Promise<number> {
+  const actions = await loadAutoActions();
+  const count = actions.filter(a => !a.triggered).length;
+
+  for (const action of actions) {
+    action.triggered = true;
+  }
+
+  await saveAutoActions(actions);
+  return count;
+}
+
+// Get new (untriggered) actions count
+export async function getNewActionsCount(): Promise<number> {
+  const actions = await loadAutoActions();
+  return actions.filter(a => !a.triggered).length;
+}
+
+// --- Revenue Source Performance Analysis ---
+
+export interface SourcePerformance {
+  source: string;
+  totalAmount: number;
+  recordCount: number;
+  averagePerRecord: number;
+  firstRecord: string;
+  lastRecord: string;
+  daysActive: number;
+  monthlyAverages: Record<string, number>;
+  trend: "up" | "down" | "stable";
+  trendPercentage: number;
+}
+
+export async function getSourcePerformance(months: number = 6): Promise<SourcePerformance[]> {
+  const data = await loadRevenue();
+
+  if (data.records.length === 0) {
+    return [];
+  }
+
+  // Group records by source
+  const bySource: Record<string, { records: RevenueRecord[]; total: number }> = {};
+  for (const r of data.records) {
+    if (!bySource[r.source]) {
+      bySource[r.source] = { records: [], total: 0 };
+    }
+    bySource[r.source].records.push(r);
+    bySource[r.source].total += r.amount;
+  }
+
+  // Get recent months
+  const now = new Date();
+  const recentMonths: string[] = [];
+  for (let i = 0; i < months; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    recentMonths.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+  }
+
+  const performances: SourcePerformance[] = [];
+
+  for (const [source, info] of Object.entries(bySource)) {
+    const records = info.records;
+
+    // Sort by date
+    records.sort((a, b) => a.date.localeCompare(b.date));
+
+    // Get first and last record dates
+    const firstRecord = records[0].date;
+    const lastRecord = records[records.length - 1].date;
+
+    // Calculate days active
+    const firstDate = new Date(firstRecord);
+    const lastDate = new Date(lastRecord);
+    const daysActive = Math.max(1, Math.floor((lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+
+    // Calculate monthly averages
+    const monthlyAverages: Record<string, number> = {};
+    const sourceMonthlyTotals: Record<string, number> = {};
+
+    for (const r of records) {
+      const month = r.date.substring(0, 7);
+      if (recentMonths.includes(month)) {
+        sourceMonthlyTotals[month] = (sourceMonthlyTotals[month] || 0) + r.amount;
+      }
+    }
+
+    // Calculate average for recent months
+    const recentMonthsWithData = Object.keys(sourceMonthlyTotals);
+    if (recentMonthsWithData.length > 0) {
+      const totalRecent = Object.values(sourceMonthlyTotals).reduce((a, b) => a + b, 0);
+      const avgRecent = totalRecent / recentMonthsWithData.length;
+
+      for (const month of recentMonthsWithData) {
+        monthlyAverages[month] = sourceMonthlyTotals[month];
+      }
+    }
+
+    // Calculate trend (compare recent 2 months vs previous 2 months)
+    let trend: "up" | "down" | "stable" = "stable";
+    let trendPercentage = 0;
+
+    const sortedMonths = Object.keys(monthlyAverages).sort();
+    if (sortedMonths.length >= 4) {
+      const recent2 = sortedMonths.slice(-2);
+      const previous2 = sortedMonths.slice(-4, -2);
+
+      const recentAvg = recent2.reduce((sum, m) => sum + (monthlyAverages[m] || 0), 0) / 2;
+      const previousAvg = previous2.reduce((sum, m) => sum + (monthlyAverages[m] || 0), 0) / 2;
+
+      if (previousAvg > 0) {
+        trendPercentage = ((recentAvg - previousAvg) / previousAvg) * 100;
+        if (trendPercentage > 15) {
+          trend = "up";
+        } else if (trendPercentage < -15) {
+          trend = "down";
+        } else {
+          trend = "stable";
+        }
+      }
+    }
+
+    performances.push({
+      source,
+      totalAmount: info.total,
+      recordCount: records.length,
+      averagePerRecord: info.total / records.length,
+      firstRecord,
+      lastRecord,
+      daysActive,
+      monthlyAverages,
+      trend,
+      trendPercentage,
+    });
+  }
+
+  // Sort by total amount descending
+  performances.sort((a, b) => b.totalAmount - a.totalAmount);
+
+  return performances;
+}
+
+// Format source performance for Telegram
+export async function getFormattedSourcePerformance(months: number = 6): Promise<string> {
+  const performances = await getSourcePerformance(months);
+
+  if (performances.length === 0) {
+    return "수익 기록이 없습니다.";
+  }
+
+  const lines: string[] = ["📊 수익원별 성과 분석:"];
+
+  for (const perf of performances) {
+    const trendIcon = perf.trend === "up" ? "📈" : perf.trend === "down" ? "📉" : "➡️";
+    const trendText = perf.trend === "up"
+      ? `+${Math.round(perf.trendPercentage)}%`
+      : perf.trend === "down"
+        ? `${Math.round(perf.trendPercentage)}%`
+        : "변화 없음";
+
+    lines.push(`\n🏷️ ${perf.source}`);
+    lines.push(`   총 수익: ₩${perf.totalAmount.toLocaleString()}`);
+    lines.push(`   평균: ₩${Math.round(perf.averagePerRecord).toLocaleString()}/회`);
+    lines.push(`   기록 수: ${perf.recordCount}회`);
+    lines.push(`   활동 기간: ${perf.daysActive}일`);
+    lines.push(`   추세: ${trendIcon} ${trendText}`);
+
+    // Show recent months if available
+    const recentMonths = Object.keys(perf.monthlyAverages).sort().slice(-3);
+    if (recentMonths.length > 0) {
+      lines.push(`   최근:`);
+      for (const month of recentMonths) {
+        const amount = perf.monthlyAverages[month];
+        lines.push(`     ${month}: ₩${amount.toLocaleString()}`);
+      }
+    }
+  }
+
+  // Summary
+  const totalRevenue = performances.reduce((sum, p) => sum + p.totalAmount, 0);
+  const topSource = performances[0];
+  lines.push(`\n📌 요약:`);
+  lines.push(`   전체 수익: ₩${totalRevenue.toLocaleString()}`);
+  lines.push(`   최고 수익원: ${topSource.source} (₩${topSource.totalAmount.toLocaleString()})`);
+
+  // Recommendations
+  if (performances.length > 1) {
+    const downSources = performances.filter(p => p.trend === "down");
+    if (downSources.length > 0) {
+      lines.push(`\n⚠️ 주의:`);
+      for (const s of downSources) {
+        lines.push(`   - ${s.source}: 하락 추세 (${Math.round(s.trendPercentage)}%)`);
+      }
+    }
   }
 
   return lines.join("\n");

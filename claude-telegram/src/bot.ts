@@ -28,6 +28,10 @@ import {
   getFormattedAutoActions,
   getAutoActions,
   clearAutoActions,
+  acknowledgeAction,
+  acknowledgeAllActions,
+  getNewActionsCount,
+  getFormattedSourcePerformance,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -284,7 +288,8 @@ export async function createBot(): Promise<Bot> {
         "/revenue history — Show history\n" +
         "/forecast — Monthly forecast\n" +
         "/insights — AI revenue insights\n" +
-        "/actions — Auto actions based on insights\n\n" +
+        "/actions — Auto actions based on insights\n" +
+        "/actions_ack — Acknowledge actions\n\n" +
         "Cost Tracking:\n" +
         "/cost — Show cost status\n" +
         "/cost add <amount> <category> — Add cost\n" +
@@ -508,6 +513,11 @@ export async function createBot(): Promise<Bot> {
         const months = parseInt(parts[1] || "12", 10);
         const sources = await getRevenueBySource(months);
         await sendResponse(ctx, sources);
+      } else if (subcommand === "compare") {
+        // /revenue compare [months] - compare source performance
+        const months = parseInt(parts[1] || "6", 10);
+        const comparison = await getFormattedSourcePerformance(months);
+        await sendResponse(ctx, comparison);
       } else if (subcommand === "alert") {
         // /revenue alert - check goal alerts
         const alert = await checkGoalAlerts();
@@ -533,6 +543,7 @@ export async function createBot(): Promise<Bot> {
             "/revenue profit — 손익 요약\n" +
             "/revenue forecast — 월말 예측\n" +
             "/revenue sources — 수익 원별 분석\n" +
+            "/revenue compare — 수익원 성과 비교\n" +
             "/revenue alert — 목표 달성 경고 확인\n" +
             "/insights — AI 수익 인사이트\n" +
             "/revenue help — 도움말"
@@ -621,6 +632,29 @@ export async function createBot(): Promise<Bot> {
       } else {
         const actions = await getFormattedAutoActions();
         await sendResponse(ctx, actions);
+      }
+    } catch (err) {
+      await ctx.reply(`오류: ${err}`);
+    }
+  });
+
+  // Acknowledge actions
+  bot.command("actions_ack", async (ctx) => {
+    const args = ctx.match?.trim() || "";
+    try {
+      if (args === "all") {
+        const count = await acknowledgeAllActions();
+        await ctx.reply(`✅ ${count}개 조치 확인 완료`);
+      } else if (args) {
+        const success = await acknowledgeAction(args);
+        if (success) {
+          await ctx.reply(`✅ 조치 확인 완료: ${args}`);
+        } else {
+          await ctx.reply(`❌ 조치를 찾을 수 없음: ${args}`);
+        }
+      } else {
+        const count = await getNewActionsCount();
+        await ctx.reply(`미확인 조치: ${count}개\n/ actions_ack all - 전체 확인\n/actions_ack <id> - 개별 확인`);
       }
     } catch (err) {
       await ctx.reply(`오류: ${err}`);
