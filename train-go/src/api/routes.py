@@ -7,7 +7,7 @@ from src.core.crypto import CryptoManager
 from src.core.database import Database
 from src.core.errors import TrainAPIError
 from src.models.credential import CredentialCreate, CredentialResponse
-from src.models.reservation import ReservationCreate, ReservationResponse, SearchStats, ErrorPatternStats
+from src.models.reservation import ReservationCreate, ReservationResponse, SearchStats, ErrorPatternStats, SearchLogResponse
 from src.services.scheduler import ReservationScheduler
 
 router = APIRouter()
@@ -197,6 +197,25 @@ def get_all_error_stats(
     """전체 에러 패턴 분석. 모든 예약의 에러를 종합 분석."""
     stats = db.get_error_stats()
     return ErrorPatternStats(**stats)
+
+
+@router.get("/reservations/{reservation_id}/search-logs", response_model=list[SearchLogResponse])
+def get_search_logs(
+    reservation_id: int,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """특정 예약의 검색 로그 목록 조회.
+
+    - 에러 발생 시 error_code, consecutive_errors, backoff_seconds, is_expected 포함
+    - 성공 시 results_count > 0
+    """
+    reservation = db.get_reservation(reservation_id)
+    if not reservation:
+        raise HTTPException(status_code=404, detail="Reservation not found")
+
+    logs = db.get_search_logs(reservation_id)
+    return [SearchLogResponse(**log) for log in logs]
 
 
 @router.delete("/logs/cleanup")

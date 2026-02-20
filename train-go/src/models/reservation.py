@@ -51,6 +51,19 @@ class ErrorPatternStats(BaseModel):
     unexpected_error_count: int = 0
 
 
+class SearchLogResponse(BaseModel):
+    """개별 검색 로그 응답."""
+    id: int
+    reservation_id: int
+    searched_at: str
+    results_count: int
+    error: str | None = None
+    error_code: str | None = None
+    consecutive_errors: int = 0
+    backoff_seconds: float = 0.0
+    is_expected: bool = False
+
+
 class ReservationResponse(BaseModel):
     id: int
     provider: str
