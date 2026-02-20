@@ -29,6 +29,9 @@ class MetricsCollector:
         self._telegram_bot_token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
         self._telegram_chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
         self._discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "")
+        self._alert_log_path = os.environ.get(
+            "ALERT_LOG_PATH", "/Users/namwook/Library/Logs/dashboard.alerts.log"
+        )
 
     async def start(self):
         # Load initial status to avoid false alerts on startup
@@ -169,13 +172,6 @@ class MetricsCollector:
         has_telegram = bool(self._telegram_bot_token and self._telegram_chat_id)
         has_discord = bool(self._discord_webhook_url)
 
-        if not has_telegram and not has_discord:
-            logger.warning(
-                f"No notification channels configured for {service['name']} down alert. "
-                "Set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL."
-            )
-            return
-
         text = (
             f"🔴 *서비스 다운 감지*\n\n"
             f"*{service['display_name']}* (`{service['name']}`)\n"
@@ -187,17 +183,14 @@ class MetricsCollector:
         if has_discord:
             await self._send_discord(text, 0xFF0000)  # Red
 
+        # Fallback: log to file if no notification channels configured
+        if not has_telegram and not has_discord:
+            await self._log_alert_to_file(text)
+
     async def _send_recovery_alert(self, service: dict, auto_recovered: bool = False):
         # Determine which notification channels are available
         has_telegram = bool(self._telegram_bot_token and self._telegram_chat_id)
         has_discord = bool(self._discord_webhook_url)
-
-        if not has_telegram and not has_discord:
-            logger.warning(
-                f"No notification channels configured for {service['name']} recovery alert. "
-                "Set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL."
-            )
-            return
 
         recovery_note = " (자동 복구)" if auto_recovered else ""
         text = (
@@ -211,17 +204,14 @@ class MetricsCollector:
         if has_discord:
             await self._send_discord(text, 0x00FF00)  # Green
 
+        # Fallback: log to file if no notification channels configured
+        if not has_telegram and not has_discord:
+            await self._log_alert_to_file(text)
+
     async def _send_restart_alert(self, service: dict, success: bool):
         # Determine which notification channels are available
         has_telegram = bool(self._telegram_bot_token and self._telegram_chat_id)
         has_discord = bool(self._discord_webhook_url)
-
-        if not has_telegram and not has_discord:
-            logger.warning(
-                f"No notification channels configured for {service['name']} restart alert. "
-                "Set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL."
-            )
-            return
 
         emoji = "🔄" if success else "❌"
         result = "자동 재시작 시도" if success else "자동 재시작 실패"
@@ -235,6 +225,10 @@ class MetricsCollector:
             await self._send_telegram(text)
         if has_discord:
             await self._send_discord(text, 0xFFA500 if success else 0xFF0000)  # Orange or Red
+
+        # Fallback: log to file if no notification channels configured
+        if not has_telegram and not has_discord:
+            await self._log_alert_to_file(text)
 
     async def _send_telegram(self, text: str):
         if not self._telegram_bot_token or not self._telegram_chat_id:
@@ -265,3 +259,24 @@ class MetricsCollector:
                     logger.error(f"Discord send failed: {resp.status_code} {resp.text}")
         except Exception as e:
             logger.error(f"Discord send error: {e}")
+
+    async def _log_alert_to_file(self, text: str):
+        """Fallback: log alert to file when no notification channels are configured."""
+        import json
+        from datetime import datetime
+
+        timestamp = datetime.now().isoformat()
+        log_entry = json.dumps({"timestamp": timestamp, "message": text}) + "\n"
+
+        try:
+            # Ensure directory exists
+            import os
+            log_dir = os.path.dirname(self._alert_log_path)
+            if log_dir and not os.path.exists(log_dir):
+                os.makedirs(log_dir, exist_ok=True)
+
+            with open(self._alert_log_path, "a", encoding="utf-8") as f:
+                f.write(log_entry)
+            logger.info(f"Alert logged to fallback file: {self._alert_log_path}")
+        except Exception as e:
+            logger.error(f"Failed to log alert to file: {e}")
