@@ -37,9 +37,10 @@ async function scheduleDailyReport(): Promise<void> {
     // Only send once per day
     if (lastReportDate === today) return;
 
-    // Check if it's around 8 AM (KST = UTC+9)
-    const hour = now.getHours();
-    if (hour < 7 || hour > 9) return; // Send between 7-9 AM KST
+    // Check if it's around 8 AM KST (KST = UTC+9)
+    const utcHour = now.getUTCHours();
+    const kstHour = (utcHour + 9) % 24;
+    if (kstHour < 7 || kstHour > 9) return; // Send between 7-9 AM KST
 
     try {
       const report = await generateDailyReport();
@@ -122,7 +123,7 @@ async function main(): Promise<void> {
     console.log("[auto-sync] Daily sync completed:", result);
 
     // Send sync result to user if new revenue was added
-    if (result && !result.includes("추가") === false && botInstance) {
+    if (result && result.includes("추가됨") && botInstance) {
       try {
         const userId = parseInt(process.env.TELEGRAM_USER_ID!, 10);
         await botInstance.api.sendMessage(userId, `🔄 수익 동기화 완료:\n\n${result}`);
