@@ -60,6 +60,7 @@ export default async function PostPage({ params }: Props) {
 
   const html = await markdownToHtml(post.content);
   const tags = await getPostTags(post.id);
+  const tagNames = tags.map((t) => t.name);
   const jsonLd = generateJsonLd({
     title: post.title,
     excerpt: post.excerpt,
@@ -67,6 +68,9 @@ export default async function PostPage({ params }: Props) {
     featuredImage: post.featuredImage,
     publishedAt: post.publishedAt,
     updatedAt: post.updatedAt,
+    content: post.content,
+    categoryName: post.categoryName,
+    tags: tagNames,
   });
 
   const breadcrumbJsonLd = generateBreadcrumbJsonLd({
@@ -122,12 +126,18 @@ export default async function PostPage({ params }: Props) {
       .limit(4);
   }
 
+  // JSON-LD가 배열인지 객체인지 확인 (FAQ 스키마 포함 여부)
+  const jsonLdList = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
+
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-      />
+      {jsonLdList.map((ld, index) => (
+        <script
+          key={index}
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(ld) }}
+        />
+      ))}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}

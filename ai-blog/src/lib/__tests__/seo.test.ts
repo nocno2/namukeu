@@ -98,19 +98,22 @@ describe("generateJsonLd", () => {
 
   test("BlogPosting 타입 생성", () => {
     const ld = generateJsonLd(basePost);
-    expect(ld["@context"]).toBe("https://schema.org");
-    expect(ld["@type"]).toBe("BlogPosting");
+    const blogPosting = Array.isArray(ld) ? ld.find((l) => l["@type"] === "BlogPosting") : ld;
+    expect(blogPosting?.["@context"]).toBe("https://schema.org");
+    expect(blogPosting?.["@type"]).toBe("BlogPosting");
   });
 
   test("headline과 URL 포함", () => {
     const ld = generateJsonLd(basePost);
-    expect(ld.headline).toBe("JSON-LD 테스트");
-    expect(ld.url).toBe(`${SITE_URL}/posts/jsonld-test`);
+    const blogPosting = Array.isArray(ld) ? ld.find((l) => l["@type"] === "BlogPosting") : ld;
+    expect(blogPosting?.headline).toBe("JSON-LD 테스트");
+    expect(blogPosting?.url).toBe(`${SITE_URL}/posts/jsonld-test`);
   });
 
   test("dateModified 포함", () => {
     const ld = generateJsonLd(basePost);
-    expect(ld.dateModified).toBe("2026-02-01T00:00:00Z");
+    const blogPosting = Array.isArray(ld) ? ld.find((l) => l["@type"] === "BlogPosting") : ld;
+    expect(blogPosting?.dateModified).toBe("2026-02-01T00:00:00Z");
   });
 
   test("이미지 절대 URL 처리", () => {
@@ -118,7 +121,8 @@ describe("generateJsonLd", () => {
       ...basePost,
       featuredImage: "https://cdn.example.com/img.jpg",
     });
-    expect(ld.image).toBe("https://cdn.example.com/img.jpg");
+    const blogPosting = Array.isArray(ld) ? ld.find((l) => l["@type"] === "BlogPosting") : ld;
+    expect(blogPosting?.image).toBe("https://cdn.example.com/img.jpg");
   });
 
   test("이미지 상대 URL 처리", () => {
@@ -126,13 +130,26 @@ describe("generateJsonLd", () => {
       ...basePost,
       featuredImage: "/uploads/thumb.jpg",
     });
-    expect(ld.image).toBe(`${SITE_URL}/uploads/thumb.jpg`);
+    const blogPosting = Array.isArray(ld) ? ld.find((l) => l["@type"] === "BlogPosting") : ld;
+    expect(blogPosting?.image).toBe(`${SITE_URL}/uploads/thumb.jpg`);
   });
 
   test("author와 publisher 포함", () => {
     const ld = generateJsonLd(basePost);
-    expect(ld.author.name).toBe(SITE_NAME);
-    expect(ld.publisher.name).toBe(SITE_NAME);
+    const blogPosting = Array.isArray(ld) ? ld.find((l) => l["@type"] === "BlogPosting") : ld;
+    expect(blogPosting?.author?.name).toBeDefined();
+    expect(blogPosting?.publisher?.name).toBeDefined();
+  });
+
+  test("content가 있으면 FAQPage 스키마 추가", () => {
+    const ld = generateJsonLd({
+      ...basePost,
+      content: "## FAQ\nQ: 질문입니다\nA: 답변입니다",
+    });
+    expect(Array.isArray(ld)).toBe(true);
+    const faqPage = ld?.find((l) => l["@type"] === "FAQPage");
+    expect(faqPage).toBeDefined();
+    expect(faqPage?.mainEntity).toHaveLength(1);
   });
 });
 

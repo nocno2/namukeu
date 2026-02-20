@@ -106,25 +106,107 @@ export function generateJsonLd(post: {
   featuredImage?: string | null;
   publishedAt?: string | null;
   updatedAt: string;
+  content?: string | null;
+  categoryName?: string | null;
+  tags?: string[];
 }) {
-  return {
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+  // FAQ 스키마 추출 (markdown에서 H2 + Q:/A: 패턴 파싱)
+  const faqList: { question: string; answer: string }[] = [];
+  if (post.content) {
+    const lines = post.content.split("\n");
+    let currentQuestion = "";
+    let currentAnswer: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // H2 헤더 감지 (## 로 시작)
+      if (line.startsWith("## ")) {
+        // 이전 FAQ 저장
+        if (currentQuestion && currentAnswer.length > 0) {
+          faqList.push({
+            question: currentQuestion,
+            answer: currentAnswer.join("\n").trim(),
+          });
+        }
+        currentQuestion = line.slice(3).trim();
+        currentAnswer = [];
+      }
+      // Q: 또는 A: 패턴 감지
+      else if (line.match(/^[QA]:\s*/i)) {
+        if (currentQuestion && line.toLowerCase().startsWith("a:")) {
+          currentAnswer.push(line.replace(/^[QA]:\s*/i, "").trim());
+        }
+      }
+      // 답변 텍스트 수집 (들여쓰기된 줄)
+      else if (currentQuestion && line && !line.startsWith("#") && currentAnswer.length > 0) {
+        currentAnswer.push(line);
+      }
+    }
+
+    // 마지막 FAQ 저장
+    if (currentQuestion && currentAnswer.length > 0) {
+      faqList.push({
+        question: currentQuestion,
+        answer: currentAnswer.join("\n").trim(),
+      });
+    }
+  }
+
+  const baseSchema = {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     headline: post.title,
     description: post.excerpt || "",
-    url: `${SITE_URL}/posts/${post.slug}`,
+    url: `${siteUrl}/posts/${post.slug}`,
     datePublished: post.publishedAt,
     dateModified: post.updatedAt,
     ...(post.featuredImage && {
-      image: post.featuredImage.startsWith("http") ? post.featuredImage : `${SITE_URL}${post.featuredImage}`,
+      image: post.featuredImage.startsWith("http") ? post.featuredImage : `${siteUrl}${post.featuredImage}`,
     }),
     author: {
       "@type": "Person",
-      name: SITE_NAME,
+      name: siteUrl.includes("namukeu") ? "남욱" : "AI Blog",
+      url: siteUrl,
     },
     publisher: {
       "@type": "Organization",
-      name: SITE_NAME,
+      name: siteUrl.includes("namukeu") ? "namukeu" : "AI Blog",
+      logo: {
+        "@type": "ImageObject",
+        url: `${siteUrl}/og-image.png`,
+      },
+    },
+    // 추가 SEO 필드
+    ...(post.categoryName && { articleSection: post.categoryName }),
+    ...(post.tags && post.tags.length > 0 && { keywords: post.tags.join(", ") }),
+    ...(post.content && { wordCount: post.content.split(/\s+/).filter(Boolean).length }),
+    mainEntityOfPage: {
+      "@type": "WebPage",
+      "@id": `${siteUrl}/posts/${post.slug}`,
     },
   };
+
+  // FAQ가 있으면 FAQPage 스키마 추가
+  if (faqList.length > 0) {
+    return [
+      baseSchema,
+      {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        mainEntity: faqList.map((faq) => ({
+          "@type": "Question",
+          name: faq.question,
+          acceptedAnswer: {
+            "@type": "Answer",
+            text: faq.answer,
+          },
+        })),
+      },
+    ];
+  }
+
+  return baseSchema;
 }
