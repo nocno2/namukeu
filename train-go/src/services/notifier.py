@@ -3,6 +3,7 @@ import logging
 import os
 import smtplib
 import time
+from collections import deque
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -472,13 +473,14 @@ class CompositeNotifier:
 
     # 알림 간 최소 간격 (초)
     DEFAULT_RATE_LIMIT_SECONDS = 60
+    # Sliding Window 내 최대 알림 횟수
+    DEFAULT_RATE_LIMIT_COUNT = 3
 
-    def __init__(self, notifiers: list, rate_limit_seconds: int = DEFAULT_RATE_LIMIT_SECONDS):
+    def __init__(self, notifiers: list, rate_limit_seconds: int = DEFAULT_RATE_LIMIT_SECONDS, rate_limit_count: int = DEFAULT_RATE_LIMIT_COUNT):
         self._notifiers = notifiers
         self._rate_limit_seconds = rate_limit_seconds
-        self._last_notification_time: dict[str, float] = {}  # 에러 코드별 마지막 알림 시간
-        self._last_error_code: str | None = None  # 마지막 에러 코드
-        self._last_notification_reservation_id: int | None = None  # 마지막 알림을 보낸 예약 ID
+        self._rate_limit_count = rate_limit_count
+        self._notification_history: dict[str, deque] = {}  # Sliding Window용 타임스탬프 저장
 
         # FileNotifier 찾기 (폴백용)
         self._fallback_notifier: FileNotifier | None = None
@@ -534,10 +536,11 @@ class CompositeNotifier:
         await self._notify_with_fallback("notify_progress", reservation, search_count, elapsed_min)
 
     def _should_notify(self, error_type: str, reservation_id: int) -> bool:
-        """알림을 보내야 하는지 확인 (rate limiting).
+        """알림을 보내야 하는지 확인 (Sliding Window Rate Limiting).
 
         - 치명적 에러나 예약 성공/실패는 항상 알림
-        - 일반 에러는 동일 에러 코드 + 동일 예약에 대해 rate limit 적용
+        - 일반 에러는 Sliding Window 방식으로 rate limit 적용
+        - 윈도우 내 최대 알림 횟수 초과 시 스킵
 
         Returns:
             True if notification should be sent
@@ -545,17 +548,23 @@ class CompositeNotifier:
         now = time.time()
         key = f"{error_type}:{reservation_id}"
 
-        # 동일 에러 + 동일 예약을 위한 키
-        if key in self._last_notification_time:
-            elapsed = now - self._last_notification_time[key]
-            if elapsed < self._rate_limit_seconds:
-                logger.debug(f"알림 스킵 (rate limit): {error_type}, 경과 {elapsed:.1f}초")
-                return False
+        # 윈도우 초기화 (처음 알림 시)
+        if key not in self._notification_history:
+            self._notification_history[key] = deque()
 
-        # 상태 업데이트
-        self._last_notification_time[key] = now
-        self._last_error_code = error_type
-        self._last_notification_reservation_id = reservation_id
+        window: deque = self._notification_history[key]
+
+        # 윈도우 밖의 오래된 타임스탬프 제거
+        while window and (now - window[0]) >= self._rate_limit_seconds:
+            window.popleft()
+
+        # 윈도우 내 알림 횟수 확인
+        if len(window) >= self._rate_limit_count:
+            logger.debug(f"알림 스킵 (Sliding Window rate limit): {error_type}, 윈도우 내 {len(window)}회")
+            return False
+
+        # 현재 타임스탬프를 윈도우에 추가
+        window.append(now)
         return True
 
     async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
