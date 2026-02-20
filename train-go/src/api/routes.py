@@ -271,6 +271,20 @@ def reset_circuit_breakers(
     return {"message": "모든 Circuit Breaker가 리셋되었습니다"}
 
 
+@router.post("/circuit-breaker/{name}/reset")
+def reset_circuit_breaker(
+    name: str,
+    _=Depends(verify),
+    scheduler: ReservationScheduler = Depends(get_scheduler),
+):
+    """특정 Circuit Breaker만 이름으로 리셋."""
+    if name not in scheduler._circuit_breakers:
+        raise HTTPException(status_code=404, detail=f"Circuit Breaker '{name}'을 찾을 수 없습니다")
+
+    scheduler._circuit_breakers[name].reset()
+    return {"message": f"Circuit Breaker '{name}'이(가) 리셋되었습니다"}
+
+
 def _count_by_status(reservations: list[dict]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for r in reservations:
