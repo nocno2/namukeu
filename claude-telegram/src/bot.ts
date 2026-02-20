@@ -711,8 +711,6 @@ export async function createBot(): Promise<Bot> {
 
         await ctx.reply("✍️ 블로그 글 생성 중... (1/3 - 키워드 분석)");
 
-        const PIPELINE_API = "http://localhost:8003";
-
         try {
           // Step 1: Enrich keyword
           const enrichRes = await fetch(`${PIPELINE_API}/api/n8n/enrich-keyword`, {
@@ -791,8 +789,6 @@ export async function createBot(): Promise<Bot> {
         }
 
         await ctx.reply("✍️ 블로그 글 생성 중... (1/3 - 아이디어 분석)");
-
-        const PIPELINE_API = "http://localhost:8003";
 
         try {
           // Step 1: Enrich context (extract keywords from idea)
@@ -1128,7 +1124,6 @@ export async function createBot(): Promise<Bot> {
     try {
       await ctx.answerCallbackQuery({ text: "✍️ 블로그 자동화 요청..." });
 
-      const PIPELINE_API = "http://localhost:8003";
       const idea = "사용자 수익 인사이트 기반 콘텐츠: 수익 목표 달성 방법";
 
       try {
