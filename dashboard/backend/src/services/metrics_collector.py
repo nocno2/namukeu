@@ -165,9 +165,16 @@ class MetricsCollector:
         await self._send_restart_alert(service, success)
 
     async def _send_down_alert(self, service: dict):
-        if not self._telegram_bot_token or not self._telegram_chat_id:
-            logger.warning("Telegram credentials not configured, skipping Telegram alert")
-            # Continue to send Discord alert if available
+        # Determine which notification channels are available
+        has_telegram = bool(self._telegram_bot_token and self._telegram_chat_id)
+        has_discord = bool(self._discord_webhook_url)
+
+        if not has_telegram and not has_discord:
+            logger.warning(
+                f"No notification channels configured for {service['name']} down alert. "
+                "Set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL."
+            )
+            return
 
         text = (
             f"🔴 *서비스 다운 감지*\n\n"
@@ -175,13 +182,22 @@ class MetricsCollector:
             f"상태: running → down\n"
             f"시각: {service['checked_at']}"
         )
-        if self._telegram_bot_token and self._telegram_chat_id:
+        if has_telegram:
             await self._send_telegram(text)
-        await self._send_discord(text, 0xFF0000)  # Red
+        if has_discord:
+            await self._send_discord(text, 0xFF0000)  # Red
 
     async def _send_recovery_alert(self, service: dict, auto_recovered: bool = False):
-        if not self._telegram_bot_token and not self._telegram_chat_id:
-            logger.warning("Telegram credentials not configured, skipping recovery alert")
+        # Determine which notification channels are available
+        has_telegram = bool(self._telegram_bot_token and self._telegram_chat_id)
+        has_discord = bool(self._discord_webhook_url)
+
+        if not has_telegram and not has_discord:
+            logger.warning(
+                f"No notification channels configured for {service['name']} recovery alert. "
+                "Set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL."
+            )
+            return
 
         recovery_note = " (자동 복구)" if auto_recovered else ""
         text = (
@@ -190,13 +206,22 @@ class MetricsCollector:
             f"상태: down → running\n"
             f"시각: {service['checked_at']}"
         )
-        if self._telegram_bot_token and self._telegram_chat_id:
+        if has_telegram:
             await self._send_telegram(text)
-        await self._send_discord(text, 0x00FF00)  # Green
+        if has_discord:
+            await self._send_discord(text, 0x00FF00)  # Green
 
     async def _send_restart_alert(self, service: dict, success: bool):
-        if not self._telegram_bot_token and not self._telegram_chat_id:
-            logger.warning("Telegram credentials not configured, skipping restart alert")
+        # Determine which notification channels are available
+        has_telegram = bool(self._telegram_bot_token and self._telegram_chat_id)
+        has_discord = bool(self._discord_webhook_url)
+
+        if not has_telegram and not has_discord:
+            logger.warning(
+                f"No notification channels configured for {service['name']} restart alert. "
+                "Set TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID or DISCORD_WEBHOOK_URL."
+            )
+            return
 
         emoji = "🔄" if success else "❌"
         result = "자동 재시작 시도" if success else "자동 재시작 실패"
@@ -206,9 +231,10 @@ class MetricsCollector:
             f"연속 {DOWN_THRESHOLD}회 다운 감지 → 자동 복구 시도\n"
             f"시각: {service['checked_at']}"
         )
-        if self._telegram_bot_token and self._telegram_chat_id:
+        if has_telegram:
             await self._send_telegram(text)
-        await self._send_discord(text, 0xFFA500 if success else 0xFF0000)  # Orange or Red
+        if has_discord:
+            await self._send_discord(text, 0xFFA500 if success else 0xFF0000)  # Orange or Red
 
     async def _send_telegram(self, text: str):
         if not self._telegram_bot_token or not self._telegram_chat_id:
@@ -229,6 +255,7 @@ class MetricsCollector:
 
     async def _send_discord(self, content: str, color: int = 0):
         if not self._discord_webhook_url:
+            logger.debug("Discord webhook not configured, skipping Discord alert")
             return
         payload = {"content": content}
         try:
