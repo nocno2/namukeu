@@ -73,20 +73,40 @@ class StockService:
     async def fetch_us_stock_history(
         self, symbol: str, period: str = "1y"
     ) -> List[dict]:
-        """Fetch US stock historical data."""
+        """Fetch US stock historical data. Supports intraday (1m, 5m, 15m, 30m, 1h, 4h) and daily+ (1d, 1wk, 1mo, etc)."""
         try:
             loop = asyncio.get_event_loop()
             ticker = yf.Ticker(symbol)
-            hist = await loop.run_in_executor(None, lambda: ticker.history(period=period))
+
+            # Map period to interval for intraday data
+            intraday_periods = {
+                '1m': ('1m', '5d'),
+                '5m': ('5m', '5d'),
+                '15m': ('15m', '1mo'),
+                '30m': ('30m', '1mo'),
+                '1h': ('1h', '1mo'),
+                '4h': ('4h', '3mo'),
+            }
+
+            if period in intraday_periods:
+                interval, data_period = intraday_periods[period]
+                hist = await loop.run_in_executor(
+                    None, lambda: ticker.history(interval=interval, period=data_period)
+                )
+            else:
+                hist = await loop.run_in_executor(None, lambda: ticker.history(period=period))
+
+            if hist.empty:
+                return []
 
             return [
                 {
-                    "date": row.index.to_pydatetime().isoformat(),
-                    "open": float(row["Open"]),
-                    "high": float(row["High"]),
-                    "low": float(row["Low"]),
-                    "close": float(row["Close"]),
-                    "volume": int(row["Volume"]),
+                    "date": row.Index.to_pydatetime().isoformat(),
+                    "open": float(row.Open),
+                    "high": float(row.High),
+                    "low": float(row.Low),
+                    "close": float(row.Close),
+                    "volume": int(row.Volume),
                 }
                 for row in hist.itertuples()
             ]

@@ -7,8 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.db import get_db
-from src.models import User, Stock, MarketType
-from src.utils.auth import get_current_user
+from src.models import Stock, MarketType
 from src.services.stock_service import StockService
 
 router = APIRouter(prefix="/api/stocks", tags=["stocks"])
@@ -65,7 +64,6 @@ async def search_stocks(
     q: str = Query(..., min_length=1),
     market: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
     """Search stocks by symbol or name."""
     stock_service = StockService(db)
@@ -89,7 +87,6 @@ async def search_stocks(
 async def list_stocks(
     market: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
     """List all stocks."""
     stock_service = StockService(db)
@@ -114,7 +111,6 @@ async def get_popular_stocks(
     market: Optional[str] = "US",
     limit: int = Query(20, le=50),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
     """Get popular stocks with price and mini chart data."""
     stock_service = StockService(db)
@@ -176,7 +172,6 @@ async def get_popular_stocks(
 async def get_stock_price(
     symbol: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
     """Get current stock price."""
     stock_service = StockService(db)
@@ -200,9 +195,8 @@ async def get_stock_price(
 @router.get("/{symbol}/history", response_model=List[PriceHistoryResponse])
 async def get_stock_history(
     symbol: str,
-    period: str = Query("1y", regex="^(1d|5d|1mo|3mo|6mo|1y|2y|5y)$"),
+    period: str = Query("1y", regex="^(1m|5m|15m|30m|1h|4h|1d|5d|1wk|1mo|3mo|6mo|1y|2y|5y)$"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
     """Get stock price history."""
     stock_service = StockService(db)
@@ -212,7 +206,7 @@ async def get_stock_history(
 
     return [
         PriceHistoryResponse(
-            date=p["date"].isoformat(),
+            date=p["date"] if isinstance(p["date"], str) else p["date"].isoformat(),
             open=p["open"],
             high=p["high"],
             low=p["low"],

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/auth';
 
@@ -16,6 +17,7 @@ const navItems = [
 export default function Layout() {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -24,8 +26,19 @@ export default function Layout() {
 
   return (
     <div className="flex min-h-screen bg-[#0d1117]">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#161b22] border-r border-[#30363d] flex flex-col">
+      {/* Mobile menu button */}
+      <button
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-[#161b22] rounded-lg border border-[#30363d]"
+      >
+        <span className="text-xl">{sidebarOpen ? '✕' : '☰'}</span>
+      </button>
+
+      {/* Sidebar - desktop always visible, mobile overlay */}
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-40 w-64 bg-[#161b22] border-r border-[#30363d] flex flex-col transform transition-transform duration-200
+        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
         {/* Logo */}
         <div className="p-5 border-b border-[#30363d]">
           <h1 className="text-xl font-bold">
@@ -36,11 +49,12 @@ export default function Layout() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-3 space-y-1 overflow-auto">
           {navItems.map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                   isActive
@@ -75,8 +89,18 @@ export default function Layout() {
         </div>
       </aside>
 
+      {/* Mobile overlay */}
+      {sidebarOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-30"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Main content */}
-      <main className="flex-1 overflow-auto bg-[#0d1117]">
+      <main className="flex-1 overflow-auto bg-[#0d1117] lg:ml-0">
+        {/* Mobile menu button spacer */}
+        <div className="lg:hidden" style={{ height: '56px' }} />
         <Outlet />
       </main>
     </div>

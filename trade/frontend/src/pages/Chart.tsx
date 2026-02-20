@@ -1,10 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { createChart, CandlestickSeries, HistogramSeries, LineSeries, AreaSeries, CrosshairMode } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, CandlestickData, Time, HistogramData, LineData, IPriceLine } from 'lightweight-charts';
-import { stocksApi, alertsApi } from '../api/client';
+import { stocksApi } from '../api/client';
 
-const periods = [
+interface Candle {
+  date: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+interface MAData {
+  ma20: number[];
+  ma50: number[];
+  ma100: number[];
+}
+
+const TIMEFRAMES = [
   { label: '1분', value: '1m' },
   { label: '5분', value: '5m' },
   { label: '15분', value: '15m' },
@@ -14,597 +27,496 @@ const periods = [
   { label: '1일', value: '1d' },
   { label: '1주', value: '1wk' },
   { label: '1개월', value: '1mo' },
+  { label: '3개월', value: '3mo' },
+  { label: '6개월', value: '6mo' },
+  { label: '1년', value: '1y' },
+  { label: '2년', value: '2y' },
 ];
 
-const chartTypes = [
-  { label: '캔들', value: 'candle', icon: '🕯' },
-  { label: '라인', value: 'line', icon: '📈' },
-  { label: '산형', value: 'area', icon: '⛰' },
-];
-
-const indicators = [
-  { label: 'MA', value: 'ma', color: '#d29922' },
-  { label: 'BB', value: 'bb', color: '#a371f7' },
-  { label: '볼륨', value: 'volume', color: '#58a6ff' },
-  { label: 'RSI', value: 'rsi', color: '#3fb950' },
-  { label: 'MACD', value: 'macd', color: '#f0883e' },
-];
-
-const drawingTools = [
-  { label: '↔', value: 'trendline', title: ' 트렌드선' },
-  { label: '━', value: 'priceLine', title: '가격선' },
-  { label: '🔔', value: 'alert', title: '알림' },
-  { label: '✕', value: 'clear', title: '초기화' },
-];
-
-// Calculate Bollinger Bands
-function calculateBollingerBands(data: any[], period = 20, stdDev = 2) {
-  const upper: LineData[] = [];
-  const middle: LineData[] = [];
-  const lower: LineData[] = [];
-
-  for (let i = period - 1; i < data.length; i++) {
-    const slice = data.slice(i - period + 1, i + 1);
-    const closes = slice.map(d => d.close);
-    const sma = closes.reduce((a, b) => a + b, 0) / period;
-    const variance = closes.reduce((a, b) => a + Math.pow(b - sma, 2), 0) / period;
-    const std = Math.sqrt(variance);
-
-    middle.push({ time: data[i].date.split('T')[0] as Time, value: sma });
-    upper.push({ time: data[i].date.split('T')[0] as Time, value: sma + stdDev * std });
-    lower.push({ time: data[i].date.split('T')[0] as Time, value: sma - stdDev * std });
-  }
-
-  return { upper, middle, lower };
-}
-
-// Calculate MACD
-function calculateMACD(data: any[], fast = 12, slow = 26, signal = 9) {
-  const ema = (values: number[], period: number) => {
-    const k = 2 / (period + 1);
-    let emaArray = [values[0]];
-    for (let i = 1; i < values.length; i++) {
-      emaArray.push(values[i] * k + emaArray[i - 1] * (1 - k));
-    }
-    return emaArray;
-  };
-
-  const closes = data.map(d => d.close);
-  const fastEMA = ema(closes, fast);
-  const slowEMA = ema(closes, slow);
-  const macdLine = fastEMA.map((f, i) => f - slowEMA[i]);
-  const signalEMA = ema(macdLine, signal);
-  const histogram = macdLine.map((m, i) => m - signalEMA[i]);
-
-  const macd: LineData[] = [];
-  const signalLine: LineData[] = [];
-  const hist: HistogramData[] = [];
-
-  const startIdx = slow + signal - 2;
-  for (let i = startIdx; i < data.length; i++) {
-    const time = data[i].date.split('T')[0] as Time;
-    macd.push({ time, value: macdLine[i] });
-    signalLine.push({ time, value: signalEMA[i] });
-    hist.push({
-      time,
-      value: histogram[i],
-      color: histogram[i] >= 0 ? 'rgba(63, 185, 80, 0.7)' : 'rgba(248, 81, 73, 0.7)',
-    });
-  }
-
-  return { macd, signalLine, histogram: hist };
-}
-
-// Calculate RSI
-function calculateRSI(data: any[], period = 14) {
-  const rsi: LineData[] = [];
-
-  for (let i = period; i < data.length; i++) {
-    let gains = 0, losses = 0;
-    for (let j = i - period + 1; j <= i; j++) {
-      const change = data[j].close - data[j - 1].close;
-      if (change > 0) gains += change;
-      else losses += Math.abs(change);
-    }
-    const avgGain = gains / period;
-    const avgLoss = losses / period;
-    const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
-    const rsiValue = 100 - (100 / (1 + rs));
-
-    rsi.push({ time: data[i].date.split('T')[0] as Time, value: rsiValue });
-  }
-
-  return rsi;
-}
-
-// Calculate MA
-function calculateMA(data: any[], period: number) {
-  const ma: LineData[] = [];
-  for (let i = period - 1; i < data.length; i++) {
-    const sum = data.slice(i - period + 1, i + 1).reduce((a, b) => a + b.close, 0);
-    ma.push({ time: data[i].date.split('T')[0] as Time, value: sum / period });
-  }
-  return ma;
-}
-
-interface ChartPanelProps {
-  symbol: string;
-  period: string;
-  chartType: string;
-  activeIndicators: string[];
-  onSymbolChange?: (symbol: string) => void;
-}
-
-function ChartPanel({ symbol: initialSymbol, period, chartType, activeIndicators, onSymbolChange }: ChartPanelProps) {
+export default function ChartPage() {
   const [searchParams] = useSearchParams();
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const volumeContainerRef = useRef<HTMLDivElement>(null);
+  const symbol = searchParams.get('symbol') || 'AAPL';
 
-  const chartRef = useRef<IChartApi | null>(null);
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
-  const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
-  const maSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const bbUpperRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const bbMiddleRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const bbLowerRef = useRef<ISeriesApi<'Line'> | null>(null);
-
-  const priceLinesRef = useRef<IPriceLine[]>([]);
-
-  const urlSymbol = searchParams.get('symbol');
-  const [symbol, setSymbol] = useState(urlSymbol || initialSymbol || 'AAPL');
-  const [searchInput, setSearchInput] = useState(urlSymbol || initialSymbol || 'AAPL');
-  const [price, setPrice] = useState<any>(null);
-  const [loading, setLoading] = useState(false);
+  const [candles, setCandles] = useState<Candle[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
-  const [showAlertForm, setShowAlertForm] = useState(false);
-  const [alertPrice, setAlertPrice] = useState('');
-  const [alertCondition, setAlertCondition] = useState('above');
-  const [alertMessage, setAlertMessage] = useState('');
+  const [timeframe, setTimeframe] = useState('3mo');
+  const [showMA, setShowMA] = useState(true);
+  const [showVolume, setShowVolume] = useState(true);
 
-  const indicatorCount = activeIndicators.length;
+  // 선택된 캔들 (클릭으로 고정)
+  const [selectedCandle, setSelectedCandle] = useState<Candle | null>(null);
+  // 호버 캔들 (마우스 이동 중)
+  const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
 
-  // Initialize main chart
+  // 스케일/줌
+  const [chartScale, setChartScale] = useState(1);
+  const [volumeHeight, setVolumeHeight] = useState(80);
+  const [candlesOnScreen, setCandlesOnScreen] = useState(60);
+
+  // 스크롤 (최신 데이터가 우측)
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStartX, setDragStartX] = useState(0);
+  const [dragStartOffset, setDragStartOffset] = useState(0);
+
+  // 터치 상태
+  const [touchStartX, setTouchStartX] = useState(0);
+  const [touchStartOffset, setTouchStartOffset] = useState(0);
+
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<number | undefined>(undefined);
+
+  // MA 계산
+  const calculateMA = useCallback((data: Candle[]): MAData => {
+    const ma20: number[] = [], ma50: number[] = [], ma100: number[] = [];
+    for (let i = 0; i < data.length; i++) {
+      if (i >= 19) ma20.push(data.slice(i - 19, i + 1).reduce((a, b) => a + b.close, 0) / 20);
+      else ma20.push(NaN);
+      if (i >= 49) ma50.push(data.slice(i - 49, i + 1).reduce((a, b) => a + b.close, 0) / 50);
+      else ma50.push(NaN);
+      if (i >= 99) ma100.push(data.slice(i - 99, i + 1).reduce((a, b) => a + b.close, 0) / 100);
+      else ma100.push(NaN);
+    }
+    return { ma20, ma50, ma100 };
+  }, []);
+
+  // 데이터 로드
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    const loadData = async () => {
+      setLoading(true);
+      setSelectedCandle(null);
+      try {
+        const res = await stocksApi.getHistory(symbol, timeframe);
+        setCandles(res.data);
+        setTimeout(() => {
+          const maxScroll = Math.max(0, res.data.length - candlesOnScreen);
+          setScrollOffset(maxScroll);
+        }, 100);
+        setError('');
+      } catch (err: any) {
+        setError(err.response?.data?.detail || '데이터 로드 실패');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [symbol, timeframe, candlesOnScreen]);
 
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { color: '#0d1117' },
-        textColor: '#8b949e',
-      },
-      grid: {
-        vertLines: { color: '#21262d' },
-        horzLines: { color: '#21262d' },
-      },
-      crosshair: {
-        mode: CrosshairMode.Normal,
-        vertLine: { color: '#58a6ff', width: 1, style: 2, labelBackgroundColor: '#58a6ff' },
-        horzLine: { color: '#58a6ff', width: 1, style: 2, labelBackgroundColor: '#58a6ff' },
-      },
-      rightPriceScale: {
-        borderColor: '#30363d',
-        scaleMargins: { top: 0.05, bottom: indicatorCount > 0 ? 0.25 : 0.1 },
-      },
-      timeScale: {
-        borderColor: '#30363d',
-        timeVisible: true,
-        secondsVisible: false,
-      },
+  // 차트 그리기
+  const drawChart = useCallback(() => {
+    if (!canvasRef.current || candles.length === 0) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width, height = rect.height;
+    const leftMargin = 60, rightMargin = 20, topMargin = 20, bottomMargin = 30;
+    const volHeight = showVolume ? volumeHeight : 0;
+    const chartWidth = width - leftMargin - rightMargin;
+    const chartHeight = height - topMargin - bottomMargin - volHeight - 10;
+    const priceChartHeight = chartHeight * chartScale;
+
+    // 보이는 캔들 범위
+    const maxScroll = Math.max(0, candles.length - candlesOnScreen);
+    const startIndex = Math.min(scrollOffset, maxScroll);
+    const endIndex = Math.min(startIndex + candlesOnScreen, candles.length);
+    const visibleCandles = candles.slice(startIndex, endIndex);
+    if (visibleCandles.length === 0) return;
+
+    // 가격 범위
+    const visiblePrices = visibleCandles.flatMap(c => [c.high, c.low]);
+    const minPrice = Math.min(...visiblePrices);
+    const maxPrice = Math.max(...visiblePrices);
+    const pricePadding = (maxPrice - minPrice) * 0.1;
+    const displayMinPrice = minPrice - pricePadding;
+    const displayMaxPrice = maxPrice + pricePadding;
+    const displayPriceRange = displayMaxPrice - displayMinPrice;
+
+    const maxVolume = showVolume ? Math.max(...visibleCandles.map(c => c.volume || 0)) : 0;
+    const candleWidth = chartWidth / candlesOnScreen;
+    const bodyWidth = Math.max(candleWidth * 0.8, 1);
+
+    const priceToY = (price: number) => topMargin + priceChartHeight * (1 - (price - displayMinPrice) / displayPriceRange);
+    const indexToX = (i: number) => leftMargin + i * candleWidth;
+
+    // 배경
+    ctx.fillStyle = '#0d1117';
+    ctx.fillRect(0, 0, width, height);
+
+    // 그리드
+    ctx.strokeStyle = '#21262d';
+    ctx.lineWidth = 1;
+    const priceStep = displayPriceRange / 6;
+    for (let i = 0; i <= 6; i++) {
+      const price = displayMinPrice + priceStep * i;
+      const y = priceToY(price);
+      ctx.beginPath();
+      ctx.moveTo(leftMargin, y);
+      ctx.lineTo(width - rightMargin, y);
+      ctx.stroke();
+      ctx.fillStyle = '#8b949e';
+      ctx.font = '11px SF Pro Text, -apple-system, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText(price.toFixed(2), leftMargin - 8, y + 4);
+    }
+
+    // 거래량
+    if (showVolume && maxVolume > 0) {
+      const volumeTop = height - bottomMargin - volHeight - 5;
+      visibleCandles.forEach((candle, i) => {
+        const x = indexToX(i);
+        const volH = candle.volume ? (candle.volume / maxVolume) * volHeight : 0;
+        const isUp = candle.close >= candle.open;
+        ctx.fillStyle = isUp ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)';
+        ctx.fillRect(x, volumeTop, bodyWidth, -volH);
+      });
+    }
+
+    // 현재가 라인
+    const lastCandle = visibleCandles[visibleCandles.length - 1];
+    const lastY = priceToY(lastCandle.close);
+    ctx.strokeStyle = lastCandle.close >= lastCandle.open ? '#3fb950' : '#f85149';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(leftMargin, lastY);
+    ctx.lineTo(width - rightMargin, lastY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // MA
+    if (showMA) {
+      const maData = calculateMA(candles);
+      const drawMA = (ma: number[], color: string, lw: number) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        let started = false;
+        ma.slice(startIndex, endIndex).forEach((val, i) => {
+          if (!isNaN(val)) {
+            const x = indexToX(i);
+            const y = priceToY(val);
+            if (!started) { ctx.moveTo(x, y); started = true; }
+            else ctx.lineTo(x, y);
+          }
+        });
+        ctx.stroke();
+      };
+      drawMA(maData.ma100, 'rgba(163, 113, 247, 0.7)', 1);
+      drawMA(maData.ma50, 'rgba(247, 180, 55, 0.8)', 1);
+      drawMA(maData.ma20, 'rgba(210, 153, 34, 0.9)', 1.5);
+    }
+
+    // 캔들
+    visibleCandles.forEach((candle, i) => {
+      const x = indexToX(i);
+      const isUp = candle.close >= candle.open;
+      const color = isUp ? '#3fb950' : '#f85149';
+
+      // 선택/호버 표시
+      const isSelected = selectedCandle?.date === candle.date;
+      const isHovered = hoveredCandle?.date === candle.date;
+
+      // Wick
+      ctx.strokeStyle = isSelected ? '#58a6ff' : color;
+      ctx.lineWidth = isSelected ? 2 : 1;
+      ctx.beginPath();
+      ctx.moveTo(x + candleWidth / 2, priceToY(candle.high));
+      ctx.lineTo(x + candleWidth / 2, priceToY(candle.low));
+      ctx.stroke();
+
+      // Body
+      const bodyTop = Math.min(priceToY(candle.open), priceToY(candle.close));
+      const bodyHeight = Math.abs(priceToY(candle.close) - priceToY(candle.open)) || 1;
+      ctx.fillStyle = isSelected ? '#58a6ff' : color;
+      ctx.fillRect(x + candleWidth * 0.1, bodyTop, bodyWidth, bodyHeight);
+
+      // 호버/선택 테두리
+      if (isHovered || isSelected) {
+        ctx.strokeStyle = '#58a6ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, priceToY(candle.high), bodyWidth, priceToY(candle.low) - priceToY(candle.high));
+      }
     });
 
-    // Click handler for adding price lines
-    chart.subscribeClick((param) => {
-      if (param.point && param.time) {
-        const price = candlestickSeriesRef.current?.coordinateToPrice(param.point.y);
-        if (price) {
-          addPriceLine(price);
+    // 날짜 라벨
+    ctx.fillStyle = '#6e7681';
+    ctx.font = '10px SF Pro Text, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    const labelInterval = Math.ceil(visibleCandles.length / 8);
+    visibleCandles.forEach((candle, i) => {
+      if (i % labelInterval === 0) {
+        const x = indexToX(i) + candleWidth / 2;
+        const date = candle.date.split('T')[0].slice(5);
+        ctx.fillText(date, x, height - 8);
+      }
+    });
+
+    // 스크롤바
+    if (candles.length > candlesOnScreen) {
+      const scrollBarH = 4, scrollBarW = chartWidth;
+      const scrollBarY = height - bottomMargin - scrollBarH - 2;
+      const thumbW = (candlesOnScreen / candles.length) * scrollBarW;
+      const thumbX = leftMargin + (scrollOffset / maxScroll) * (scrollBarW - thumbW);
+      ctx.fillStyle = '#21262d';
+      ctx.fillRect(leftMargin, scrollBarY, scrollBarW, scrollBarH);
+      ctx.fillStyle = '#58a6ff';
+      ctx.fillRect(thumbX, scrollBarY, thumbW, scrollBarH);
+    }
+
+    // 정보 박스 (선택된 캔들 또는 호버 캔들)
+    const activeCandle = selectedCandle || hoveredCandle;
+    if (activeCandle) {
+      const idx = visibleCandles.findIndex(c => c.date === activeCandle.date);
+      if (idx >= 0) {
+        const x = indexToX(idx) + candleWidth / 2;
+        const y = priceToY(activeCandle.high);
+
+        // 크로스헤어
+        ctx.strokeStyle = 'rgba(88, 166, 255, 0.5)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(leftMargin, y);
+        ctx.lineTo(width - rightMargin, y);
+        ctx.moveTo(x, topMargin);
+        ctx.lineTo(x, height - bottomMargin);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // 박스
+        const boxW = 140, boxH = 90;
+        const boxX = Math.min(x + 10, width - boxW - 10);
+        const boxY = Math.max(y - boxH - 10, 10);
+        ctx.fillStyle = 'rgba(22, 27, 34, 0.95)';
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeStyle = '#30363d';
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+
+        ctx.font = '11px SF Pro Text, -apple-system, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#f0f6fc';
+        ctx.fillText(activeCandle.date.split('T')[0], boxX + 8, boxY + 16);
+
+        ctx.fillStyle = '#8b949e';
+        ['O:', 'H:', 'L:', 'C:'].forEach((label, j) => {
+          ctx.fillText(label, boxX + 8, boxY + 32 + j * 16);
+        });
+
+        const isUp = activeCandle.close >= activeCandle.open;
+        ctx.fillStyle = isUp ? '#3fb950' : '#f85149';
+        ctx.textAlign = 'right';
+        [activeCandle.open, activeCandle.high, activeCandle.low, activeCandle.close].forEach((v, j) => {
+          ctx.fillText(v.toFixed(2), boxX + boxW - 8, boxY + 32 + j * 16);
+        });
+
+        // 선택 표시
+        if (selectedCandle) {
+          ctx.fillStyle = '#58a6ff';
+          ctx.font = '10px sans-serif';
+          ctx.fillText('✓ 선택됨', boxX + 8, boxY + boxH - 5);
         }
       }
-    });
+    }
 
-    chartRef.current = chart;
+  }, [candles, showMA, showVolume, hoveredCandle, selectedCandle, scrollOffset, chartScale, volumeHeight, candlesOnScreen, calculateMA]);
 
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        const container = chartContainerRef.current;
-        chart.applyOptions({
-          width: container.clientWidth || 300,
-          height: Math.max(container.clientHeight || 200, 200),
-        });
-      }
-    };
+  // 애니메이션
+  useEffect(() => {
+    const animate = () => { drawChart(); animationRef.current = requestAnimationFrame(animate); };
+    animate();
+    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
+  }, [drawChart]);
 
-    // Initial resize after mount
-    setTimeout(handleResize, 100);
+  // 리사이즈
+  useEffect(() => {
+    const handleResize = () => drawChart();
     window.addEventListener('resize', handleResize);
-    // Also handle orientation change on mobile
-    window.addEventListener('orientationchange', () => setTimeout(handleResize, 200));
+    return () => window.removeEventListener('resize', handleResize);
+  }, [drawChart]);
 
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      chart.remove();
-    };
-  }, [indicatorCount]);
-
-  const addPriceLine = (priceValue: number) => {
-    if (!chartRef.current || !candlestickSeriesRef.current) return;
-
-    const priceLine = candlestickSeriesRef.current.createPriceLine({
-      price: priceValue,
-      color: '#58a6ff',
-      lineWidth: 1,
-      lineStyle: 2, // Dashed
-      axisLabelVisible: true,
-      title: `$${priceValue.toFixed(2)}`,
-    });
-
-    priceLinesRef.current.push(priceLine);
+  // 마우스 이벤트
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    setIsDragging(true);
+    setDragStartX(e.clientX);
+    setDragStartOffset(scrollOffset);
   };
 
-  const clearPriceLines = () => {
-    priceLinesRef.current.forEach((pl) => {
-      candlestickSeriesRef.current?.removePriceLine(pl);
-    });
-    priceLinesRef.current = [];
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDragging) {
+      const deltaX = dragStartX - e.clientX;
+      const maxScroll = Math.max(0, candles.length - candlesOnScreen);
+      const scrollAmount = (deltaX / (window.innerWidth - 80)) * candles.length;
+      setScrollOffset(Math.max(0, Math.min(maxScroll, dragStartOffset + scrollAmount)));
+      return;
+    }
+
+    if (!canvasRef.current || candles.length === 0) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const leftMargin = 60;
+    const chartWidth = rect.width - leftMargin - 20;
+    const candleW = chartWidth / candlesOnScreen;
+    const idx = Math.floor((x - leftMargin) / candleW) + scrollOffset;
+
+    if (idx >= 0 && idx < candles.length) setHoveredCandle(candles[idx]);
+    else setHoveredCandle(null);
   };
 
-  // Create series based on chart type
-  useEffect(() => {
-    if (!chartRef.current) return;
+  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseLeave = () => { setIsDragging(false); setHoveredCandle(null); };
 
-    if (candlestickSeriesRef.current) {
-      chartRef.current.removeSeries(candlestickSeriesRef.current);
-      candlestickSeriesRef.current = null;
-    }
+  // 클릭으로 캔들 선택
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current || candles.length === 0) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const leftMargin = 60;
+    const chartWidth = rect.width - leftMargin - 20;
+    const candleW = chartWidth / candlesOnScreen;
+    const idx = Math.floor((x - leftMargin) / candleW) + scrollOffset;
 
-    switch (chartType) {
-      case 'candle':
-        const candleSeries = chartRef.current.addSeries(CandlestickSeries, {
-          upColor: '#3fb950', downColor: '#f85149',
-          borderUpColor: '#3fb950', borderDownColor: '#f85149',
-          wickUpColor: '#3fb950', wickDownColor: '#f85149',
-        });
-        candlestickSeriesRef.current = candleSeries as any;
-        break;
-      case 'line':
-        const lineSeries = chartRef.current.addSeries(LineSeries, {
-          color: '#58a6ff', lineWidth: 2, priceLineVisible: false,
-        });
-        candlestickSeriesRef.current = lineSeries as any;
-        break;
-      case 'area':
-        const areaSeries = chartRef.current.addSeries(AreaSeries, {
-          lineColor: '#58a6ff', topColor: 'rgba(88, 166, 255, 0.4)',
-          bottomColor: 'rgba(88, 166, 255, 0.0)', lineWidth: 2, priceLineVisible: false,
-        });
-        candlestickSeriesRef.current = areaSeries as any;
-        break;
-    }
-
-    if (activeIndicators.includes('ma')) {
-      const maSeries = chartRef.current.addSeries(LineSeries, {
-        color: '#d29922', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-      });
-      maSeriesRef.current = maSeries;
-    }
-
-    if (activeIndicators.includes('bb')) {
-      const upper = chartRef.current.addSeries(LineSeries, { color: 'rgba(163, 113, 247, 0.5)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-      const middle = chartRef.current.addSeries(LineSeries, { color: '#a371f7', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
-      const lower = chartRef.current.addSeries(LineSeries, { color: 'rgba(163, 113, 247, 0.5)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-      bbUpperRef.current = upper;
-      bbMiddleRef.current = middle;
-      bbLowerRef.current = lower;
-    }
-
-  }, [chartType, activeIndicators]);
-
-  // Volume sub-chart
-  useEffect(() => {
-    if (!activeIndicators.includes('volume')) return;
-    if (!volumeContainerRef.current) return;
-
-    const chart = createChart(volumeContainerRef.current, {
-      layout: { background: { color: '#0d1117' }, textColor: '#8b949e' },
-      grid: { vertLines: { color: '#21262d' }, horzLines: { color: '#21262d' } },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#30363d', scaleMargins: { top: 0.1, bottom: 0 } },
-      timeScale: { visible: false, borderColor: '#30363d' },
-      height: 80,
-    });
-
-    const volumeSeries = chart.addSeries(HistogramSeries, {
-      color: '#58a6ff', priceFormat: { type: 'volume' }, priceLineVisible: false,
-    });
-
-    volumeSeriesRef.current = volumeSeries;
-    chartRef.current?.timeScale().subscribeVisibleLogicalRangeChange((range) => {
-      if (range) chart.timeScale().setVisibleLogicalRange(range);
-    });
-
-    return () => { chart.remove(); };
-  }, [activeIndicators]);
-
-  // Fetch data
-  const fetchData = useCallback(async (sym: string, periodValue: string) => {
-    setLoading(true);
-    setError('');
-
-    try {
-      const [priceRes, historyRes] = await Promise.all([
-        stocksApi.getPrice(sym),
-        stocksApi.getHistory(sym, periodValue),
-      ]);
-
-      setPrice(priceRes.data);
-      onSymbolChange?.(sym);
-
-      const history = historyRes.data;
-      if (!history || history.length === 0) {
-        setError('데이터가 없습니다');
-        setLoading(false);
-        return;
+    if (idx >= 0 && idx < candles.length) {
+      const clickedCandle = candles[idx];
+      // 같은 캔들 다시 클릭 시 해제
+      if (selectedCandle?.date === clickedCandle.date) {
+        setSelectedCandle(null);
+      } else {
+        setSelectedCandle(clickedCandle);
       }
-
-      const candleData: CandlestickData[] = history.map((item: any) => ({
-        time: item.date.split('T')[0] as Time,
-        open: item.open, high: item.high, low: item.low, close: item.close,
-      }));
-
-      const lineData: LineData[] = history.map((item: any) => ({
-        time: item.date.split('T')[0] as Time, value: item.close,
-      }));
-
-      const volumeData: HistogramData[] = history.map((item: any) => ({
-        time: item.date.split('T')[0] as Time,
-        value: item.volume,
-        color: item.close >= item.open ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)',
-      }));
-
-      if (candlestickSeriesRef.current) {
-        candlestickSeriesRef.current.setData(chartType === 'candle' ? candleData : lineData);
-      }
-
-      if (maSeriesRef.current) {
-        maSeriesRef.current.setData(calculateMA(history, 20));
-      }
-
-      if (bbUpperRef.current && bbMiddleRef.current && bbLowerRef.current) {
-        const bb = calculateBollingerBands(history);
-        bbUpperRef.current.setData(bb.upper);
-        bbMiddleRef.current.setData(bb.middle);
-        bbLowerRef.current.setData(bb.lower);
-      }
-
-      chartRef.current?.timeScale().fitContent();
-
-      if (volumeSeriesRef.current) {
-        volumeSeriesRef.current.setData(volumeData);
-      }
-
-    } catch (err: any) {
-      console.error('Chart error:', err);
-      setError(err.response?.data?.detail || '차트 데이터를 불러오는데 실패했습니다');
-    } finally {
-      setLoading(false);
-    }
-  }, [chartType, onSymbolChange]);
-
-  useEffect(() => {
-    fetchData(symbol, period);
-  }, [symbol, period]);
-
-  // Real-time price update
-  useEffect(() => {
-    const interval = setInterval(async () => {
-      try {
-        const res = await stocksApi.getPrice(symbol);
-        setPrice(res.data);
-      } catch (e) {}
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [symbol]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchInput.trim()) {
-      setSymbol(searchInput.toUpperCase().trim());
-      fetchData(searchInput.toUpperCase().trim(), period);
-      setShowSearch(false);
     }
   };
 
-  const handleCreateAlert = async () => {
-    if (!alertPrice || !symbol) return;
-
-    try {
-      await alertsApi.create({
-        symbol,
-        condition: alertCondition,
-        target_value: parseFloat(alertPrice),
-      });
-      setAlertMessage('알림이 등록되었습니다!');
-      setAlertPrice('');
-      setShowAlertForm(false);
-      setTimeout(() => setAlertMessage(''), 3000);
-    } catch (err: any) {
-      setAlertMessage(err.response?.data?.detail || '알림 등록 실패');
+  // 휠: 아래로=최신, 위로=과거 (방향 반전)
+  const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
+    const maxScroll = Math.max(0, candles.length - candlesOnScreen);
+    //Ctrl+휠 또는 핀치 줌 시 시간축 줌
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -5 : 5;
+      setCandlesOnScreen(Math.max(20, Math.min(candles.length, candlesOnScreen + delta)));
+    } else {
+      // 일반 휠: 아래로=최신 (scrollOffset 감소), 위로=과거 (scrollOffset 증가)
+      const scrollAmount = e.deltaY > 0 ? -Math.ceil(candles.length / 20) : Math.ceil(candles.length / 20);
+      setScrollOffset(Math.max(0, Math.min(maxScroll, scrollOffset - scrollAmount)));
     }
   };
+
+  // 터치 이벤트 (모바일)
+  const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      setTouchStartX(e.touches[0].clientX);
+      setTouchStartOffset(scrollOffset);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
+    if (e.touches.length === 1) {
+      const deltaX = touchStartX - e.touches[0].clientX;
+      const maxScroll = Math.max(0, candles.length - candlesOnScreen);
+      const scrollAmount = (deltaX / 100) * candles.length;
+      setScrollOffset(Math.max(0, Math.min(maxScroll, touchStartOffset + scrollAmount)));
+    }
+  };
+
+  // 줌 버튼
+  const zoomIn = () => setCandlesOnScreen(Math.max(20, candlesOnScreen - 10));
+  const zoomOut = () => setCandlesOnScreen(Math.min(candles.length, candlesOnScreen + 10));
 
   const formatPrice = (num: number | undefined) => {
     if (num === undefined || num === null) return '-';
     return num.toLocaleString('ko-KR', { maximumFractionDigits: 2 });
   };
 
+  const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : null;
+  const firstPrice = candles.length > 0 ? candles[0].open : null;
+  const changePct = currentPrice && firstPrice ? ((currentPrice - firstPrice) / firstPrice * 100) : null;
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Symbol & Price Bar */}
-      <div className="flex items-center justify-between px-3 py-2 bg-[#161b22] border-b border-[#30363d]">
+    <div className="flex flex-col h-[100dvh] w-full bg-[#0d1117]">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between px-3 py-2 bg-[#161b22] border-b border-[#30363d] gap-2 shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={() => setShowSearch(!showSearch)} className="text-lg font-bold text-[#f0f6fc] hover:text-[#58a6ff]">
-            {symbol}
-          </button>
-          {showSearch && (
-            <input type="text" value={searchInput} onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch(e as any)} placeholder="종목코드"
-              className="w-24 px-2 py-1 bg-[#21262d] border border-[#30363d] rounded text-sm text-[#f0f6fc] focus:outline-none focus:border-[#58a6ff]" autoFocus />
-          )}
-          <div className="flex flex-col">
-            <span className="text-lg font-bold text-[#f0f6fc]">${formatPrice(price?.price)}</span>
-            <span className={`text-xs ${(price?.change_pct || 0) >= 0 ? 'text-[#3fb950]' : 'text-[#f85149]'}`}>
-              {(price?.change_pct || 0) >= 0 ? '+' : ''}{formatPrice(price?.change_pct)}%
-            </span>
-          </div>
-        </div>
-
-        {/* Alert Button */}
-        <div className="relative">
-          <button
-            onClick={() => setShowAlertForm(!showAlertForm)}
-            className="px-3 py-1 bg-[#f0883e]/20 text-[#f0883e] rounded-lg text-sm hover:bg-[#f0883e]/30"
-          >
-            🔔 알림
-          </button>
-
-          {showAlertForm && (
-            <div className="absolute right-0 top-full mt-2 w-64 bg-[#161b22] border border-[#30363d] rounded-lg p-4 z-50 shadow-xl">
-              <div className="text-sm font-medium text-[#f0f6fc] mb-3">가격 알림 설정</div>
-              {alertMessage && (
-                <div className="mb-2 p-2 text-xs bg-[#3fb950]/20 text-[#3fb950] rounded">{alertMessage}</div>
-              )}
-              <div className="space-y-2">
-                <input
-                  type="number"
-                  value={alertPrice}
-                  onChange={(e) => setAlertPrice(e.target.value)}
-                  placeholder="가격 입력"
-                  className="w-full px-3 py-2 bg-[#21262d] border border-[#30363d] rounded text-sm text-[#f0f6fc]"
-                />
-                <select
-                  value={alertCondition}
-                  onChange={(e) => setAlertCondition(e.target.value)}
-                  className="w-full px-3 py-2 bg-[#21262d] border border-[#30363d] rounded text-sm text-[#f0f6fc]"
-                >
-                  <option value="above">이상</option>
-                  <option value="below">이하</option>
-                </select>
-                <button
-                  onClick={handleCreateAlert}
-                  className="w-full py-2 bg-[#58a6ff] text-white rounded text-sm font-medium hover:bg-[#58a6ff]/90"
-                >
-                  알림 등록
-                </button>
-              </div>
+          <span className="text-lg font-bold text-[#f0f6fc]">{symbol}</span>
+          {currentPrice && (
+            <div className="flex flex-col">
+              <span className="text-lg font-bold text-[#f0f6fc]">${formatPrice(currentPrice)}</span>
+              <span className={`text-xs ${changePct && changePct >= 0 ? 'text-[#3fb950]' : 'text-[#f85149]'}`}>
+                {changePct !== null && (changePct >= 0 ? '+' : '')}{formatPrice(changePct ?? undefined)}%
+              </span>
             </div>
           )}
         </div>
+
+        {/* Timeframes */}
+        <div className="flex items-center gap-1 overflow-x-auto max-w-[300px]">
+          {TIMEFRAMES.map((tf) => (
+            <button
+              key={tf.value}
+              onClick={() => setTimeframe(tf.value)}
+              className={`px-2 py-1 rounded text-xs whitespace-nowrap ${timeframe === tf.value ? 'bg-[#58a6ff] text-white' : 'text-[#8b949e] hover:text-[#f0f6fc]'}`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center gap-1">
+          {/* 시간축 줌 */}
+          <button onClick={zoomIn} className="px-2 py-1 bg-[#21262d] text-[#8b949e] rounded text-xs hover:text-[#f0f6fc]">−</button>
+          <span className="px-1 text-xs text-[#8b949e]">{candlesOnScreen}</span>
+          <button onClick={zoomOut} className="px-2 py-1 bg-[#21262d] text-[#8b949e] rounded text-xs hover:text-[#f0f6fc]">+</button>
+
+          {/* 가격 스케일 */}
+          <button onClick={() => setChartScale(Math.max(0.5, chartScale - 0.1))} className="px-2 py-1 bg-[#21262d] text-[#8b949e] rounded text-xs">−</button>
+          <span className="px-1 text-xs text-[#8b949e]">{Math.round(chartScale * 100)}%</span>
+          <button onClick={() => setChartScale(Math.min(2, chartScale + 0.1))} className="px-2 py-1 bg-[#21262d] text-[#8b949e] rounded text-xs">+</button>
+
+          {/* 거래량 */}
+          <button onClick={() => setVolumeHeight(Math.max(0, volumeHeight - 20))} className="px-2 py-1 bg-[#21262d] text-[#8b949e] rounded text-xs">▼</button>
+          <button onClick={() => setVolumeHeight(Math.min(150, volumeHeight + 20))} className="px-2 py-1 bg-[#21262d] text-[#8b949e] rounded text-xs">▲</button>
+
+          <button onClick={() => setShowMA(!showMA)} className={`px-2 py-1 rounded text-xs ${showMA ? 'bg-[#d29922] text-white' : 'bg-[#21262d] text-[#8b949e]'}`}>MA</button>
+          <button onClick={() => setShowVolume(!showVolume)} className={`px-2 py-1 rounded text-xs ${showVolume ? 'bg-[#58a6ff] text-white' : 'bg-[#21262d] text-[#8b949e]'}`}>Vol</button>
+        </div>
       </div>
 
-      {/* Chart Area */}
-      <div className="flex-1 flex flex-col">
+      {/* Chart */}
+      <div ref={containerRef} className="flex-1 w-full">
         {loading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-8 h-8 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin"></div>
+          <div className="flex items-center justify-center h-full">
+            <div className="w-8 h-8 border-2 border-[#58a6ff] border-t-transparent rounded-full animate-spin" />
           </div>
         ) : error ? (
-          <div className="flex-1 flex items-center justify-center text-[#f85149]">{error}</div>
+          <div className="flex items-center justify-center h-full text-[#f85149]">{error}</div>
         ) : (
-          <>
-            <div ref={chartContainerRef} className="flex-1" />
-            {activeIndicators.includes('volume') && (
-              <div ref={volumeContainerRef} className="h-20 border-t border-[#21262d]" />
-            )}
-          </>
+          <canvas
+            ref={canvasRef}
+            className={`w-full h-full ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseLeave}
+            onClick={handleClick}
+            onWheel={handleWheel}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+          />
         )}
       </div>
-    </div>
-  );
-}
 
-export default function ChartMulti() {
-  const [searchParams] = useSearchParams();
-  const [symbol, setSymbol] = useState(searchParams.get('symbol') || 'AAPL');
-  const [period, setPeriod] = useState('1y');
-  const [chartType, setChartType] = useState('candle');
-  const [activeIndicators, setActiveIndicators] = useState<string[]>(['volume']);
-  const [viewMode, setViewMode] = useState<'single' | 'quad'>('single');
-  const [showToolbar, setShowToolbar] = useState(true);
-
-  const toggleIndicator = (ind: string) => {
-    setActiveIndicators(prev =>
-      prev.includes(ind) ? prev.filter(i => i !== ind) : [...prev, ind]
-    );
-  };
-
-  return (
-    <div className="flex flex-col bg-[#0d1117]" style={{ height: '100dvh' }}>
-      {/* Top Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
-        {/* Left: Symbol */}
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-bold text-[#f0f6fc]">{symbol}</span>
-        </div>
-
-        {/* Center: Chart Type */}
-        <div className="flex items-center gap-1 bg-[#21262d] rounded-lg p-1">
-          {chartTypes.map((type) => (
-            <button key={type.value} onClick={() => setChartType(type.value)}
-              className={`px-3 py-1 rounded text-sm ${chartType === type.value ? 'bg-[#58a6ff] text-white' : 'text-[#8b949e] hover:text-[#f0f6fc]'}`}>
-              {type.icon} {type.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Period */}
-        <div className="flex items-center gap-1 bg-[#21262d] rounded-lg p-1">
-          {periods.map((p) => (
-            <button key={p.value} onClick={() => setPeriod(p.value)}
-              className={`px-2 py-1 rounded text-xs ${period === p.value ? 'bg-[#58a6ff] text-white' : 'text-[#8b949e] hover:text-[#f0f6fc]'}`}>
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Indicators */}
-        <div className="flex items-center gap-1">
-          {indicators.map((ind) => (
-            <button key={ind.value} onClick={() => toggleIndicator(ind.value)}
-              className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                activeIndicators.includes(ind.value)
-                  ? 'text-white' : 'bg-[#21262d] text-[#8b949e] hover:text-[#f0f6fc]'
-              }`}
-              style={activeIndicators.includes(ind.value) ? { backgroundColor: ind.color } : {}}
-            >
-              {ind.label}
-            </button>
-          ))}
-        </div>
-
-        {/* View Mode */}
-        <div className="flex items-center gap-1">
-          <button onClick={() => setViewMode('single')} className={`px-3 py-1 rounded text-sm ${viewMode === 'single' ? 'bg-[#58a6ff] text-white' : 'bg-[#21262d] text-[#8b949e]'}`}>
-            1분할
-          </button>
-          <button onClick={() => setViewMode('quad')} className={`px-3 py-1 rounded text-sm ${viewMode === 'quad' ? 'bg-[#58a6ff] text-white' : 'bg-[#21262d] text-[#8b949e]'}`}>
-            4분할
-          </button>
-        </div>
-      </div>
-
-      {/* Chart Area */}
-      <div className="flex-1 overflow-hidden">
-        {viewMode === 'single' ? (
-          <ChartPanel symbol={symbol} period={period} chartType={chartType} activeIndicators={activeIndicators} onSymbolChange={setSymbol} />
-        ) : (
-          <div className="grid grid-cols-2 grid-rows-2 h-full gap-0.5 bg-[#30363d]">
-            <div className="bg-[#0d1117]"><ChartPanel symbol={symbol} period={period} chartType={chartType} activeIndicators={activeIndicators} /></div>
-            <div className="bg-[#0d1117]"><ChartPanel symbol="MSFT" period={period} chartType={chartType} activeIndicators={activeIndicators} /></div>
-            <div className="bg-[#0d1117]"><ChartPanel symbol="GOOGL" period={period} chartType={chartType} activeIndicators={activeIndicators} /></div>
-            <div className="bg-[#0d1117]"><ChartPanel symbol="NVDA" period={period} chartType={chartType} activeIndicators={activeIndicators} /></div>
-          </div>
-        )}
+      <div className="px-3 py-1 bg-[#161b22] border-t border-[#30363d] text-xs text-[#6e7681]">
+        드래그/스와이프로 이동 • 클릭으로 캔들 선택 • Ctrl+휠로 줌
       </div>
     </div>
   );
