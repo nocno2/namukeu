@@ -1,6 +1,7 @@
 import json
 import logging
 import smtplib
+import time
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -345,10 +346,22 @@ class EmailNotifier:
 
 
 class CompositeNotifier:
-    """여러 알림 채널을 동시에 지원하는 컴포지트 노티파이어."""
+    """여러 알림 채널을 동시에 지원하는 컴포지트 노티파이어.
 
-    def __init__(self, notifiers: list):
+    알림 빈도 제한 기능:
+    - 동일한 에러 코드에 대해 일정 시간(기본 60초) 이내의 중복 알림은 건너뛰기
+    - 치명적 에러와 예약 성공/실패는 항상 알림
+    """
+
+    # 알림 간 최소 간격 (초)
+    DEFAULT_RATE_LIMIT_SECONDS = 60
+
+    def __init__(self, notifiers: list, rate_limit_seconds: int = DEFAULT_RATE_LIMIT_SECONDS):
         self._notifiers = notifiers
+        self._rate_limit_seconds = rate_limit_seconds
+        self._last_notification_time: dict[str, float] = {}  # 에러 코드별 마지막 알림 시간
+        self._last_error_code: str | None = None  # 마지막 에러 코드
+        self._last_notification_reservation_id: int | None = None  # 마지막 알림을 보낸 예약 ID
 
     async def notify_reservation_success(self, reservation: dict, train_info: dict):
         for notifier in self._notifiers:
@@ -366,8 +379,39 @@ class CompositeNotifier:
         for notifier in self._notifiers:
             await notifier.notify_progress(reservation, search_count, elapsed_min)
 
+    def _should_notify(self, error_type: str, reservation_id: int) -> bool:
+        """알림을 보내야 하는지 확인 (rate limiting).
+
+        - 치명적 에러나 예약 성공/실패는 항상 알림
+        - 일반 에러는 동일 에러 코드 + 동일 예약에 대해 rate limit 적용
+
+        Returns:
+            True if notification should be sent
+        """
+        now = time.time()
+        key = f"{error_type}:{reservation_id}"
+
+        # 동일 에러 + 동일 예약을 위한 키
+        if key in self._last_notification_time:
+            elapsed = now - self._last_notification_time[key]
+            if elapsed < self._rate_limit_seconds:
+                logger.debug(f"알림 스킵 (rate limit): {error_type}, 경과 {elapsed:.1f}초")
+                return False
+
+        # 상태 업데이트
+        self._last_notification_time[key] = now
+        self._last_error_code = error_type
+        self._last_notification_reservation_id = reservation_id
+        return True
+
     async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
-        """에러 발생 알림."""
+        """에러 발생 알림 (rate limiting 적용)."""
+        reservation_id = reservation.get("id", 0)
+
+        # Rate limit 확인
+        if not self._should_notify(error_type, reservation_id):
+            return
+
         for notifier in self._notifiers:
             if hasattr(notifier, "notify_error"):
                 await notifier.notify_error(reservation, error_type, error_msg)
@@ -376,7 +420,8 @@ class CompositeNotifier:
                 await notifier.notify_reservation_failed(reservation, f"{error_type}: {error_msg[:50]}")
 
     async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
-        """치명적 에러 발생 알림 (이메일 등 주요 채널)."""
+        """치명적 에러 발생 알림 (항상 전송)."""
+        # 치명적 에러는 항상 전송 (rate limit 적용 안 함)
         for notifier in self._notifiers:
             if hasattr(notifier, "notify_critical_error"):
                 await notifier.notify_critical_error(reservation, error_type, error_msg)
