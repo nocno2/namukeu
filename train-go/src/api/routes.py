@@ -199,6 +199,17 @@ def get_all_error_stats(
     return ErrorPatternStats(**stats)
 
 
+@router.delete("/logs/cleanup")
+def cleanup_logs(
+    keep_days: int = 7,
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """오래된 검색 로그 정리. keep_days 이내의 로그만 보관."""
+    deleted = db.cleanup_old_logs(keep_days=keep_days)
+    return {"message": f"{deleted}개 로그 삭제 완료", "keep_days": keep_days}
+
+
 # --- System ---
 
 

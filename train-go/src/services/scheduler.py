@@ -46,6 +46,10 @@ class ReservationScheduler:
         "UNKNOWN": {"backoff": 5, "max_retries": 5},
     }
 
+    # 로그 정리 주기 (초)
+    LOG_CLEANUP_INTERVAL = 24 * 60 * 60  # 24시간
+    LOG_KEEP_DAYS = 7  # 로그 보관 기간
+
     # 예상 결과 에러 코드 집합 (연속 에러 카운트에 포함 안 함)
     EXPECTED_OUTCOMES = {"SEAT_NOT_AVAILABLE", "TRAIN_NOT_FOUND"}
 
@@ -67,6 +71,7 @@ class ReservationScheduler:
         self.max_duration_hours = max_duration_hours
         self.progress_report_minutes = progress_report_minutes
         self._tasks: dict[int, asyncio.Task] = {}
+        self._cleanup_task: asyncio.Task | None = None
 
     def start_search(self, reservation_id: int):
         if reservation_id in self._tasks:
@@ -163,6 +168,22 @@ class ReservationScheduler:
             delay = random.uniform(self.STARTUP_DELAY_MIN, self.STARTUP_DELAY_MAX)
             await asyncio.sleep(delay)
             self.start_search(rid)
+
+        # 로그 정리 백그라운드 태스크 시작
+        self._cleanup_task = asyncio.create_task(self._log_cleanup_loop())
+
+    async def _log_cleanup_loop(self):
+        """주기적으로 오래된 검색 로그 정리 (24시간마다)"""
+        while True:
+            try:
+                await asyncio.sleep(self.LOG_CLEANUP_INTERVAL)
+                deleted = self.db.cleanup_old_logs(keep_days=self.LOG_KEEP_DAYS)
+                if deleted > 0:
+                    logger.info(f"자동 로그 정리 완료: {deleted}개 삭제 (보관 {self.LOG_KEEP_DAYS}일)")
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"로그 정리 중 오류: {e}")
 
     async def _search_loop(self, reservation_id: int):
         reservation = self.db.get_reservation(reservation_id)

@@ -92,6 +92,9 @@ async def lifespan(app: FastAPI):
         task = scheduler.stop_search(rid)
         if task:
             tasks.append(task)
+    if scheduler._cleanup_task:
+        scheduler._cleanup_task.cancel()
+        tasks.append(scheduler._cleanup_task)
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
     db.close()
