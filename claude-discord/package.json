@@ -8,8 +8,9 @@
     "register": "bun run src/register-commands.ts"
   },
   "dependencies": {
-    "discord.js": "^14.17.0",
-    "@namukeu/playwright-mcp": "file:../shared/playwright-mcp"
+    "@namukeu/agent-core": "file:../shared/agent-core",
+    "@namukeu/playwright-mcp": "file:../shared/playwright-mcp",
+    "discord.js": "^14.17.0"
   },
   "devDependencies": {
     "@types/bun": "latest"

@@ -4,6 +4,8 @@ import { acquireLock, releaseLock } from "./session";
 import { createBot } from "./bot";
 import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
 import { stopScheduler } from "./scheduler";
+import { killActiveChild } from "./claude";
+import { startSettingsServer, loadSettings } from "./settings-api";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -88,12 +90,17 @@ async function main(): Promise<void> {
   // Cleanup on exit
   const cleanup = async () => {
     stopScheduler();
+    killActiveChild();
     await stopPlaywrightMCP();
     await releaseLock();
     process.exit(0);
   };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
+
+  // Start settings API server
+  await startSettingsServer();
+  await loadSettings();
 
   const client = await createBot();
 
