@@ -499,7 +499,10 @@ def service_logs(
 
 # --- Blog Traffic ---
 
-BLOG_DB_PATH = "/Users/namwook/Documents/namukeu/ai-blog/data/blog.db"
+BLOG_DB_PATH = os.environ.get(
+    "BLOG_DB_PATH",
+    "/Users/namwook/Documents/namukeu/ai-blog/data/blog.db"
+)
 
 
 @router.get("/blog/traffic")
