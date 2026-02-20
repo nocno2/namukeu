@@ -847,6 +847,7 @@ async function coinApiDirect(path: string): Promise<any> {
       try {
         body = await resp.text();
       } catch {}
+      // 상세 에러 정보 로깅 (console + 파일)
       const errorMsg = `[coin-direct] API Error | ${status} ${statusText} | path: ${path} | body: ${body.slice(0, 500)}`;
       console.error(errorMsg);
       await logGateError(errorMsg);
@@ -856,14 +857,17 @@ async function coinApiDirect(path: string): Promise<any> {
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === "AbortError";
     const isNetworkError = err instanceof TypeError && err.message.includes("fetch");
+    const stack = err instanceof Error ? err.stack : "";
     if (isTimeout) {
-      const errorMsg = `[coin-direct] Timeout | ${COIN_TIMEOUT_MS}ms | path: ${path}`;
+      const errorMsg = `[coin-direct] Timeout | ${COIN_TIMEOUT_MS}ms | path: ${path}\nStack: ${stack}`;
       console.error(errorMsg);
+      await logGateError(errorMsg);
       throw new Error(`COIN direct timeout after ${COIN_TIMEOUT_MS}ms: ${path}`);
     }
     if (isNetworkError) {
-      const errorMsg = `[coin-direct] Network Error | path: ${path} | error: ${err}`;
+      const errorMsg = `[coin-direct] Network Error | path: ${path} | error: ${err}\nStack: ${stack}`;
       console.error(errorMsg);
+      await logGateError(errorMsg);
       throw new Error(`COIN direct network error: ${err}`);
     }
     throw err;
