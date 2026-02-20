@@ -390,18 +390,35 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
-    def update_order_state(self, order_id: int, state: str, executed_at: str | None = None, price: float | None = None):
+    def update_order_state(
+        self,
+        order_id: int,
+        state: str,
+        executed_at: str | None = None,
+        price: float | None = None,
+        volume: float | None = None,
+        amount_krw: float | None = None,
+    ):
         now = executed_at or datetime.now().isoformat()
+
+        # Build dynamic update query
+        updates = ["state = ?", "executed_at = ?"]
+        params = [state, now]
+
         if price is not None:
-            self.conn.execute(
-                "UPDATE orders SET state = ?, executed_at = ?, price = ? WHERE id = ?",
-                (state, now, price, order_id),
-            )
-        else:
-            self.conn.execute(
-                "UPDATE orders SET state = ?, executed_at = ? WHERE id = ?",
-                (state, now, order_id),
-            )
+            updates.append("price = ?")
+            params.append(price)
+        if volume is not None:
+            updates.append("volume = ?")
+            params.append(volume)
+        if amount_krw is not None:
+            updates.append("amount_krw = ?")
+            params.append(amount_krw)
+
+        params.append(order_id)
+
+        query = f"UPDATE orders SET {', '.join(updates)} WHERE id = ?"
+        self.conn.execute(query, params)
         self.conn.commit()
 
     def get_orders(self, ticker: str | None = None, limit: int = 50, offset: int = 0) -> list[dict]:
