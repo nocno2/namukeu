@@ -22,6 +22,7 @@ import {
   getRevenueForecast,
   getRevenueBySource,
   getFormattedInsights,
+  getInsightsWithActions,
   syncAllRevenue,
   getRevenueStatusAll,
   checkGoalAlerts,
@@ -32,6 +33,7 @@ import {
   acknowledgeAllActions,
   getNewActionsCount,
   getFormattedSourcePerformance,
+  type InsightActionType,
 } from "./revenue";
 import { sendResponse } from "./message";
 import { MessageQueue } from "./queue";
@@ -612,15 +614,69 @@ export async function createBot(): Promise<Bot> {
     }
   });
 
-  // Revenue insights command
+  // Revenue insights command with action buttons
   bot.command("insights", async (ctx) => {
     try {
-      const insights = await getFormattedInsights();
-      await sendResponse(ctx, insights);
+      const insights = await getInsightsWithActions();
+
+      if (insights.length === 0) {
+        await ctx.reply("분석할 데이터가 부족합니다.");
+        return;
+      }
+
+      await ctx.reply("💡 수익 인사이트:");
+
+      for (let i = 0; i < insights.length; i++) {
+        const insight = insights[i];
+        const icon = insight.category === "growth" ? "🟢" :
+                     insight.category === "warning" ? "🔴" :
+                     insight.category === "cost" ? "🟡" : "🔵";
+
+        let message = `${icon} ${insight.title}\n${insight.description}`;
+        if (insight.action) {
+          message += `\n→ ${insight.action}`;
+        }
+
+        // Add action buttons if actionType is defined
+        if (insight.actionType && insight.actionType !== "none") {
+          const buttons = getInsightActionButtons(i, insight.actionType);
+          await ctx.reply(message, { reply_markup: buttons });
+        } else {
+          await ctx.reply(message);
+        }
+      }
     } catch (err) {
       await ctx.reply(`오류: ${err}`);
     }
   });
+
+  // Helper function to create insight action buttons
+  function getInsightActionButtons(index: number, actionType: InsightActionType): InlineKeyboard {
+    const kb = new InlineKeyboard();
+
+    switch (actionType) {
+      case "sync":
+        kb.text("🔄 동기화", `insight_sync_${index}`);
+        break;
+      case "target":
+        kb.text("🎯 목표 설정", `insight_target_${index}`);
+        break;
+      case "diversify":
+        kb.text("➕ 수익원 추가", `insight_diversify_${index}`);
+        break;
+      case "cost_optimize":
+        kb.text("💰 비용 검토", `insight_cost_${index}`);
+        break;
+      case "write_blog":
+        kb.text("✍️ 블로그 작성", `insight_blog_${index}`);
+        break;
+      case "review_coin":
+        kb.text("📊 코인 전략 검토", `insight_coin_${index}`);
+        break;
+    }
+
+    return kb;
+  }
 
   // Auto actions command
   bot.command("actions", async (ctx) => {
@@ -829,6 +885,63 @@ export async function createBot(): Promise<Bot> {
       await ctx.editMessageText(`✗ 거절됨`);
     } catch {
       await ctx.answerCallbackQuery({ text: "처리 실패" });
+    }
+  });
+
+  // Insight action callback handlers
+  bot.callbackQuery(/^insight_sync_/, async (ctx) => {
+    try {
+      await ctx.answerCallbackQuery({ text: "🔄 동기화 시작..." });
+      const result = await syncAllRevenue();
+      await ctx.editMessageText(`✓ 동기화 완료:\n${result}`);
+    } catch (err) {
+      await ctx.answerCallbackQuery({ text: `오류: ${err}` });
+    }
+  });
+
+  bot.callbackQuery(/^insight_target_/, async (ctx) => {
+    try {
+      await ctx.answerCallbackQuery({ text: "🎯 목표 설정으로 이동" });
+      await ctx.editMessageText("🎯 월 목표를 설정하려면:\n/revenue set [금액]\n\n예: /revenue set 5000000");
+    } catch (err) {
+      await ctx.answerCallbackQuery({ text: `오류: ${err}` });
+    }
+  });
+
+  bot.callbackQuery(/^insight_diversify_/, async (ctx) => {
+    try {
+      await ctx.answerCallbackQuery({ text: "➕ 수익원 추가" });
+      await ctx.editMessageText("➕ 새 수익원을 추가하려면:\n/revenue add [금액] [출처]\n\n예: /revenue add 1000000 유튜버");
+    } catch (err) {
+      await ctx.answerCallbackQuery({ text: `오류: ${err}` });
+    }
+  });
+
+  bot.callbackQuery(/^insight_cost_/, async (ctx) => {
+    try {
+      await ctx.answerCallbackQuery({ text: "💰 비용 검토" });
+      const status = await getCostStatus();
+      await ctx.editMessageText(`💰 비용 현황:\n${status}\n\n비용을 추가하려면:\n/cost add [금액] [카테고리]`);
+    } catch (err) {
+      await ctx.answerCallbackQuery({ text: `오류: ${err}` });
+    }
+  });
+
+  bot.callbackQuery(/^insight_blog_/, async (ctx) => {
+    try {
+      await ctx.answerCallbackQuery({ text: "✍️ 블로그 작성 요청" });
+      await ctx.editMessageText("✍️ 블로그 자동화:\n`/blog auto [주제]`\n\n예: /blog auto 파이썬 학습");
+    } catch (err) {
+      await ctx.answerCallbackQuery({ text: `오류: ${err}` });
+    }
+  });
+
+  bot.callbackQuery(/^insight_coin_/, async (ctx) => {
+    try {
+      await ctx.answerCallbackQuery({ text: "📊 코인 전략 검토" });
+      await ctx.editMessageText("📊 COIN 서비스로 이동:\n- 코인 서버에서 전략 확인\n- dashboard에서 성과 분석");
+    } catch (err) {
+      await ctx.answerCallbackQuery({ text: `오류: ${err}` });
     }
   });
 

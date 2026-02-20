@@ -881,7 +881,17 @@ export interface RevenueInsight {
   title: string;
   description: string;
   action?: string;
+  actionType?: InsightActionType;
 }
+
+export type InsightActionType =
+  | "sync"           // Sync revenue data
+  | "target"         // Set/adjust monthly target
+  | "diversify"      // Add new revenue source
+  | "cost_optimize"  // Review costs
+  | "write_blog"     // Trigger blog automation
+  | "review_coin"    // Review COIN strategy
+  | "none";          // No action available
 
 export async function getRevenueInsights(): Promise<RevenueInsight[]> {
   const data = await loadRevenue();
@@ -927,6 +937,7 @@ export async function getRevenueInsights(): Promise<RevenueInsight[]> {
         title: "🚀 급성장",
         description: `이번 달 수익이 지난달 대비 ${Math.round(growth)}% 증가했습니다.`,
         action: "성장 요인을 분석하고 유지 전략을 수립하세요.",
+        actionType: "review_coin",
       });
     } else if (growth < -20) {
       insights.push({
@@ -934,6 +945,7 @@ export async function getRevenueInsights(): Promise<RevenueInsight[]> {
         title: "⚠️ 수익 감소",
         description: `이번 달 수익이 지난달 대비 ${Math.round(Math.abs(growth))}% 감소했습니다.`,
         action: "원인을 분석하고 회복 전략이 필요합니다.",
+        actionType: "review_coin",
       });
     }
   }
@@ -949,6 +961,7 @@ export async function getRevenueInsights(): Promise<RevenueInsight[]> {
         title: "💰 높은 비용 비율",
         description: `비용이 수익의 ${Math.round(costRatio)}%를 차지합니다. (목표: 30% 이하)`,
         action: "비용 최적화 기회를 검토하세요.",
+        actionType: "cost_optimize",
       });
     } else if (costRatio < 20) {
       insights.push({
@@ -971,6 +984,7 @@ export async function getRevenueInsights(): Promise<RevenueInsight[]> {
       title: "🎯 수익원 다각화 필요",
       description: `현재 ${sources[0]}에만 의존하고 있습니다. 수익원을 다양화하면 리스크를 줄일 수 있습니다.`,
       action: "새로운 수익 채널을探索해보세요.",
+      actionType: "diversify",
     });
   } else if (sources.length >= 3) {
     const topSource = Object.entries(sourceTotals).sort((a, b) => b[1] - a[1])[0];
@@ -981,6 +995,7 @@ export async function getRevenueInsights(): Promise<RevenueInsight[]> {
         title: "📊 주요 수익원 집중",
         description: `${topSource[0]}가 전체 수익의 ${Math.round(topRatio)}%를 차지합니다.`,
         action: "비중을 줄이고 다른 수익원을 강화해보세요.",
+        actionType: "diversify",
       });
     }
   }
@@ -994,6 +1009,7 @@ export async function getRevenueInsights(): Promise<RevenueInsight[]> {
         title: "🚨 목표 이탈 위험",
         description: `이번 달 목표 달성률이 ${Math.round(progress)}%입니다.`,
         action: "남은 기간 동안 일일 수익 목표를 달성해야 합니다.",
+        actionType: "sync",
       });
     } else if (progress >= 100) {
       insights.push({
@@ -1001,6 +1017,7 @@ export async function getRevenueInsights(): Promise<RevenueInsight[]> {
         title: "🎉 목표 달성",
         description: `이번 달 목표를 달성했습니다!`,
         action: "다음 달 목표를 상향 조정해보세요.",
+        actionType: "target",
       });
     }
   }
@@ -1055,6 +1072,11 @@ export async function getFormattedInsights(): Promise<string> {
   }
 
   return lines.join("\n");
+}
+
+// Get insights with action info (for inline buttons)
+export async function getInsightsWithActions(): Promise<RevenueInsight[]> {
+  return getRevenueInsights();
 }
 
 // --- Auto Action System ---
