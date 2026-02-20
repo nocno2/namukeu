@@ -9,6 +9,7 @@ from src.api.auth import verify, verify_internal
 from src.core.database import Database
 from src.core import runtime
 from src.models.dashboard import PortfolioSummary
+from src.services.transition_checker import TransitionChecker
 
 router = APIRouter(tags=["dashboard"])
 
@@ -57,12 +58,20 @@ def _get_context(db: Database, config=None) -> dict:
             "active_positions": len(positions),
         }
 
+    # 전환 준비 상태 조회
+    try:
+        checker = TransitionChecker(db)
+        readiness = checker.get_readiness_report()
+    except Exception:
+        readiness = None
+
     return {
         "portfolio": portfolio,
         "positions": positions,
         "dry_run": config.dry_run if config else True,
         "max_positions": config.max_positions if config else 5,
         "active_strategies": len(strategies),
+        "readiness": readiness,
     }
 
 

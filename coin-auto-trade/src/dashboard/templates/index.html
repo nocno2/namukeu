@@ -25,6 +25,22 @@
         <h3>활성 전략</h3>
         <div class="value">{{ active_strategies }}</div>
     </div>
+    <div class="card">
+        <h3>전환 준비</h3>
+        {% if readiness %}
+            {% if readiness.ready_for_live %}
+                <div class="value positive">준비됨</div>
+            {% else %}
+                <div class="value negative">대기중</div>
+            {% endif %}
+            <div class="sub">
+                백테스트: {{ readiness.backtest.profitable }}/{{ readiness.backtest.total }} |
+                페이퍼 승률: {{ readiness.paper_trading.win_rate | default(0) | round(1) }}%
+            </div>
+        {% else %}
+            <div class="value" style="color:var(--text-dim)">-</div>
+        {% endif %}
+    </div>
 </div>
 
 <!-- Positions -->
