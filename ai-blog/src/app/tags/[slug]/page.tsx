@@ -22,7 +22,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const decoded = decodeURIComponent(slug);
   const tag = await db.select().from(schema.tags).where(eq(schema.tags.slug, decoded)).get();
   if (!tag) return {};
-  return { title: `#${tag.name}`, description: `#${tag.name} 태그가 달린 글 목록` };
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  return {
+    title: `#${tag.name}`,
+    description: `#${tag.name} 태그가 달린 글 목록`,
+    alternates: {
+      canonical: `${siteUrl}/tags/${slug}`,
+    },
+  };
 }
 
 export default async function TagPage({ params }: Props) {

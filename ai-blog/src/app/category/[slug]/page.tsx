@@ -20,7 +20,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const category = await db.select().from(schema.categories).where(eq(schema.categories.slug, slug)).get();
   if (!category) return {};
-  return { title: category.name, description: category.description || `${category.name} 카테고리의 글 목록` };
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  return {
+    title: category.name,
+    description: category.description || `${category.name} 카테고리의 글 목록`,
+    alternates: {
+      canonical: `${siteUrl}/category/${slug}`,
+    },
+  };
 }
 
 export default async function CategoryPage({ params }: Props) {
