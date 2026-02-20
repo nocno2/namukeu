@@ -16,6 +16,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .orderBy(desc(schema.posts.publishedAt));
 
   const categories = await db.select().from(schema.categories);
+  const tagList = await db.select().from(schema.tags);
 
   const postUrls = posts.map((post) => ({
     url: `${SITE_URL}/posts/${post.slug}`,
@@ -27,6 +28,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const categoryUrls = categories.map((cat) => ({
     url: `${SITE_URL}/category/${cat.slug}`,
+    changeFrequency: "weekly" as const,
+    priority: 0.6,
+  }));
+
+  const tagUrls = tagList.map((tag) => ({
+    url: `${SITE_URL}/tags/${tag.slug}`,
     changeFrequency: "weekly" as const,
     priority: 0.6,
   }));
@@ -48,6 +55,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.1,
     },
     ...categoryUrls,
+    ...tagUrls,
     ...postUrls,
   ];
 }

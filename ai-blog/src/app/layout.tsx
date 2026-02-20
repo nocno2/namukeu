@@ -63,7 +63,7 @@ export default function RootLayout({
   const effectiveAdsEnabled = adsEnabled && adsenseId && hasAdSlot;
 
   if (adsEnabled && adsenseId && !hasAdSlot) {
-    console.warn("[AdSense] AdSlot ID가 설정되지 않았습니다. .env.local에 AdSlot ID를 추가하거나 NEXT_PUBLIC_ADSENSE_ENABLED=false로 설정하세요.");
+    console.warn("[AdSense] AdSlot ID가 설정되지 않았습니다. .env.local에 AdSlot ID를 추가하거나 NEXT_PUBLIC_ADSENSE_ENABLED=false로 설정하세요. https://github.com/nuckukeu/namukeu/wiki/AdSense-설정-가이드");
   }
 
   return (
