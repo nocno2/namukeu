@@ -29,9 +29,14 @@ class ReservationScheduler:
         # 예상 결과 - 백오프 불필요, 즉시 재시도
         "SEAT_NOT_AVAILABLE": {"backoff": 0, "max_retries": None},
         "TRAIN_NOT_FOUND": {"backoff": 0, "max_retries": None},
+        # 네트워크 세분화 - 유형별 맞춤 백오프
+        "TIMEOUT_ERROR": {"backoff": 5, "max_retries": 8},
+        "CONNECTION_ERROR": {"backoff": 3, "max_retries": 10},
+        "SSL_ERROR": {"backoff": 10, "max_retries": 5},
+        "DNS_ERROR": {"backoff": 5, "max_retries": 5},
+        "NETWORK_ERROR": {"backoff": 3, "max_retries": 10},
         # 일시적 오류 - 짧은 백오프
         "SESSION_EXPIRED": {"backoff": 2, "max_retries": 5},
-        "NETWORK_ERROR": {"backoff": 3, "max_retries": 10},
         "RATE_LIMIT": {"backoff": 15, "max_retries": 8},
         "MAINTENANCE": {"backoff": 30, "max_retries": 5},
         # 치명적 오류 - 긴 백오프, 제한된 재시도

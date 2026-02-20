@@ -48,8 +48,37 @@ class ReservationFailedError(TrainAPIError):
 class NetworkError(TrainAPIError):
     """네트워크 관련 에러."""
 
-    def __init__(self, message: str = "네트워크 연결 실패"):
+    def __init__(self, message: str = "네트워크 연결 실패", sub_type: str | None = None):
         super().__init__(message, code="NETWORK_ERROR", recoverable=True)
+        self.sub_type = sub_type  # timeout, connection, ssl, dns 등
+
+
+class RequestTimeoutError(NetworkError):
+    """요청 시간 초과 에러."""
+
+    def __init__(self, message: str = "요청 시간이 초과되었습니다"):
+        super().__init__(message, sub_type="timeout")
+
+
+class ServerConnectionError(NetworkError):
+    """서버 연결 실패 에러."""
+
+    def __init__(self, message: str = "서버에 연결할 수 없습니다"):
+        super().__init__(message, sub_type="connection")
+
+
+class SSLVerificationError(NetworkError):
+    """SSL/TLS 인증서 에러."""
+
+    def __init__(self, message: str = "보안 연결 실패"):
+        super().__init__(message, sub_type="ssl")
+
+
+class DNSResolutionError(NetworkError):
+    """DNS 해석 실패 에러."""
+
+    def __init__(self, message: str = "DNS 해석 실패"):
+        super().__init__(message, sub_type="dns")
 
 
 class RateLimitError(TrainAPIError):
@@ -75,7 +104,18 @@ def classify_error(error: Exception) -> tuple[str, bool]:
     Returns:
         (에러 코드, 복구 가능 여부)
     """
+    error_type = type(error).__name__.lower()
     error_msg = str(error).lower()
+
+    # 구체적인 네트워크 예외 타입 먼저 체크
+    if "timeout" in error_type or "timeout" in error_msg:
+        return ("TIMEOUT_ERROR", True)
+    if "ssl" in error_type or "ssl" in error_msg or "certificate" in error_msg:
+        return ("SSL_ERROR", True)
+    if "dns" in error_type or "name or service not known" in error_msg:
+        return ("DNS_ERROR", True)
+    if "connection" in error_type or "connect" in error_msg:
+        return ("CONNECTION_ERROR", True)
 
     # 로그인 관련
     if "login" in error_msg or "로그인" in error_msg or "인증" in error_msg:
@@ -103,7 +143,7 @@ def classify_error(error: Exception) -> tuple[str, bool]:
     if "점검" in error_msg or "maintenance" in error_msg or "service unavailable" in error_msg:
         return ("MAINTENANCE", True)
 
-    # 네트워크
+    # 네트워크 (기타)
     if "timeout" in error_msg or "connection" in error_msg or "network" in error_msg:
         return ("NETWORK_ERROR", True)
 
