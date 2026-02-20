@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from src.core.crypto import CryptoManager
 from src.core.database import Database
 from src.core.errors import classify_error, get_recovery_suggestion
+from src.core.circuit_breaker import CircuitBreaker, CircuitBreakerConfig, CircuitBreakerOpenError
 from src.services.notifier import CompositeNotifier, TelegramNotifier
 from src.services.srt import SRTService
 from src.services.korail import KorailService
@@ -23,6 +24,14 @@ class ReservationScheduler:
     STARTUP_DELAY_MIN = 2.0        # 매크로 시작 시 초기 지연 최소 (초)
     STARTUP_DELAY_MAX = 8.0        # 매크로 시작 시 초기 지연 최대 (초)
     MAX_CONSECUTIVE_ERRORS = 20   # 연속 에러 시 매크로 자동 중단
+
+    # Circuit Breaker 설정
+    CIRCUIT_BREAKER_CONFIG = CircuitBreakerConfig(
+        failure_threshold=5,      # 5회 연속 실패 시 open
+        success_threshold=3,      # half-open에서 3회 연속 성공 시 closed
+        timeout_seconds=30.0,     # 30초 후 half-open 시도
+        half_open_max_calls=3,    # half-open에서 최대 3회 호출
+    )
 
     # 에러 유형별 재시도 정책 (초)
     RETRY_POLICIES = {
@@ -72,6 +81,9 @@ class ReservationScheduler:
         self.progress_report_minutes = progress_report_minutes
         self._tasks: dict[int, asyncio.Task] = {}
         self._cleanup_task: asyncio.Task | None = None
+
+        # Circuit Breaker (provider별)
+        self._circuit_breakers: dict[str, CircuitBreaker] = {}
 
     def start_search(self, reservation_id: int):
         if reservation_id in self._tasks:
@@ -209,12 +221,20 @@ class ReservationScheduler:
             login_id = self.crypto.decrypt(cred["encrypted_id"])
             login_pw = self.crypto.decrypt(cred["encrypted_pw"])
 
-            if reservation["provider"] == "srt":
+            provider = reservation["provider"]
+            if provider == "srt":
                 service = SRTService()
                 service.login(login_id, login_pw)
             else:
                 service = KorailService()
                 service.login(login_id, login_pw)
+
+            # Circuit Breaker 초기화 (provider별)
+            if provider not in self._circuit_breakers:
+                self._circuit_breakers[provider] = CircuitBreaker(
+                    f"{provider}_service", self.CIRCUIT_BREAKER_CONFIG
+                )
+            cb = self._circuit_breakers[provider]
 
             passengers = json.loads(reservation["passengers"])
             search_count = 0
@@ -241,23 +261,42 @@ class ReservationScheduler:
             # 반복 검색
             while datetime.now() < deadline:
                 try:
+                    # Circuit Breaker 상태 확인
+                    cb_state = cb.state
+                    if cb_state.value == "open":
+                        # Circuit이 열려 있으면 빠른 실패
+                        logger.warning(
+                            f"매크로 #{reservation_id} Circuit Breaker OPEN - "
+                            f"{(30.0 - (datetime.now().timestamp() - cb._last_state_change_time)):.1f}초 후 재시도"
+                        )
+                        await self.notifier.notify_error(
+                            reservation, "CIRCUIT_OPEN",
+                            f"서비스 보호를 위해 요청이 차단됨. 잠시 후 재시도하세요."
+                        )
+                        await asyncio.sleep(5)  # 짧은 대기 후 재시도
+                        continue
+
                     # 검색 타임아웃 30초 - 무한 대기를 방지
-                    result = await asyncio.wait_for(
-                        service.search_and_reserve(
-                            dep=reservation["dep_station"],
-                            arr=reservation["arr_station"],
-                            date=reservation["date"],
-                            time_range_start=reservation["time_range_start"],
-                            time_range_end=reservation["time_range_end"],
-                            passengers=passengers,
-                            seat_type=reservation["seat_type"],
-                            train_name=train_name,
-                            train_name_exclude=train_name_exclude,
-                            seat_position=seat_position,
-                            price_range=price_range,
-                        ),
-                        timeout=30.0,
-                    )
+                    # Circuit Breaker로 감싸서 연속 실패 시 보호
+                    async def bounded_search():
+                        return await asyncio.wait_for(
+                            service.search_and_reserve(
+                                dep=reservation["dep_station"],
+                                arr=reservation["arr_station"],
+                                date=reservation["date"],
+                                time_range_start=reservation["time_range_start"],
+                                time_range_end=reservation["time_range_end"],
+                                passengers=passengers,
+                                seat_type=reservation["seat_type"],
+                                train_name=train_name,
+                                train_name_exclude=train_name_exclude,
+                                seat_position=seat_position,
+                                price_range=price_range,
+                            ),
+                            timeout=30.0,
+                        )
+
+                    result = await cb.call(bounded_search)
 
                     search_count += 1
                     consecutive_errors = 0  # 성공 시 에러 카운터 리셋
@@ -280,6 +319,13 @@ class ReservationScheduler:
                         recovery_suggestion=get_recovery_suggestion("SEAT_NOT_AVAILABLE"),
                     )
                     logger.info(f"매크로 #{reservation_id} 검색 {search_count}회 — 좌석 없음")
+
+                except CircuitBreakerOpenError as cb_error:
+                    # Circuit Breyer가 열려있을 때
+                    logger.warning(f"매크로 #{reservation_id} Circuit Breaker 차단: {cb_error}")
+                    await self.notifier.notify_error(reservation, "CIRCUIT_OPEN", str(cb_error))
+                    await asyncio.sleep(5)
+                    continue
 
                 except Exception as e:
                     search_count += 1

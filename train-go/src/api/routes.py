@@ -6,6 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from src.core.crypto import CryptoManager
 from src.core.database import Database
 from src.core.errors import TrainAPIError
+from src.core.circuit_breaker import CircuitBreaker
 from src.models.credential import CredentialCreate, CredentialResponse
 from src.models.reservation import ReservationCreate, ReservationResponse, SearchStats, ErrorPatternStats, SearchLogResponse
 from src.services.scheduler import ReservationScheduler
@@ -244,12 +245,30 @@ def status(
     scheduler: ReservationScheduler = Depends(get_scheduler),
 ):
     all_reservations = db.get_reservations()
+
+    # Circuit Breaker 상태 조회
+    circuit_breakers = []
+    for provider, cb in scheduler._circuit_breakers.items():
+        circuit_breakers.append(cb.get_stats())
+
     return {
         "active_macros": scheduler.get_active_count(),
         "active_macro_ids": scheduler.get_active_ids(),
         "total_reservations": len(all_reservations),
         "by_status": _count_by_status(all_reservations),
+        "circuit_breakers": circuit_breakers,
     }
+
+
+@router.post("/circuit-breaker/reset")
+def reset_circuit_breakers(
+    _=Depends(verify),
+    scheduler: ReservationScheduler = Depends(get_scheduler),
+):
+    """모든 Circuit Breaker 수동 리셋."""
+    for cb in scheduler._circuit_breakers.values():
+        cb.reset()
+    return {"message": "모든 Circuit Breaker가 리셋되었습니다"}
 
 
 def _count_by_status(reservations: list[dict]) -> dict[str, int]:
