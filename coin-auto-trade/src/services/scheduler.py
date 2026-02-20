@@ -226,6 +226,7 @@ class TradingScheduler:
         positions = self.db.get_positions()
         existing = [p for p in positions if p["ticker"] == ticker]
         if existing:
+            logger.info(f"매수 스킵 (이미 보유 중): {ticker}, 시그널={signal.signal}, confidence={signal.confidence}")
             return  # 이미 보유 중
 
         balance = await self.exchange.get_balance()
@@ -235,6 +236,7 @@ class TradingScheduler:
         amount = self.risk_manager.calculate_position_size(balance, len(positions))
 
         if amount < min_order:
+            logger.info(f"매수 스킵 (최소 주문 금액 미달): {ticker}, amount={amount:.0f}, min_order={min_order}")
             return
 
         order_id = self.db.create_order(
@@ -282,6 +284,7 @@ class TradingScheduler:
         positions = self.db.get_positions()
         position = next((p for p in positions if p["ticker"] == ticker), None)
         if not position:
+            logger.info(f"매도 스킵 (포지션 없음): {ticker}, 시그널={signal.signal}, confidence={signal.confidence}")
             return
 
         volume = position["volume"]
