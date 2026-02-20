@@ -60,6 +60,7 @@ const PIPELINE_TOKEN = process.env.AGENT_API_TOKEN || "agent-api-token";
 // Blog admin URL for user-facing links
 const BLOG_ADMIN_URL = process.env.BLOG_ADMIN_URL || "https://blog.namukeu.com/admin";
 const DASHBOARD_URL = process.env.DASHBOARD_URL || "https://dashboard.namukeu.com";
+const PROJECT_ROOT = process.env.PROJECT_ROOT || "/Users/namwook/Documents/namukeu";
 
 let profileContext = "";
 
@@ -167,7 +168,7 @@ function buildSystemPrompt(memoryContext: string, conversationRecap?: string): s
 
   parts.push(
     `\nPROJECT CONTEXT:` +
-    `\nYou work on a monorepo at /Users/namwook/Documents/namukeu/ with these projects:` +
+    `\nYou work on a monorepo at ${PROJECT_ROOT} with these projects:` +
     `\n- COIN (coin-auto-trade/): Upbit 자동매매 서버 (Python FastAPI :8001)` +
     `\n- BLOG (ai-blog/): 수익형 블로그 (Next.js + Bun :3100)` +
     `\n- DASH (dashboard/): 개인 대시보드 (React + FastAPI :8002)` +
