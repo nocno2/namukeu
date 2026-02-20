@@ -118,8 +118,34 @@ async function main(): Promise<void> {
   scheduleDailyReport();
 
   // Start auto revenue sync scheduler (daily at 8 AM KST)
-  startAutoSyncScheduler((result) => {
+  startAutoSyncScheduler(async (result) => {
     console.log("[auto-sync] Daily sync completed:", result);
+
+    // Send sync result to user if new revenue was added
+    if (result && !result.includes("추가") === false && botInstance) {
+      try {
+        const userId = parseInt(process.env.TELEGRAM_USER_ID!, 10);
+        await botInstance.api.sendMessage(userId, `🔄 수익 동기화 완료:\n\n${result}`);
+      } catch (err) {
+        console.error("[auto-sync] Failed to send notification:", err);
+      }
+    }
+
+    // Generate auto actions after sync and notify for critical ones
+    try {
+      const actions = await generateAutoActions();
+      console.log(`[auto-sync] Generated ${actions.length} actions after sync`);
+
+      // Send critical/high priority actions to user
+      const criticalActions = actions.filter(a => a.priority === "critical" || a.priority === "high");
+      if (criticalActions.length > 0 && botInstance) {
+        const userId = parseInt(process.env.TELEGRAM_USER_ID!, 10);
+        const formatted = await getFormattedAutoActions();
+        await botInstance.api.sendMessage(userId, `⚡ 동기화 후 자동 조치:\n\n${formatted}`);
+      }
+    } catch (err) {
+      console.error("[auto-sync] Failed to generate actions:", err);
+    }
   }, 8);
 
   // Start auto actions generator (every 6 hours)
