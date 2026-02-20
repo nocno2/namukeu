@@ -64,10 +64,62 @@ export default async function AdminDashboard() {
     .orderBy(sql`count(*) desc`)
     .limit(5);
 
+  // AdSense 설정 상태 확인
+  const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
+  const adsEnabled = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === "true";
+  const hasAdSlot =
+    process.env.NEXT_PUBLIC_AD_SLOT_HERO ||
+    process.env.NEXT_PUBLIC_AD_SLOT_MID ||
+    process.env.NEXT_PUBLIC_AD_SLOT_BOTTOM ||
+    process.env.NEXT_PUBLIC_AD_SLOT_ARTICLE_TOP ||
+    process.env.NEXT_PUBLIC_AD_SLOT_ARTICLE_BOTTOM;
+  const adsenseStatus = adsenseId && adsEnabled && hasAdSlot ? "활성" : "미설정";
+  const adsenseStatusColor = adsenseId && adsEnabled && hasAdSlot ? "green" : "yellow";
+
+  // Google Search Console 설정 상태
+  const googleVerification = process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION;
+  const gscStatus = googleVerification ? "설정됨" : "미설정";
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
       <AdminNav />
       <h1 className="text-2xl font-bold mb-6">대시보드</h1>
+
+      {/* AdSense 및 SEO 설정 상태 */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <div className={`border border-[var(--border)] rounded-lg p-4 bg-[var(--bg-card)]`}>
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="font-semibold text-[var(--text-primary)]">AdSense</h2>
+            <span className={`text-xs px-2 py-1 rounded bg-${adsenseStatusColor}-500/20 text-${adsenseStatusColor}-500`}>
+              {adsenseStatus}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--text-tertiary)]">
+            {adsenseId ? `광고주 ID: ${adsenseId.slice(0, 8)}...` : "광고주 ID 미설정"}
+          </p>
+          {!adsenseId || !hasAdSlot ? (
+            <p className="text-xs text-yellow-500 mt-2">
+              .env.local에 AdSlot ID를 추가하세요
+            </p>
+          ) : null}
+        </div>
+        <div className={`border border-[var(--border)] rounded-lg p-4 bg-[var(--bg-card)]`}>
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="font-semibold text-[var(--text-primary)]">Google Search Console</h2>
+            <span className={`text-xs px-2 py-1 rounded ${gscStatus === "설정됨" ? "bg-green-500/20 text-green-500" : "bg-yellow-500/20 text-yellow-500"}`}>
+              {gscStatus}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--text-tertiary)]">
+            {googleVerification ? `검증 코드 설정됨` : "검증 코드 미설정"}
+          </p>
+          {!googleVerification ? (
+            <p className="text-xs text-yellow-500 mt-2">
+              GSC에서 메타태그를 가져와 .env.local에 추가하세요
+            </p>
+          ) : null}
+        </div>
+      </div>
 
       <div className="grid grid-cols-3 gap-4 mb-4">
         <div className="border border-[var(--border)] rounded-lg p-4 text-center bg-[var(--bg-card)]">
