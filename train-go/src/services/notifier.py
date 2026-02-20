@@ -7,6 +7,8 @@ from email.mime.text import MIMEText
 
 import httpx
 
+from src.core.errors import get_recovery_suggestion
+
 logger = logging.getLogger(__name__)
 
 
@@ -105,6 +107,7 @@ class DiscordNotifier:
 
     async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
         """에러 발생 알림."""
+        suggestion = get_recovery_suggestion(error_type)
         embed = {
             "title": "⚠️ 매크로 에러",
             "color": 0xFF6600,
@@ -113,12 +116,14 @@ class DiscordNotifier:
                 {"name": "구간", "value": f"{reservation['dep_station']} → {reservation['arr_station']}", "inline": True},
                 {"name": "에러 유형", "value": error_type, "inline": True},
                 {"name": "메시지", "value": error_msg[:100], "inline": False},
+                {"name": "대처법", "value": suggestion, "inline": False},
             ],
         }
         await self.send_message("⚠️ **매크로 에러 발생**", embed=embed)
 
     async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
         """치명적 에러 발생 알림 (연속 에러 초과, 시간 초과 등)."""
+        suggestion = get_recovery_suggestion(error_type)
         embed = {
             "title": "🔴 치명적 에러",
             "color": 0xFF0000,
@@ -127,6 +132,7 @@ class DiscordNotifier:
                 {"name": "구간", "value": f"{reservation['dep_station']} → {reservation['arr_station']}", "inline": True},
                 {"name": "에러 유형", "value": error_type, "inline": True},
                 {"name": "메시지", "value": error_msg[:150], "inline": False},
+                {"name": "대처법", "value": suggestion, "inline": False},
             ],
             "footer": {"text": "매크로 중단 - 재시작 필요"},
         }
@@ -224,23 +230,27 @@ class TelegramNotifier:
 
     async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
         """에러 발생 알림 (텔레그램용)."""
+        suggestion = get_recovery_suggestion(error_type)
         text = (
             f"⚠️ *매크로 에러*\n"
             f"[{reservation['provider'].upper()}] "
             f"{reservation['dep_station']} → {reservation['arr_station']}\n"
             f"유형: {error_type}\n"
-            f"메시지: {error_msg[:100]}"
+            f"메시지: {error_msg[:100]}\n\n"
+            f"💡 *대처*: {suggestion}"
         )
         await self.send_message(text)
 
     async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
         """치명적 에러 발생 알림 (연속 에러 초과, 시간 초과 등)."""
+        suggestion = get_recovery_suggestion(error_type)
         text = (
             f"🔴 *치명적 에러 발생 - 매크로 중단*\n"
             f"[{reservation['provider'].upper()}] "
             f"{reservation['dep_station']} → {reservation['arr_station']}\n"
             f"유형: {error_type}\n"
             f"메시지: {error_msg[:150]}\n\n"
+            f"💡 *대처*: {suggestion}\n\n"
             f"⚠️ 매크로 중단 - 재시작 필요"
         )
         await self.send_message(text)
@@ -318,6 +328,7 @@ class EmailNotifier:
     async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
         """에러 발생 알림 (이메일)."""
         provider = reservation["provider"].upper()
+        suggestion = get_recovery_suggestion(error_type)
         subject = f"[TRAIN] ⚠️ 매크로 에러 - {provider}"
         body = (
             f"매크로 실행 중 에러가 발생했습니다.\n\n"
@@ -325,13 +336,15 @@ class EmailNotifier:
             f"구간: {reservation['dep_station']} → {reservation['arr_station']}\n"
             f"날짜: {reservation['date']}\n"
             f"에러 유형: {error_type}\n"
-            f"메시지: {error_msg}"
+            f"메시지: {error_msg}\n\n"
+            f"💡 대처: {suggestion}"
         )
         self._send_email(subject, body)
 
     async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
         """치명적 에러 발생 알림 (별도 메소드)."""
         provider = reservation["provider"].upper()
+        suggestion = get_recovery_suggestion(error_type)
         subject = f"[TRAIN] 🔴 치명적 에러 - {provider}"
         body = (
             f"매크로 실행 중 치명적 에러가 발생하여 중단되었습니다.\n\n"
@@ -340,6 +353,7 @@ class EmailNotifier:
             f"날짜: {reservation['date']}\n"
             f"에러 유형: {error_type}\n"
             f"메시지: {error_msg}\n\n"
+            f"💡 대처: {suggestion}\n\n"
             f"매크로를 재시작해 주세요."
         )
         self._send_email(subject, body)
