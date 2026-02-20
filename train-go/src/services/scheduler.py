@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 from src.core.crypto import CryptoManager
 from src.core.database import Database
-from src.core.errors import classify_error
+from src.core.errors import classify_error, get_recovery_suggestion
 from src.services.notifier import CompositeNotifier, TelegramNotifier
 from src.services.srt import SRTService
 from src.services.korail import KorailService
@@ -277,6 +277,7 @@ class ReservationScheduler:
                         consecutive_errors=consecutive_errors,
                         backoff_seconds=0,
                         is_expected=True,
+                        recovery_suggestion=get_recovery_suggestion("SEAT_NOT_AVAILABLE"),
                     )
                     logger.info(f"매크로 #{reservation_id} 검색 {search_count}회 — 좌석 없음")
 
@@ -323,6 +324,7 @@ class ReservationScheduler:
                         consecutive_errors=consecutive_errors,
                         backoff_seconds=backoff,
                         is_expected=is_expected,
+                        recovery_suggestion=get_recovery_suggestion(error_code),
                     )
 
                     # 에러 유형별 처리

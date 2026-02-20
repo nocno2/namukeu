@@ -62,6 +62,7 @@ class SearchLogResponse(BaseModel):
     consecutive_errors: int = 0
     backoff_seconds: float = 0.0
     is_expected: bool = False
+    recovery_suggestion: str | None = None  # 에러 발생 시 복구 제안
 
 
 class ReservationResponse(BaseModel):

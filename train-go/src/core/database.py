@@ -78,6 +78,7 @@ class Database:
             ("consecutive_errors", "INTEGER DEFAULT 0"),
             ("backoff_seconds", "REAL DEFAULT 0"),
             ("is_expected", "INTEGER DEFAULT 0"),
+            ("recovery_suggestion", "TEXT"),
         ]:
             try:
                 self.conn.execute(f"ALTER TABLE search_logs ADD COLUMN {col} {default}")
@@ -213,13 +214,14 @@ class Database:
         consecutive_errors: int = 0,
         backoff_seconds: float = 0.0,
         is_expected: bool = False,
+        recovery_suggestion: str | None = None,
     ):
         now = datetime.now().isoformat()
         self.conn.execute(
             """INSERT INTO search_logs
-               (reservation_id, searched_at, results_count, error, error_code, consecutive_errors, backoff_seconds, is_expected)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (reservation_id, now, results_count, error, error_code, consecutive_errors, backoff_seconds, 1 if is_expected else 0),
+               (reservation_id, searched_at, results_count, error, error_code, consecutive_errors, backoff_seconds, is_expected, recovery_suggestion)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (reservation_id, now, results_count, error, error_code, consecutive_errors, backoff_seconds, 1 if is_expected else 0, recovery_suggestion),
         )
         self.conn.commit()
 
