@@ -15,7 +15,7 @@ from src.core.config import Config
 from src.core.crypto import CryptoManager
 from src.core.database import Database
 from src.core.errors import TrainAPIError
-from src.services.notifier import CompositeNotifier, DiscordNotifier, EmailNotifier, TelegramNotifier
+from src.services.notifier import CompositeNotifier, DiscordNotifier, EmailNotifier, FileNotifier, TelegramNotifier
 from src.services.scheduler import ReservationScheduler
 
 LOG_DIR = Path("data/logs")
@@ -41,8 +41,13 @@ async def lifespan(app: FastAPI):
     db = Database(config.db_path)
     crypto = CryptoManager(config.encryption_key)
 
-    # 알림 채널 설정 (텔레그램 + Discord + Email)
-    notifiers = [TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id)]
+    # 알림 채널 설정 (텔레그램 + Discord + Email + 파일 폴백)
+    # 파일 노티파이어는 항상 마지막에 추가 (폴백 용도)
+    file_notifier = FileNotifier()
+    notifiers = [file_notifier]  # 파일을 기본으로
+
+    if config.telegram_bot_token and config.telegram_chat_id:
+        notifiers.append(TelegramNotifier(config.telegram_bot_token, config.telegram_chat_id))
     if config.discord_webhook_url:
         notifiers.append(DiscordNotifier(config.discord_webhook_url))
         logger.info("Discord 웹훅 알림 활성화")
@@ -56,7 +61,9 @@ async def lifespan(app: FastAPI):
             smtp_to=config.smtp_to,
         ))
         logger.info("이메일 알림 활성화")
-    notifier = CompositeNotifier(notifiers) if len(notifiers) > 1 else notifiers[0]
+
+    # CompositeNotifier: 순서대로 알림 시도, 실패 시 다음 것으로 폴백
+    notifier = CompositeNotifier(notifiers)
 
     scheduler = ReservationScheduler(
         db=db,

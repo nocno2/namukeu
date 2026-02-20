@@ -1,5 +1,107 @@
 import json
 import logging
+import os
+import smtplib
+import time
+from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from pathlib import Path
+
+import httpx
+
+from src.core.errors import get_recovery_suggestion
+
+logger = logging.getLogger(__name__)
+
+
+class FileNotifier:
+    """파일 기반 알림 (텔레그램/디스코드 실패 시 폴백).
+
+    data/notifications/YYYY-MM-DD.log 에 JSON 형태로 에러를 기록.
+    """
+
+    def __init__(self, log_dir: str = "data/notifications"):
+        self._log_dir = Path(log_dir)
+        self._log_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_log_path(self) -> Path:
+        today = datetime.now().strftime("%Y-%m-%d")
+        return self._log_dir / f"{today}.log"
+
+    def _write_log(self, level: str, message: str, details: dict | None = None):
+        """파일에 로그 기록."""
+        try:
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "level": level,
+                "message": message,
+            }
+            if details:
+                log_entry["details"] = details
+
+            with open(self._get_log_path(), "a", encoding="utf-8") as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+            logger.debug(f"파일 알림 기록: {level} - {message}")
+        except Exception as e:
+            logger.error(f"파일 알림 기록 실패: {e}")
+
+    async def notify_reservation_success(self, reservation: dict, train_info: dict):
+        self._write_log("SUCCESS", "예약 성공", {
+            "provider": reservation.get("provider"),
+            "dep": reservation.get("dep_station"),
+            "arr": reservation.get("arr_station"),
+            "train": train_info.get("train_name"),
+        })
+
+    async def notify_reservation_failed(self, reservation: dict, reason: str):
+        self._write_log("FAILED", "예약 실패", {
+            "provider": reservation.get("provider"),
+            "dep": reservation.get("dep_station"),
+            "arr": reservation.get("arr_station"),
+            "reason": reason,
+        })
+
+    async def notify_search_started(self, reservation: dict):
+        self._write_log("INFO", "매크로 시작", {
+            "provider": reservation.get("provider"),
+            "dep": reservation.get("dep_station"),
+            "arr": reservation.get("arr_station"),
+            "date": reservation.get("date"),
+        })
+
+    async def notify_progress(self, reservation: dict, search_count: int, elapsed_min: int):
+        self._write_log("INFO", "매크로 진행 중", {
+            "provider": reservation.get("provider"),
+            "search_count": search_count,
+            "elapsed_min": elapsed_min,
+        })
+
+    async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
+        suggestion = get_recovery_suggestion(error_type)
+        self._write_log("ERROR", f"매크로 에러 - {error_type}", {
+            "provider": reservation.get("provider"),
+            "dep": reservation.get("dep_station"),
+            "arr": reservation.get("arr_station"),
+            "error_type": error_type,
+            "error_msg": error_msg,
+            "suggestion": suggestion,
+        })
+
+    async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
+        suggestion = get_recovery_suggestion(error_type)
+        self._write_log("CRITICAL", f"치명적 에러 - {error_type}", {
+            "provider": reservation.get("provider"),
+            "dep": reservation.get("dep_station"),
+            "arr": reservation.get("arr_station"),
+            "error_type": error_type,
+            "error_msg": error_msg,
+            "suggestion": suggestion,
+        })
+
+
+import json
+import logging
 import smtplib
 import time
 from email.mime.multipart import MIMEMultipart
@@ -365,6 +467,7 @@ class CompositeNotifier:
     알림 빈도 제한 기능:
     - 동일한 에러 코드에 대해 일정 시간(기본 60초) 이내의 중복 알림은 건너뛰기
     - 치명적 에러와 예약 성공/실패는 항상 알림
+    - Telegram/Discord 실패 시 FileNotifier로 폴백
     """
 
     # 알림 간 최소 간격 (초)
@@ -377,21 +480,58 @@ class CompositeNotifier:
         self._last_error_code: str | None = None  # 마지막 에러 코드
         self._last_notification_reservation_id: int | None = None  # 마지막 알림을 보낸 예약 ID
 
+        # FileNotifier 찾기 (폴백용)
+        self._fallback_notifier: FileNotifier | None = None
+        for n in notifiers:
+            if isinstance(n, FileNotifier):
+                self._fallback_notifier = n
+                break
+
+    async def _notify_with_fallback(self, method_name: str, *args, **kwargs):
+        """알림 실행 + 실패 시 폴백.
+
+        첫 번째 성공한 알림만 사용하거나, 모든 채널에 실패 시 FileNotifier 폴백.
+        """
+        fallback_used = False
+
+        for i, notifier in enumerate(self._notifiers):
+            try:
+                method = getattr(notifier, method_name)
+                await method(*args, **kwargs)
+                # 성공 시 그대로 반환 (다음 채널도 시도하지 않음)
+                return
+            except Exception as e:
+                logger.warning(f"알림 실패 [{notifier.__class__.__name__}]: {e}")
+
+                # FileNotifier가 아니고, 폴백이 있으면 폴백 시도
+                if not isinstance(notifier, FileNotifier) and self._fallback_notifier:
+                    try:
+                        fallback_method = getattr(self._fallback_notifier, method_name)
+                        await fallback_method(*args, **kwargs)
+                        fallback_used = True
+                        logger.info(f"폴백 알림 성공: {self._fallback_notifier.__class__.__name__}")
+                    except Exception as fallback_error:
+                        logger.error(f"폴백 알림 실패: {fallback_error}")
+
+        # 모든 알림이 실패했고 폴백이 사용되지 않았으면 FileNotifier로 최종 폴백
+        if not fallback_used and self._fallback_notifier:
+            try:
+                fallback_method = getattr(self._fallback_notifier, method_name)
+                await fallback_method(*args, **kwargs)
+            except Exception as e:
+                logger.error(f"최종 폴백 알림 실패: {e}")
+
     async def notify_reservation_success(self, reservation: dict, train_info: dict):
-        for notifier in self._notifiers:
-            await notifier.notify_reservation_success(reservation, train_info)
+        await self._notify_with_fallback("notify_reservation_success", reservation, train_info)
 
     async def notify_reservation_failed(self, reservation: dict, reason: str):
-        for notifier in self._notifiers:
-            await notifier.notify_reservation_failed(reservation, reason)
+        await self._notify_with_fallback("notify_reservation_failed", reservation, reason)
 
     async def notify_search_started(self, reservation: dict):
-        for notifier in self._notifiers:
-            await notifier.notify_search_started(reservation)
+        await self._notify_with_fallback("notify_search_started", reservation)
 
     async def notify_progress(self, reservation: dict, search_count: int, elapsed_min: int):
-        for notifier in self._notifiers:
-            await notifier.notify_progress(reservation, search_count, elapsed_min)
+        await self._notify_with_fallback("notify_progress", reservation, search_count, elapsed_min)
 
     def _should_notify(self, error_type: str, reservation_id: int) -> bool:
         """알림을 보내야 하는지 확인 (rate limiting).
@@ -419,28 +559,16 @@ class CompositeNotifier:
         return True
 
     async def notify_error(self, reservation: dict, error_type: str, error_msg: str):
-        """에러 발생 알림 (rate limiting 적용)."""
+        """에러 발생 알림 (rate limiting 적용 + 폴백)."""
         reservation_id = reservation.get("id", 0)
 
         # Rate limit 확인
         if not self._should_notify(error_type, reservation_id):
             return
 
-        for notifier in self._notifiers:
-            if hasattr(notifier, "notify_error"):
-                await notifier.notify_error(reservation, error_type, error_msg)
-            else:
-                # 텔레그램은 notify_error가 없으면 일반 실패 알림
-                await notifier.notify_reservation_failed(reservation, f"{error_type}: {error_msg[:50]}")
+        await self._notify_with_fallback("notify_error", reservation, error_type, error_msg)
 
     async def notify_critical_error(self, reservation: dict, error_type: str, error_msg: str):
-        """치명적 에러 발생 알림 (항상 전송)."""
-        # 치명적 에러는 항상 전송 (rate limit 적용 안 함)
-        for notifier in self._notifiers:
-            if hasattr(notifier, "notify_critical_error"):
-                await notifier.notify_critical_error(reservation, error_type, error_msg)
-            elif hasattr(notifier, "notify_error"):
-                await notifier.notify_error(reservation, error_type, error_msg)
-            else:
-                await notifier.notify_reservation_failed(reservation, f"{error_type}: {error_msg[:100]}")
+        """치명적 에러 발생 알림 (항상 전송 + 폴백)."""
+        await self._notify_with_fallback("notify_critical_error", reservation, error_type, error_msg)
 
