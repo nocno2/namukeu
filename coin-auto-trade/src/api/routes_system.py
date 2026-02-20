@@ -162,3 +162,107 @@ def get_trading_mode(
         },
         "exchanges": exchange_modes,
     }
+
+
+@router.get("/signal-analysis")
+def signal_analysis(
+    _=Depends(verify),
+    db: Database = Depends(get_db),
+):
+    """시그널→거래 전환 분석: 왜 시그널이 거래로 이어지지 않는지 분석."""
+    from datetime import datetime, timedelta
+
+    # 1. 시그널 통계
+    signals = db.conn.execute("""
+        SELECT signal, COUNT(*) as count
+        FROM signal_logs
+        GROUP BY signal
+    """).fetchall()
+
+    signal_counts = {row["signal"]: row["count"] for row in signals}
+
+    # 2. 거래 통계
+    orders = db.conn.execute("""
+        SELECT side, is_dry_run, state, COUNT(*) as count
+        FROM orders
+        GROUP BY side, is_dry_run, state
+    """).fetchall()
+
+    order_counts = {}
+    for row in orders:
+        key = f"dry_run={row['is_dry_run']}_{row['side']}_{row['state']}"
+        order_counts[key] = row["count"]
+
+    # 3. 최근 시그널 상태 (최근 1시간)
+    one_hour_ago = (datetime.now() - timedelta(hours=1)).isoformat()
+    recent_signals = db.conn.execute("""
+        SELECT signal, COUNT(*) as count
+        FROM signal_logs
+        WHERE created_at >= ?
+        GROUP BY signal
+    """, (one_hour_ago,)).fetchall()
+
+    recent_signal_counts = {row["signal"]: row["count"] for row in recent_signals}
+
+    # 4. 포지션 상태
+    positions = db.get_positions()
+    position_tickers = [p["ticker"] for p in positions]
+
+    # 5. 분석 결과
+    total_signals = sum(signal_counts.values())
+    buy_signals = signal_counts.get("buy", 0)
+    sell_signals = signal_counts.get("sell", 0)
+    hold_signals = signal_counts.get("hold", 0)
+
+    paper_buy_orders = order_counts.get("dry_run=1_buy_done", 0)
+    paper_sell_orders = order_counts.get("dry_run=1_sell_done", 0)
+
+    # 분석 메시지
+    analysis = []
+    if total_signals > 0:
+        conversion_rate = (paper_buy_orders + paper_sell_orders) / total_signals * 100
+        analysis.append(f"전환율: {conversion_rate:.2f}% (시그널 {total_signals}개 → 주문 {paper_buy_orders + paper_sell_orders}개)")
+
+    if buy_signals > 0 and paper_buy_orders == 0:
+        analysis.append(f"BUY 시그널 {buy_signals}개 발생 but 매수 주문 0개 - 포지션 존재 여부 또는 리스크 제한 확인 필요")
+    elif buy_signals > 0 and paper_buy_orders > 0:
+        analysis.append(f"BUY 시그널 {buy_signals}개 → 매수 주문 {paper_buy_orders}개")
+
+    if sell_signals > 0 and paper_sell_orders == 0:
+        analysis.append(f"SELL 시그널 {sell_signals}개 발생 but 매도 주문 0개 - 포지션 없음 또는 가격 조건 확인 필요")
+    elif sell_signals > 0 and paper_sell_orders > 0:
+        analysis.append(f"SELL 시그널 {sell_signals}개 → 매도 주문 {paper_sell_orders}개")
+
+    if len(positions) == 0 and hold_signals > buy_signals + sell_signals:
+        analysis.append(f"HOLD 시그널이多数 ({hold_signals}개) - 시장 조건이 매매에 유리하지 않음")
+
+    # 권장 조치
+    recommendations = []
+    if paper_buy_orders + paper_sell_orders < 10:
+        recommendations.append("📌 최소 10회 거래累积을 위해 더 많은 티커/전략 활성화 권장")
+        recommendations.append("📌 또는 RSI/MACD 임계값 조정으로 시그널 빈도 증가 고려")
+
+    if buy_signals > 0 and paper_buy_orders == 0:
+        recommendations.append("⚠️ 포지션이 이미 존재하거나 리스크マネージャー에 의해 차단된情况进行있습니다")
+
+    return {
+        "summary": {
+            "total_signals": total_signals,
+            "buy_signals": buy_signals,
+            "sell_signals": sell_signals,
+            "hold_signals": hold_signals,
+        },
+        "orders": {
+            "paper_buy": paper_buy_orders,
+            "paper_sell": paper_sell_orders,
+            "live_buy": order_counts.get("dry_run=0_buy_done", 0),
+            "live_sell": order_counts.get("dry_run=0_sell_done", 0),
+        },
+        "positions": {
+            "count": len(positions),
+            "tickers": position_tickers,
+        },
+        "recent_1h": recent_signal_counts,
+        "analysis": analysis,
+        "recommendations": recommendations,
+    }
