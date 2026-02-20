@@ -286,12 +286,15 @@ export async function createBot(): Promise<Bot> {
         "Revenue Tracking:\n" +
         "/revenue — Show revenue status\n" +
         "/revenue set <amount> — Set monthly target\n" +
-        "/revenue add <amount> <source> — Add revenue\n" +
+        "/revenue add <amount> — Add revenue\n" +
         "/revenue history — Show history\n" +
         "/forecast — Monthly forecast\n" +
         "/insights — AI revenue insights\n" +
         "/actions — Auto actions based on insights\n" +
         "/actions_ack — Acknowledge actions\n\n" +
+        "Blog Automation:\n" +
+        "/blog auto <keyword> — Generate blog post\n" +
+        "/blog idea <idea> — Generate from idea\n\n" +
         "Cost Tracking:\n" +
         "/cost — Show cost status\n" +
         "/cost add <amount> <category> — Add cost\n" +
@@ -677,6 +680,93 @@ export async function createBot(): Promise<Bot> {
 
     return kb;
   }
+
+  // Blog automation command - directly trigger blog post generation
+  bot.command("blog", async (ctx) => {
+    const args = ctx.match?.trim() || "";
+    const parts = args.split(" ");
+    const subcommand = parts[0].toLowerCase();
+
+    try {
+      if (!subcommand || subcommand === "help") {
+        await ctx.reply(
+          "✍️ 블로그 자동화 명령어:\n\n" +
+            "/blog auto <키워드> — 키워드로 글 작성\n" +
+            "예: /blog auto passive income\n\n" +
+            "/blog idea <아이디어> — 아이디어로 글 작성\n" +
+            "예: /blog idea 부업 아이디어\n\n" +
+            "/blog status — 진행 중인 글 확인\n\n" +
+            "📝 blog.namukeu.com/admin에서 승인/반려"
+        );
+        return;
+      }
+
+      if (subcommand === "auto") {
+        // /blog auto <keyword>
+        const keyword = parts.slice(1).join(" ");
+        if (!keyword) {
+          await ctx.reply("사용법: /blog auto <키워드>\n예: /blog auto passive income");
+          return;
+        }
+
+        await ctx.reply("✍️ 블로그 글 생성 중...");
+
+        const response = await fetch("http://localhost:5678/webhook/blog-automation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keyword }),
+        });
+
+        if (response.ok) {
+          await ctx.reply(
+            `✍️ 블로그 글 생성 시작!\n\n` +
+            `키워드: ${keyword}\n` +
+            `📝 blog.namukeu.com/admin에서 확인 후 승인`
+          );
+        } else {
+          await ctx.reply(`오류: ${response.status}`);
+        }
+        return;
+      }
+
+      if (subcommand === "idea") {
+        // /blog idea <idea>
+        const idea = parts.slice(1).join(" ");
+        if (!idea) {
+          await ctx.reply("사용법: /blog idea <아이디어>\n예: /blog idea 부업 아이디어");
+          return;
+        }
+
+        await ctx.reply("✍️ 블로그 글 생성 중...");
+
+        const response = await fetch("http://localhost:5678/webhook/blog-automation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idea }),
+        });
+
+        if (response.ok) {
+          await ctx.reply(
+            `✍️ 블로그 글 생성 시작!\n\n` +
+            `아이디어: ${idea}\n` +
+            `📝 blog.namukeu.com/admin에서 확인 후 승인`
+          );
+        } else {
+          await ctx.reply(`오류: ${response.status}`);
+        }
+        return;
+      }
+
+      if (subcommand === "status") {
+        await ctx.reply("📝 진행 중인 글은 blog.namukeu.com/admin에서 확인하세요.");
+        return;
+      }
+
+      await ctx.reply("알 수 없는 명령어입니다. /blog help 를 입력하세요.");
+    } catch (err) {
+      await ctx.reply(`오류: ${err}`);
+    }
+  });
 
   // Auto actions command
   bot.command("actions", async (ctx) => {
