@@ -44,9 +44,17 @@ export default function ChartPage() {
   const [showMA, setShowMA] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
 
-  // 선택된 캔들 (클릭으로 고정)
+  // 디바이스 감지
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  // 선택된 캔들
   const [selectedCandle, setSelectedCandle] = useState<Candle | null>(null);
-  // 호버 캔들 (마우스 이동 중)
   const [hoveredCandle, setHoveredCandle] = useState<Candle | null>(null);
 
   // 스케일/줌
@@ -54,15 +62,17 @@ export default function ChartPage() {
   const [volumeHeight, setVolumeHeight] = useState(80);
   const [candlesOnScreen, setCandlesOnScreen] = useState(60);
 
-  // 스크롤 (최신 데이터가 우측)
+  // 스크롤
   const [scrollOffset, setScrollOffset] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragStartOffset, setDragStartOffset] = useState(0);
 
-  // 터치 상태
+  // 모바일 터치
   const [touchStartX, setTouchStartX] = useState(0);
   const [touchStartOffset, setTouchStartOffset] = useState(0);
+  const [touchStartDist, setTouchStartDist] = useState(0);
+  const [touchStartCandles, setTouchStartCandles] = useState(60);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -125,14 +135,12 @@ export default function ChartPage() {
     const chartHeight = height - topMargin - bottomMargin - volHeight - 10;
     const priceChartHeight = chartHeight * chartScale;
 
-    // 보이는 캔들 범위
     const maxScroll = Math.max(0, candles.length - candlesOnScreen);
     const startIndex = Math.min(scrollOffset, maxScroll);
     const endIndex = Math.min(startIndex + candlesOnScreen, candles.length);
     const visibleCandles = candles.slice(startIndex, endIndex);
     if (visibleCandles.length === 0) return;
 
-    // 가격 범위
     const visiblePrices = visibleCandles.flatMap(c => [c.high, c.low]);
     const minPrice = Math.min(...visiblePrices);
     const maxPrice = Math.max(...visiblePrices);
@@ -222,7 +230,6 @@ export default function ChartPage() {
       const isUp = candle.close >= candle.open;
       const color = isUp ? '#3fb950' : '#f85149';
 
-      // 선택/호버 표시
       const isSelected = selectedCandle?.date === candle.date;
       const isHovered = hoveredCandle?.date === candle.date;
 
@@ -273,7 +280,7 @@ export default function ChartPage() {
       ctx.fillRect(thumbX, scrollBarY, thumbW, scrollBarH);
     }
 
-    // 정보 박스 (선택된 캔들 또는 호버 캔들)
+    // 정보 박스
     const activeCandle = selectedCandle || hoveredCandle;
     if (activeCandle) {
       const idx = visibleCandles.findIndex(c => c.date === activeCandle.date);
@@ -319,7 +326,6 @@ export default function ChartPage() {
           ctx.fillText(v.toFixed(2), boxX + boxW - 8, boxY + 32 + j * 16);
         });
 
-        // 선택 표시
         if (selectedCandle) {
           ctx.fillStyle = '#58a6ff';
           ctx.font = '10px sans-serif';
@@ -344,7 +350,7 @@ export default function ChartPage() {
     return () => window.removeEventListener('resize', handleResize);
   }, [drawChart]);
 
-  // 마우스 이벤트
+  // 마우스 이벤트 (데스크톱)
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     setIsDragging(true);
     setDragStartX(e.clientX);
@@ -387,7 +393,6 @@ export default function ChartPage() {
 
     if (idx >= 0 && idx < candles.length) {
       const clickedCandle = candles[idx];
-      // 같은 캔들 다시 클릭 시 해제
       if (selectedCandle?.date === clickedCandle.date) {
         setSelectedCandle(null);
       } else {
@@ -396,35 +401,47 @@ export default function ChartPage() {
     }
   };
 
-  // 휠: 아래로=최신, 위로=과거 (방향 반전)
+  // 데스크톱 휠: 위=과거, 아래=最新 (트레이딩뷰 표준)
   const handleWheel = (e: React.WheelEvent<HTMLCanvasElement>) => {
     const maxScroll = Math.max(0, candles.length - candlesOnScreen);
-    //Ctrl+휠 또는 핀치 줌 시 시간축 줌
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -5 : 5;
-      setCandlesOnScreen(Math.max(20, Math.min(candles.length, candlesOnScreen + delta)));
-    } else {
-      // 일반 휠: 아래로=최신 (scrollOffset 감소), 위로=과거 (scrollOffset 증가)
-      const scrollAmount = e.deltaY > 0 ? -Math.ceil(candles.length / 20) : Math.ceil(candles.length / 20);
-      setScrollOffset(Math.max(0, Math.min(maxScroll, scrollOffset - scrollAmount)));
-    }
+    // 위(deltaY < 0) = 과거로 이동, 아래(deltaY > 0) = 최신으로 이동
+    const scrollAmount = e.deltaY > 0
+      ? Math.ceil(candles.length / 20)
+      : -Math.ceil(candles.length / 20);
+    setScrollOffset(Math.max(0, Math.min(maxScroll, scrollOffset + scrollAmount)));
   };
 
-  // 터치 이벤트 (모바일)
+  // 모바일 터치 시작
   const handleTouchStart = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (e.touches.length === 1) {
+      // 단일 터치: 스크롤
       setTouchStartX(e.touches[0].clientX);
       setTouchStartOffset(scrollOffset);
+    } else if (e.touches.length === 2) {
+      // 두手指: 핀치 줌용 거리 저장
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      setTouchStartDist(Math.sqrt(dx * dx + dy * dy));
+      setTouchStartCandles(candlesOnScreen);
     }
   };
 
+  // 모바일 터치 이동
   const handleTouchMove = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (e.touches.length === 1) {
+      // 스크롤
       const deltaX = touchStartX - e.touches[0].clientX;
       const maxScroll = Math.max(0, candles.length - candlesOnScreen);
       const scrollAmount = (deltaX / 100) * candles.length;
       setScrollOffset(Math.max(0, Math.min(maxScroll, touchStartOffset + scrollAmount)));
+    } else if (e.touches.length === 2) {
+      // 핀치 줌
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const delta = touchStartDist - dist;
+      const zoomDelta = Math.round(delta / 10);
+      setCandlesOnScreen(Math.max(20, Math.min(candles.length, touchStartCandles + zoomDelta)));
     }
   };
 
@@ -440,6 +457,10 @@ export default function ChartPage() {
   const currentPrice = candles.length > 0 ? candles[candles.length - 1].close : null;
   const firstPrice = candles.length > 0 ? candles[0].open : null;
   const changePct = currentPrice && firstPrice ? ((currentPrice - firstPrice) / firstPrice * 100) : null;
+
+  const helpText = isMobile
+    ? '스와이프로 이동 • 핀치로 줌 • 클릭으로 캔들 선택'
+    : '드래그로 이동 • 휠로 스크롤 • 클릭으로 캔들 선택';
 
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-[#0d1117]">
@@ -516,7 +537,7 @@ export default function ChartPage() {
       </div>
 
       <div className="px-3 py-1 bg-[#161b22] border-t border-[#30363d] text-xs text-[#6e7681]">
-        드래그/스와이프로 이동 • 클릭으로 캔들 선택 • Ctrl+휠로 줌
+        {helpText} • +/- 버튼으로 줌
       </div>
     </div>
   );
