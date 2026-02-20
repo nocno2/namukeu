@@ -57,6 +57,9 @@ const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
 const PIPELINE_API = process.env.PIPELINE_API_URL || "http://127.0.0.1:8003";
 const PIPELINE_TOKEN = process.env.AGENT_API_TOKEN || "agent-api-token";
 
+// Blog admin URL for user-facing links
+const BLOG_ADMIN_URL = process.env.BLOG_ADMIN_URL || "https://blog.namukeu.com/admin";
+
 let profileContext = "";
 
 const startTime = Date.now();
@@ -696,7 +699,7 @@ export async function createBot(): Promise<Bot> {
             "/blog idea <아이디어> — 아이디어로 글 작성\n" +
             "예: /blog idea 부업 아이디어\n\n" +
             "/blog status — 진행 중인 글 확인\n\n" +
-            "📝 blog.namukeu.com/admin에서 승인/반려"
+            `📝 ${BLOG_ADMIN_URL}에서 승인/반려`
         );
         return;
       }
@@ -771,7 +774,7 @@ export async function createBot(): Promise<Bot> {
             `제목: ${generateData.title}\n` +
             `키워드: ${keyword}\n` +
             `ID: ${saveData.draft_id}\n\n` +
-            `📝 blog.namukeu.com/admin에서 확인 후 승인`
+            `📝 ${BLOG_ADMIN_URL}에서 확인 후 승인`
           );
         } catch (err) {
           console.error("[blog] Error:", err);
@@ -851,7 +854,7 @@ export async function createBot(): Promise<Bot> {
             `제목: ${generateData.title}\n` +
             `키워드: ${selectedKeyword}\n` +
             `ID: ${saveData.draft_id}\n\n` +
-            `📝 blog.namukeu.com/admin에서 확인 후 승인`
+            `📝 ${BLOG_ADMIN_URL}에서 확인 후 승인`
           );
         } catch (err) {
           console.error("[blog] Error:", err);
@@ -861,7 +864,7 @@ export async function createBot(): Promise<Bot> {
       }
 
       if (subcommand === "status") {
-        await ctx.reply("📝 진행 중인 글은 blog.namukeu.com/admin에서 확인하세요.");
+        await ctx.reply(`📝 진행 중인 글은 ${BLOG_ADMIN_URL}에서 확인하세요.`);
         return;
       }
 
@@ -1185,7 +1188,7 @@ export async function createBot(): Promise<Bot> {
           `제목: ${generateData.title}\n` +
           `키워드: ${keyword}\n` +
           `ID: ${saveData.draft_id}\n\n` +
-          `📝 blog.namukeu.com/admin에서 확인 후 승인`
+          `📝 ${BLOG_ADMIN_URL}에서 확인 후 승인`
         );
       } catch (err) {
         await ctx.editMessageText(
