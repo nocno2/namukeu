@@ -709,22 +709,75 @@ export async function createBot(): Promise<Bot> {
           return;
         }
 
-        await ctx.reply("✍️ 블로그 글 생성 중...");
+        await ctx.reply("✍️ 블로그 글 생성 중... (1/3 - 키워드 분석)");
 
-        const response = await fetch("http://localhost:5678/webhook/blog-automation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keyword }),
-        });
+        const PIPELINE_API = "http://localhost:8003";
 
-        if (response.ok) {
+        try {
+          // Step 1: Enrich keyword
+          const enrichRes = await fetch(`${PIPELINE_API}/api/n8n/enrich-keyword`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ keyword }),
+          });
+
+          if (!enrichRes.ok) {
+            throw new Error(`키워드 분석 실패: ${enrichRes.status}`);
+          }
+
+          const enrichData = await enrichRes.json();
+          await ctx.reply("✍️ 블로그 글 생성 중... (2/3 - 본문 작성)");
+
+          // Step 2: Generate content
+          const generateRes = await fetch(`${PIPELINE_API}/api/n8n/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              keyword: enrichData.keyword,
+              direction: enrichData.context,
+              trend_data: enrichData.trend_data,
+              search_insights: enrichData.search_insights,
+            }),
+          });
+
+          if (!generateRes.ok) {
+            throw new Error(`본문 생성 실패: ${generateRes.status}`);
+          }
+
+          const generateData = await generateRes.json();
+          await ctx.reply("✍️ 블로그 글 생성 중... (3/3 - 저장)");
+
+          // Step 3: Save draft
+          const saveRes = await fetch(`${PIPELINE_API}/api/n8n/save-draft`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              keyword: generateData.keyword,
+              title: generateData.title,
+              slug: generateData.slug,
+              content: generateData.content,
+              excerpt: generateData.excerpt,
+              tags: generateData.tags,
+              outline: generateData.outline,
+            }),
+          });
+
+          if (!saveRes.ok) {
+            throw new Error(`저장 실패: ${saveRes.status}`);
+          }
+
+          const saveData = await saveRes.json();
+
           await ctx.reply(
-            `✍️ 블로그 글 생성 시작!\n\n` +
+            `✍️ 블로그 글 생성 완료!\n\n` +
+            `제목: ${generateData.title}\n` +
             `키워드: ${keyword}\n` +
+            `ID: ${saveData.draft_id}\n\n` +
             `📝 blog.namukeu.com/admin에서 확인 후 승인`
           );
-        } else {
-          await ctx.reply(`오류: ${response.status}`);
+        } catch (err) {
+          console.error("[blog] Error:", err);
+          await ctx.reply(`오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}\n\ncontent-pipeline 서버가 실행 중인지 확인해주세요.`);
         }
         return;
       }
@@ -737,22 +790,76 @@ export async function createBot(): Promise<Bot> {
           return;
         }
 
-        await ctx.reply("✍️ 블로그 글 생성 중...");
+        await ctx.reply("✍️ 블로그 글 생성 중... (1/3 - 아이디어 분석)");
 
-        const response = await fetch("http://localhost:5678/webhook/blog-automation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idea }),
-        });
+        const PIPELINE_API = "http://localhost:8003";
 
-        if (response.ok) {
+        try {
+          // Step 1: Enrich context (extract keywords from idea)
+          const enrichRes = await fetch(`${PIPELINE_API}/api/n8n/enrich-context`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ context: idea }),
+          });
+
+          if (!enrichRes.ok) {
+            throw new Error(`아이디어 분석 실패: ${enrichRes.status}`);
+          }
+
+          const enrichData = await enrichRes.json();
+          const selectedKeyword = enrichData.selected_keyword || enrichData.keywords?.[0] || idea;
+          await ctx.reply(`✍️ 추출된 키워드: ${selectedKeyword}\n✍️ 블로그 글 생성 중... (2/3 - 본문 작성)`);
+
+          // Step 2: Generate content
+          const generateRes = await fetch(`${PIPELINE_API}/api/n8n/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              keyword: selectedKeyword,
+              direction: enrichData.context,
+              trend_data: enrichData.trend_data,
+              search_insights: enrichData.search_insights,
+            }),
+          });
+
+          if (!generateRes.ok) {
+            throw new Error(`본문 생성 실패: ${generateRes.status}`);
+          }
+
+          const generateData = await generateRes.json();
+          await ctx.reply("✍️ 블로그 글 생성 중... (3/3 - 저장)");
+
+          // Step 3: Save draft
+          const saveRes = await fetch(`${PIPELINE_API}/api/n8n/save-draft`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              keyword: generateData.keyword,
+              title: generateData.title,
+              slug: generateData.slug,
+              content: generateData.content,
+              excerpt: generateData.excerpt,
+              tags: generateData.tags,
+              outline: generateData.outline,
+            }),
+          });
+
+          if (!saveRes.ok) {
+            throw new Error(`저장 실패: ${saveRes.status}`);
+          }
+
+          const saveData = await saveRes.json();
+
           await ctx.reply(
-            `✍️ 블로그 글 생성 시작!\n\n` +
-            `아이디어: ${idea}\n` +
+            `✍️ 블로그 글 생성 완료!\n\n` +
+            `제목: ${generateData.title}\n` +
+            `키워드: ${selectedKeyword}\n` +
+            `ID: ${saveData.draft_id}\n\n` +
             `📝 blog.namukeu.com/admin에서 확인 후 승인`
           );
-        } else {
-          await ctx.reply(`오류: ${response.status}`);
+        } catch (err) {
+          console.error("[blog] Error:", err);
+          await ctx.reply(`오류: ${err instanceof Error ? err.message : "알 수 없는 오류"}\n\ncontent-pipeline 서버가 실행 중인지 확인해주세요.`);
         }
         return;
       }
@@ -1021,23 +1128,76 @@ export async function createBot(): Promise<Bot> {
     try {
       await ctx.answerCallbackQuery({ text: "✍️ 블로그 자동화 요청..." });
 
-      // Get keyword from insight message or use default
-      const keyword = "수익 분석"; // Default keyword for now
+      const PIPELINE_API = "http://localhost:8003";
+      const idea = "사용자 수익 인사이트 기반 콘텐츠: 수익 목표 달성 방법";
 
       try {
-        const response = await fetch("http://localhost:5678/webhook/blog-automation", {
+        // Enrich context first
+        const enrichRes = await fetch(`${PIPELINE_API}/api/n8n/enrich-context`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idea: "사용자 수익 인사이트 기반 콘텐츠: 수익 목표 달성 방법" }),
+          body: JSON.stringify({ context: idea }),
         });
 
-        if (response.ok) {
-          await ctx.editMessageText("✍️ 블로그 자동화 트리거 완료!\n\n블로그 글 작성이 시작되었습니다. blog.namukeu.com/admin에서 확인하세요.");
-        } else {
-          await ctx.editMessageText("✍️ 블로그 자동화 실패.\n\n수동으로 작성하려면: /blog auto [주제]");
+        if (!enrichRes.ok) {
+          throw new Error(`분석 실패: ${enrichRes.status}`);
         }
+
+        const enrichData = await enrichRes.json();
+        const keyword = enrichData.selected_keyword || "수익 분석";
+
+        // Generate content
+        const generateRes = await fetch(`${PIPELINE_API}/api/n8n/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            keyword,
+            direction: enrichData.context,
+            trend_data: enrichData.trend_data,
+            search_insights: enrichData.search_insights,
+          }),
+        });
+
+        if (!generateRes.ok) {
+          throw new Error(`생성 실패: ${generateRes.status}`);
+        }
+
+        const generateData = await generateRes.json();
+
+        // Save draft
+        const saveRes = await fetch(`${PIPELINE_API}/api/n8n/save-draft`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            keyword: generateData.keyword,
+            title: generateData.title,
+            slug: generateData.slug,
+            content: generateData.content,
+            excerpt: generateData.excerpt,
+            tags: generateData.tags,
+            outline: generateData.outline,
+          }),
+        });
+
+        if (!saveRes.ok) {
+          throw new Error(`저장 실패: ${saveRes.status}`);
+        }
+
+        const saveData = await saveRes.json();
+
+        await ctx.editMessageText(
+          `✍️ 블로그 글 생성 완료!\n\n` +
+          `제목: ${generateData.title}\n` +
+          `키워드: ${keyword}\n` +
+          `ID: ${saveData.draft_id}\n\n` +
+          `📝 blog.namukeu.com/admin에서 확인 후 승인`
+        );
       } catch (err) {
-        await ctx.editMessageText("✍️ n8n 웹훅 연결 실패.\n\n수동으로 작성하려면: /blog auto [주제]");
+        await ctx.editMessageText(
+          `✍️ 블로그 자동화 실패.\n\n${err instanceof Error ? err.message : "알 수 없는 오류"}\n\n` +
+          `content-pipeline 서버가 실행 중인지 확인해주세요.\n` +
+          `수동으로 작성하려면: /blog auto [주제]`
+        );
       }
     } catch (err) {
       await ctx.answerCallbackQuery({ text: `오류: ${err}` });
