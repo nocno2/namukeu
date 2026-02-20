@@ -1,51 +1,85 @@
 import { useEffect, useState, useRef } from 'react';
-import { createChart, LineSeries, CrosshairMode } from 'lightweight-charts';
-import type { IChartApi, ISeriesApi, Time } from 'lightweight-charts';
 import { useNavigate } from 'react-router-dom';
 import { stocksApi, tradingApi, newsApi } from '../api/client';
 
-// Mini Chart Component
+// Simple Mini Chart without TradingView branding
 function MiniChart({ symbol, period = '1mo', width = 80, height = 32 }: { symbol: string; period?: string; width?: number; height?: number }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-    const chart = createChart(containerRef.current, {
-      layout: { background: { color: 'transparent' }, textColor: '#6e7681' },
-      grid: { vertLines: { color: 'transparent' }, horzLines: { color: 'transparent' } },
-      crosshair: { mode: CrosshairMode.Normal },
-      rightPriceScale: { visible: false },
-      timeScale: { visible: false },
-      height,
-      width,
-    });
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
-    const series = chart.addSeries(LineSeries, {
-      color: '#58a6ff',
-      lineWidth: 1,
-      priceLineVisible: false,
-      lastValueVisible: false,
-    });
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
 
-    chartRef.current = chart;
+    // Draw placeholder initially
+    ctx.fillStyle = '#21262d';
+    ctx.fillRect(0, 0, width, height);
 
+    // Fetch data
     stocksApi.getHistory(symbol, period)
       .then((res) => {
-        const data = res.data.map((item: any) => ({
-          time: item.date.split('T')[0] as Time,
-          value: item.close,
-        }));
-        series.setData(data);
-        chart.timeScale().fitContent();
-      })
-      .catch(console.error);
+        const data = res.data;
+        if (data.length < 2) return;
 
-    return () => { chart.remove(); };
+        const prices = data.map((d: any) => d.close);
+        const minPrice = Math.min(...prices);
+        const maxPrice = Math.max(...prices);
+        const priceRange = maxPrice - minPrice || 1;
+
+        const isUp = prices[prices.length - 1] >= prices[0];
+        const lineColor = isUp ? '#3fb950' : '#f85149';
+
+        // Clear
+        ctx.fillStyle = 'transparent';
+        ctx.clearRect(0, 0, width, height);
+
+        // Draw line
+        ctx.strokeStyle = lineColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+
+        prices.forEach((price: number, i: number) => {
+          const x = (i / (prices.length - 1)) * width;
+          const y = height - ((price - minPrice) / priceRange) * (height - 4) - 2;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+
+        // Draw area gradient
+        const gradient = ctx.createLinearGradient(0, 0, 0, height);
+        if (isUp) {
+          gradient.addColorStop(0, 'rgba(63, 185, 80, 0.3)');
+          gradient.addColorStop(1, 'rgba(63, 185, 80, 0)');
+        } else {
+          gradient.addColorStop(0, 'rgba(248, 81, 73, 0.3)');
+          gradient.addColorStop(1, 'rgba(248, 81, 73, 0)');
+        }
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        prices.forEach((price: number, i: number) => {
+          const x = (i / (prices.length - 1)) * width;
+          const y = height - ((price - minPrice) / priceRange) * (height - 4) - 2;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.lineTo(width, height);
+        ctx.lineTo(0, height);
+        ctx.closePath();
+        ctx.fill();
+      })
+      .catch(() => {});
   }, [symbol, period, width, height]);
 
-  return <div ref={containerRef} />;
+  return <canvas ref={canvasRef} style={{ width, height }} />;
 }
 
 export default function Dashboard() {
