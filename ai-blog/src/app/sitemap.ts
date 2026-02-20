@@ -8,6 +8,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const posts = await db
     .select({
       slug: schema.posts.slug,
+      title: schema.posts.title,
       updatedAt: schema.posts.updatedAt,
     })
     .from(schema.posts)
@@ -21,6 +22,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: post.updatedAt ? new Date(post.updatedAt) : new Date(),
     changeFrequency: "weekly" as const,
     priority: 0.8,
+    images: post.title ? [`${SITE_URL}/og-image.png`] : undefined,
   }));
 
   const categoryUrls = categories.map((cat) => ({
