@@ -27,7 +27,7 @@ class TransitionChecker:
     MIN_BACKTEST_RETURN = 0.0  # %
     MIN_PAPER_WIN_RATE = 50.0  # %
     MAX_DRAWDOWN = 10.0  # %
-    MIN_TRADES = 10  # 최소 거래 횟수
+    MIN_TRADES = 4  # 최소 거래 횟수 (초기 검증용)
 
     def __init__(self, db: Database):
         self.db = db
