@@ -49,6 +49,23 @@ export default function RootLayout({
   const adsenseId = process.env.NEXT_PUBLIC_ADSENSE_ID;
   const adsEnabled = process.env.NEXT_PUBLIC_ADSENSE_ENABLED === "true";
 
+  // AdSlot ID 검증 - 하나라도 있으면 유효하다고 판단
+  const hasAdSlot =
+    process.env.NEXT_PUBLIC_AD_SLOT_HERO ||
+    process.env.NEXT_PUBLIC_AD_SLOT_MID ||
+    process.env.NEXT_PUBLIC_AD_SLOT_BOTTOM ||
+    process.env.NEXT_PUBLIC_AD_SLOT_ARTICLE_TOP ||
+    process.env.NEXT_PUBLIC_AD_SLOT_ARTICLE_BOTTOM ||
+    process.env.NEXT_PUBLIC_AD_SLOT_BEFORE_RELATED ||
+    process.env.NEXT_PUBLIC_AD_SLOT_AFTER_RELATED;
+
+  // AdSlot이 없으면 AdSense를 비활성화하고 경고
+  const effectiveAdsEnabled = adsEnabled && adsenseId && hasAdSlot;
+
+  if (adsEnabled && adsenseId && !hasAdSlot) {
+    console.warn("[AdSense] AdSlot ID가 설정되지 않았습니다. .env.local에 AdSlot ID를 추가하거나 NEXT_PUBLIC_ADSENSE_ENABLED=false로 설정하세요.");
+  }
+
   return (
     <html lang="ko">
       <head>
@@ -65,7 +82,7 @@ export default function RootLayout({
             />
           </>
         )}
-        {adsEnabled && adsenseId && (
+        {effectiveAdsEnabled && (
           <script
             async
             src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsenseId}`}
