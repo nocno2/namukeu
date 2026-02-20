@@ -59,6 +59,7 @@ const PIPELINE_TOKEN = process.env.AGENT_API_TOKEN || "agent-api-token";
 
 // Blog admin URL for user-facing links
 const BLOG_ADMIN_URL = process.env.BLOG_ADMIN_URL || "https://blog.namukeu.com/admin";
+const DASHBOARD_URL = process.env.DASHBOARD_URL || "https://dashboard.namukeu.com";
 
 let profileContext = "";
 
@@ -1233,19 +1234,19 @@ export async function createBot(): Promise<Bot> {
 
           if (profitRate < -10) {
             message += `⚠️ 손실률이 높습니다. 전략 검토가 필요합니다.\n`;
-            message += `→ 대시보드에서 상세 분석: dashboard.namukeu.com`;
+            message += `→ 대시보드에서 상세 분석: ${DASHBOARD_URL}`;
           } else if (profitRate >= 10) {
             message += `✅ 수익률이 좋습니다. 현재 전략을 유지하세요.`;
           } else {
-            message += `→ 대시보드에서 상세 분석: dashboard.namukeu.com`;
+            message += `→ 대시보드에서 상세 분석: ${DASHBOARD_URL}`;
           }
 
           await ctx.editMessageText(message);
         } else {
-          await ctx.editMessageText("📊 COIN API 연결 실패.\n\n대시보드에서 확인: dashboard.namukeu.com");
+          await ctx.editMessageText("📊 COIN API 연결 실패.\n\n대시보드에서 확인: ${DASHBOARD_URL}");
         }
       } catch (err) {
-        await ctx.editMessageText("📊 COIN 서버 연결 실패.\n\n대시보드에서 확인: dashboard.namukeu.com");
+        await ctx.editMessageText("📊 COIN 서버 연결 실패.\n\n대시보드에서 확인: ${DASHBOARD_URL}");
       }
     } catch (err) {
       await ctx.answerCallbackQuery({ text: `오류: ${err}` });
