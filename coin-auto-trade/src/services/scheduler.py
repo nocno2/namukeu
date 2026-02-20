@@ -25,7 +25,7 @@ class TradingScheduler:
         risk_manager: RiskManager,
         portfolio: PortfolioTracker,
         notifier: TelegramNotifier,
-        trading_interval: int = 60,
+        trading_interval: int = 30,
     ):
         self.db = db
         self.exchange = exchange

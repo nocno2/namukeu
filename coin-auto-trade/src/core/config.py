@@ -11,7 +11,7 @@ class Config:
     host: str = "127.0.0.1"
     port: int = 8001
     dry_run: bool = True
-    trading_interval_seconds: int = 60
+    trading_interval_seconds: int = 30
     max_positions: int = 5
     max_loss_percent: float = 5.0
     default_order_percent: float = 10.0
@@ -34,7 +34,7 @@ class Config:
             host=os.environ.get("HOST", "127.0.0.1"),
             port=int(os.environ.get("PORT", "8001")),
             dry_run=os.environ.get("DRY_RUN", "true").lower() == "true",
-            trading_interval_seconds=int(os.environ.get("TRADING_INTERVAL_SECONDS", "60")),
+            trading_interval_seconds=int(os.environ.get("TRADING_INTERVAL_SECONDS", "30")),
             max_positions=int(os.environ.get("MAX_POSITIONS", "5")),
             max_loss_percent=float(os.environ.get("MAX_LOSS_PERCENT", "5.0")),
             default_order_percent=float(os.environ.get("DEFAULT_ORDER_PERCENT", "10.0")),
