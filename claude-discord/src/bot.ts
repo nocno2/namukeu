@@ -10,7 +10,8 @@ import {
 import { readFile, writeFile, unlink } from "fs/promises";
 import { spawn } from "child_process";
 import { join } from "path";
-import { callClaude } from "./claude";
+import { callClaude, callAgentWithEngine } from "./claude";
+import { loadSettings, getChannelEngine, setChannelEngine, setDefaultEngine } from "./settings";
 import { SessionTracker, getExpiringSessions, getSessionsNeedingWarning, getDaysSinceLastActivity } from "./session";
 import {
   processMemoryTags,
@@ -65,6 +66,10 @@ const DEDICATED_CHANNELS = new Set(
 const LOGS_DIR = join(import.meta.dir, "..", "logs");
 const GATE_ERROR_LOG = join(LOGS_DIR, "gate-errors.log");
 
+// COIN 서버 (폴백용)
+const COIN_URL = process.env.COIN_URL || "http://127.0.0.1:8001";
+const COIN_TIMEOUT_MS = 10_000;
+
 // Channel → Project context mapping
 // When the user talks in a project-specific channel, the assistant should
 // focus on that project's codebase and avoid confusion after session resets.
@@ -98,9 +103,27 @@ async function logGateError(message: string): Promise<void> {
       await mkdir(LOGS_DIR, { recursive: true });
     }
     const timestamp = new Date().toISOString();
-    await appendFile(GATE_ERROR_LOG, `[${timestamp}] ${message}\n`);
+    const logLine = `[${timestamp}] ${message}\n`;
+
+    // Check file size and rotate if > 5MB
+    try {
+      const stats = await Bun.file(GATE_ERROR_LOG).stats();
+      if (stats.size > 5 * 1024 * 1024) {
+        // Rotate: rename old file with timestamp
+        const rotatedName = `gate-errors-${Date.now()}.log`;
+        const rotatedPath = join(LOGS_DIR, rotatedName);
+        await Bun.file(GATE_ERROR_LOG).rename(rotatedPath);
+        console.log(`[logGateError] Rotated log file to ${rotatedName}`);
+      }
+    } catch {
+      // File doesn't exist yet, proceed with writing
+    }
+
+    await appendFile(GATE_ERROR_LOG, logLine);
   } catch (err) {
-    console.error("[logGateError] Failed to write to log file:", err);
+    // Fallback: at least log to console
+    console.error(`[logGateError] Failed to write to log file: ${err}`);
+    console.error(`[logGateError] Original message: ${message}`);
   }
 }
 
@@ -272,6 +295,8 @@ export async function createBot(): Promise<Client> {
 
   // --- Ready event ---
   client.once(Events.ClientReady, async (c) => {
+    // Load channel settings
+    await loadSettings();
     console.log(`Bot is running as ${c.user.tag}. Waiting for messages...`);
 
     // Initialize scheduler — scheduled tasks send prompts to channels via Claude
@@ -305,7 +330,9 @@ export async function createBot(): Promise<Client> {
             finalPrompt = `${prefix}\n\n[Scheduled Task: ${task.name}]\n\n${task.prompt}`;
           }
 
-          const result = await callClaude(finalPrompt, {
+          const engine = getChannelEngine(task.channelId);
+          const result = await callAgentWithEngine(finalPrompt, {
+            engine,
             sessionId,
             isNewSession: isNew,
             systemPrompt,
@@ -658,7 +685,9 @@ export async function createBot(): Promise<Client> {
           finalPrompt = `${prefix}\n\n${prompt}`;
         }
 
-        const result = await callClaude(finalPrompt, {
+        const engine = getChannelEngine(channelId);
+        const result = await callAgentWithEngine(finalPrompt, {
+          engine,
           sessionId,
           isNewSession: isNew,
           systemPrompt,
@@ -801,15 +830,69 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
   }
 }
 
+// COIN 서버 폴백 (Gateway 실패 시 직접 연결)
+async function coinApiDirect(path: string): Promise<any> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), COIN_TIMEOUT_MS);
+
+  try {
+    const resp = await fetch(`${COIN_URL}${path}`, {
+      signal: controller.signal,
+    });
+
+    if (!resp.ok) {
+      const status = resp.status;
+      const statusText = resp.statusText;
+      let body = "";
+      try {
+        body = await resp.text();
+      } catch {}
+      const errorMsg = `[coin-direct] API Error | ${status} ${statusText} | path: ${path} | body: ${body.slice(0, 500)}`;
+      console.error(errorMsg);
+      await logGateError(errorMsg);
+      throw new Error(`${status} ${statusText}`);
+    }
+    return resp.json();
+  } catch (err) {
+    const isTimeout = err instanceof Error && err.name === "AbortError";
+    const isNetworkError = err instanceof TypeError && err.message.includes("fetch");
+    if (isTimeout) {
+      const errorMsg = `[coin-direct] Timeout | ${COIN_TIMEOUT_MS}ms | path: ${path}`;
+      console.error(errorMsg);
+      throw new Error(`COIN direct timeout after ${COIN_TIMEOUT_MS}ms: ${path}`);
+    }
+    if (isNetworkError) {
+      const errorMsg = `[coin-direct] Network Error | path: ${path} | error: ${err}`;
+      console.error(errorMsg);
+      throw new Error(`COIN direct network error: ${err}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function coinApi(path: string): Promise<any> {
   const fullPath = `/api/coin${path}`;
+
+  // 첫 번째 시도: Gateway 사용
   try {
     return await gateApi(fullPath);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[coin] API failed | path: ${fullPath} | error: ${msg}`);
-    // Throw a structured error for command handlers to catch
-    throw new Error(`[COIN] ${msg}`);
+    console.log(`[coin] Gateway failed, trying direct: ${msg}`);
+
+    // 폴백: COIN 서버에 직접 연결
+    try {
+      const result = await coinApiDirect(path);
+      console.log(`[coin] Direct API success for ${path}`);
+      return result;
+    } catch (fallbackErr) {
+      const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+      console.error(`[coin] Direct API also failed: ${fallbackMsg}`);
+      // 원래 Gateway 오류를 그대로 전파
+      throw new Error(`[COIN] Gateway: ${msg} | Direct: ${fallbackMsg}`);
+    }
   }
 }
 
