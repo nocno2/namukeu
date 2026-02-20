@@ -929,8 +929,26 @@ export async function createBot(): Promise<Bot> {
 
   bot.callbackQuery(/^insight_blog_/, async (ctx) => {
     try {
-      await ctx.answerCallbackQuery({ text: "✍️ 블로그 작성 요청" });
-      await ctx.editMessageText("✍️ 블로그 자동화:\n`/blog auto [주제]`\n\n예: /blog auto 파이썬 학습");
+      await ctx.answerCallbackQuery({ text: "✍️ 블로그 자동화 요청..." });
+
+      // Get keyword from insight message or use default
+      const keyword = "수익 분석"; // Default keyword for now
+
+      try {
+        const response = await fetch("http://localhost:5678/webhook/blog-automation", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idea: "사용자 수익 인사이트 기반 콘텐츠: 수익 목표 달성 방법" }),
+        });
+
+        if (response.ok) {
+          await ctx.editMessageText("✍️ 블로그 자동화 트리거 완료!\n\n블로그 글 작성이 시작되었습니다. blog.namukeu.com/admin에서 확인하세요.");
+        } else {
+          await ctx.editMessageText("✍️ 블로그 자동화 실패.\n\n수동으로 작성하려면: /blog auto [주제]");
+        }
+      } catch (err) {
+        await ctx.editMessageText("✍️ n8n 웹훅 연결 실패.\n\n수동으로 작성하려면: /blog auto [주제]");
+      }
     } catch (err) {
       await ctx.answerCallbackQuery({ text: `오류: ${err}` });
     }
@@ -938,8 +956,49 @@ export async function createBot(): Promise<Bot> {
 
   bot.callbackQuery(/^insight_coin_/, async (ctx) => {
     try {
-      await ctx.answerCallbackQuery({ text: "📊 코인 전략 검토" });
-      await ctx.editMessageText("📊 COIN 서비스로 이동:\n- 코인 서버에서 전략 확인\n- dashboard에서 성과 분석");
+      await ctx.answerCallbackQuery({ text: "📊 코인 전략 분석 중..." });
+
+      // Fetch coin portfolio summary
+      const COIN_API = process.env.COIN_API_URL || "http://localhost:8001";
+      const INTERNAL_KEY = process.env.INTERNAL_API_KEY || "dev-secret";
+
+      try {
+        const response = await fetch(`${COIN_API}/portfolio/summary`, {
+          headers: {
+            "Authorization": `Bearer ${INTERNAL_KEY}`,
+            "X-Internal-Key": INTERNAL_KEY,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const totalEquity = data.total_equity || 0;
+          const totalProfit = data.total_profit_loss || 0;
+          const profitRate = data.profit_rate || 0;
+
+          const emoji = profitRate >= 0 ? "📈" : "📉";
+          const profitSign = profitRate >= 0 ? "+" : "";
+
+          let message = `📊 COIN 현재 상태:\n`;
+          message += `└ 총 자산: ₩${totalEquity.toLocaleString()}\n`;
+          message += `${emoji} 수익: ₩${totalProfit.toLocaleString()} (${profitSign}${profitRate.toFixed(2)}%)\n\n`;
+
+          if (profitRate < -10) {
+            message += `⚠️ 손실률이 높습니다. 전략 검토가 필요합니다.\n`;
+            message += `→ 대시보드에서 상세 분석: dashboard.namukeu.com`;
+          } else if (profitRate >= 10) {
+            message += `✅ 수익률이 좋습니다. 현재 전략을 유지하세요.`;
+          } else {
+            message += `→ 대시보드에서 상세 분석: dashboard.namukeu.com`;
+          }
+
+          await ctx.editMessageText(message);
+        } else {
+          await ctx.editMessageText("📊 COIN API 연결 실패.\n\n대시보드에서 확인: dashboard.namukeu.com");
+        }
+      } catch (err) {
+        await ctx.editMessageText("📊 COIN 서버 연결 실패.\n\n대시보드에서 확인: dashboard.namukeu.com");
+      }
     } catch (err) {
       await ctx.answerCallbackQuery({ text: `오류: ${err}` });
     }
