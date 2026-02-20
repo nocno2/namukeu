@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import subprocess
-import time
 
 import httpx
 
@@ -82,15 +81,14 @@ class MetricsCollector:
                 logger.error(f"Metrics cleanup error: {e}")
 
     async def _collect(self):
-        start = time.monotonic()
         results = await check_all_services(self.config.services)
-        elapsed = time.monotonic() - start
-        logger.debug(f"Health check completed in {elapsed:.2f}s")
+        logger.debug(f"Health check completed for {len(results)} services")
 
         for r in results:
             name = r["name"]
             status = r["status"]
-            response_time = round(elapsed * 1000, 2)
+            # Use individual service latency from health_checker, not total elapsed time
+            response_time = r.get("latency_ms")
 
             try:
                 self.db.insert_metric(name, status, response_time)
