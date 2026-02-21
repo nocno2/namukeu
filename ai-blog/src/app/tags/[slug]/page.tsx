@@ -79,8 +79,33 @@ export default async function TagPage({ params }: Props) {
     ? [...posts.slice(0, 3), "AD" as const, ...posts.slice(3)]
     : posts;
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const collectionPageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: `#${tag.name}`,
+    description: `#${tag.name} 태그가 달린 글 목록`,
+    url: `${siteUrl}/tags/${slug}`,
+    numberOfItems: posts.length,
+    ...(posts.length > 0 && {
+      mainEntity: {
+        "@type": "ItemList",
+        itemListElement: posts.map((post, idx) => ({
+          "@type": "ListItem",
+          position: idx + 1,
+          url: `${siteUrl}/posts/${post.slug}`,
+        })),
+      },
+    }),
+  };
+
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionPageJsonLd) }}
+      />
+      <div className="mx-auto max-w-4xl px-6 py-12">
       <header className="mb-10">
         <Link href="/tags" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--accent)] mb-2 inline-block transition">
           &larr; 모든 태그
@@ -119,5 +144,6 @@ export default async function TagPage({ params }: Props) {
 
       {adSlotBottom && <AdBanner slot={adSlotBottom} format="horizontal" className="mt-10" />}
     </div>
+    </>
   );
 }

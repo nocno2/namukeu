@@ -71,8 +71,33 @@ export default async function CategoryPage({ params }: Props) {
     ? [...posts.slice(0, 3), "AD" as const, ...posts.slice(3)]
     : posts;
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const collectionPageJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: category.name,
+    description: category.description || `${category.name} 카테고리의 글 목록`,
+    url: `${siteUrl}/category/${slug}`,
+    numberOfItems: posts.length,
+    ...(posts.length > 0 && {
+      mainEntity: {
+        "@type": "ItemList",
+        itemListElement: posts.map((post, idx) => ({
+          "@type": "ListItem",
+          position: idx + 1,
+          url: `${siteUrl}/posts/${post.slug}`,
+        })),
+      },
+    }),
+  };
+
   return (
-    <div className="mx-auto max-w-4xl px-6 py-12">
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionPageJsonLd) }}
+      />
+      <div className="mx-auto max-w-4xl px-6 py-12">
       <header className="mb-10">
         <h1 className="text-3xl font-bold text-[var(--text-secondary)] mb-2">{category.name}</h1>
         {category.description && <p className="text-[var(--text-tertiary)]">{category.description}</p>}
@@ -106,5 +131,6 @@ export default async function CategoryPage({ params }: Props) {
 
       {adSlotBottom && <AdBanner slot={adSlotBottom} format="horizontal" className="mt-10" />}
     </div>
+    </>
   );
 }
