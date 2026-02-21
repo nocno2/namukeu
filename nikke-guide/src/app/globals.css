@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+:root {
+  --nikke-bg: #0a0a0f;
+  --nikke-bg-secondary: #12121a;
+  --nikke-bg-card: #1a1a24;
+  --nikke-neon-pink: #ff2d6a;
+  --nikke-neon-blue: #00d4ff;
+  --nikke-neon-purple: #a855f7;
+  --nikke-neon-green: #00ff88;
+  --nikke-text: #ffffff;
+  --nikke-text-muted: #8888aa;
+}
+
+body {
+  background: var(--nikke-bg);
+  color: var(--nikke-text);
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* 네온 글로우 효과 */
+.neon-pink {
+  text-shadow: 0 0 10px var(--nikke-neon-pink), 0 0 20px var(--nikke-neon-pink);
+}
+
+.neon-blue {
+  text-shadow: 0 0 10px var(--nikke-neon-blue), 0 0 20px var(--nikke-neon-blue);
+}
+
+/* 카드 호버 효과 */
+.card-glow:hover {
+  box-shadow: 0 0 20px rgba(255, 45, 106, 0.3), 0 0 40px rgba(0, 212, 255, 0.2);
+}
+
+/* 스크롤바 스타일 */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--nikke-bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--nikke-neon-pink);
+  border-radius: 4px;
+}
