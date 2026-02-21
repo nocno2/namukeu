@@ -8,6 +8,13 @@ class ModeRequest(BaseModel):
 class ModeResponse(BaseModel):
     dry_run: bool
     mode: str
+    # 전환 조건 정보
+    transition_ready: bool = False
+    backtest_valid: bool = False
+    paper_ready: bool = False
+    paper_trades: int = 0
+    paper_win_rate: float = 0.0
+    warnings: list[str] = []
 
 
 class ManualBuyRequest(BaseModel):

@@ -73,16 +73,61 @@ def get_mode(
 def set_mode(
     body: ModeRequest,
     _=Depends(verify),
+    db: Database = Depends(get_db),
 ):
     if not runtime.config:
         raise HTTPException(status_code=503, detail="서버 초기화 중")
     config = runtime.config
+
+    # 전환 조건 확인 (라이브 모드로 전환 시)
+    warnings: list[str] = []
+    backtest_valid = False
+    paper_ready = False
+    paper_trades = 0
+    paper_win_rate = 0.0
+
+    if not body.dry_run:  # 라이브 모드 전환 시
+        # 페이퍼 트레이딩 통계 조회
+        paper_stats = db.get_paper_trading_pnl()
+        paper_trades = paper_stats.get("completed_trades", 0)
+        paper_win_rate = paper_stats.get("win_rate", 0)
+
+        # 백테스트 조건 확인 (수익률 > 0, 승률 >= 50%, 낙폭 <= 10%, 거래 >= 10)
+        backtest_row = db.conn.execute("""
+            SELECT COUNT(*) as cnt FROM backtest_results
+            WHERE total_return_pct > 0
+              AND win_rate >= 50
+              AND max_drawdown_pct <= 10
+              AND total_trades >= 10
+        """).fetchone()
+        backtest_valid = (backtest_row["cnt"] or 0) > 0
+
+        # 페이퍼 트레이딩 조건: 거래 >= 10, 승률 >= 50%
+        paper_ready = paper_trades >= 10 and paper_win_rate >= 50
+
+        transition_ready = backtest_valid and paper_ready
+
+        # 경고 메시지 생성
+        if not backtest_valid:
+            warnings.append("백테스트 조건 미충족: 수익률>0, 승률>=50%, 낙폭<=10%, 거래>=10 인 전략이 없습니다")
+        if not paper_ready:
+            warnings.append(f"페이퍼 트레이딩 조건 미충족: 현재 {paper_trades}건 (필요: 10건), 승률 {paper_win_rate:.1f}% (필요: 50% 이상)")
+        if paper_trades < 10:
+            warnings.append(f"⚠️ 페이퍼 트레이딩 거래가 부족합니다. 최소 10건 이상의 거래를 권장합니다.")
+
     config.dry_run = body.dry_run
     for exc in runtime.exchanges.values():
         exc.dry_run = body.dry_run
+
     return ModeResponse(
         dry_run=config.dry_run,
         mode="dry_run" if config.dry_run else "live",
+        transition_ready=backtest_valid and paper_ready if not body.dry_run else False,
+        backtest_valid=backtest_valid,
+        paper_ready=paper_ready if not body.dry_run else False,
+        paper_trades=paper_trades,
+        paper_win_rate=paper_win_rate,
+        warnings=warnings,
     )
 
 
