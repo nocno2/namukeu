@@ -832,6 +832,16 @@ async function gateApi(path: string, retryCount: number = 0): Promise<any> {
     const isTimeout = err instanceof Error && err.name === "AbortError";
     const isNetworkError = err instanceof TypeError && err.message.includes("fetch");
     const stack = err instanceof Error ? err.stack : "";
+
+    // 타임아웃 시 재시도 (max 2회)
+    if (isTimeout && retryCount < 2) {
+      console.log(`[gate] Timeout (${GATE_TIMEOUT_MS}ms) for ${path}, retry ${retryCount + 1}/2...`);
+      clearTimeout(timeoutId);
+      const delay = Math.pow(2, retryCount) * 1000;
+      await new Promise((r) => setTimeout(r, delay));
+      return gateApi(path, retryCount + 1);
+    }
+
     if (isTimeout) {
       const errorMsg = `[gate] Timeout | ${GATE_TIMEOUT_MS}ms | path: ${path}\nStack: ${stack}`;
       console.error(errorMsg);
