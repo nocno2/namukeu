@@ -12,6 +12,7 @@ import { spawn } from "child_process";
 import { join } from "path";
 import { callClaude, callAgentWithEngine } from "./claude";
 import { loadSettings, getChannelEngine, setChannelEngine, setDefaultEngine } from "./settings";
+import { recordUsage } from "./settings-api";
 import { SessionTracker, getExpiringSessions, getSessionsNeedingWarning, getDaysSinceLastActivity } from "./session";
 import {
   processMemoryTags,
@@ -341,6 +342,11 @@ export async function createBot(): Promise<Client> {
             },
           });
 
+          // Record usage
+          if (result.success && (result.costUsd || result.tokens)) {
+            await recordUsage(engine, result.tokens, result.costUsd).catch(console.error);
+          }
+
           if (result.success) {
             const cleanResponse = await processMemoryTags(result.result);
             saveMessage(task.channelId, "assistant", cleanResponse, {
@@ -398,6 +404,9 @@ export async function createBot(): Promise<Client> {
     // Periodically check for expiring sessions (every hour)
     const SESSION_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 1 hour
 
+    // Track sessions that have been warned to prevent duplicate notifications
+    const warnedSessions: Map<string, number> = new Map(); // channelId -> last warned day
+
     setInterval(async () => {
       // Check for sessions needing warning (5+ days) or expiring (7+ days)
       const warningSessions = getSessionsNeedingWarning(sessions.sessions);
@@ -406,6 +415,11 @@ export async function createBot(): Promise<Client> {
         for (const session of warningSessions) {
           const days = getDaysSinceLastActivity(session);
           if (days === null) continue;
+
+          // Skip if already warned at this level (prevent duplicate notifications)
+          const lastWarned = warnedSessions.get(session.channelId);
+          if (lastWarned === days) continue;
+
           const channel = await client.channels.fetch(session.channelId);
           if (channel && channel.isTextBased()) {
             const textChannel = channel as TextBasedChannel;
@@ -429,6 +443,7 @@ export async function createBot(): Promise<Client> {
                 `7일 이상 활동이 없으면 세션이 만료됩니다.\n` +
                 `계속하려면 \`/reset\` 명령어로 새 세션을 시작하세요.`;
             }
+            warnedSessions.set(session.channelId, days);
             await sendResponse(textChannel, warningMsg).catch(() => {});
           }
         }
@@ -695,6 +710,11 @@ export async function createBot(): Promise<Client> {
             sendResponse(message.channel as TextBasedChannel, progressMsg).catch(() => {});
           },
         });
+
+        // Record usage
+        if (result.success && (result.costUsd || result.tokens)) {
+          await recordUsage(engine, result.tokens, result.costUsd).catch(console.error);
+        }
 
         if (!result.success) {
           await message.reply(`Error: ${result.error?.slice(0, 500) || "Unknown error"}`);
