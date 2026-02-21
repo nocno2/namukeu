@@ -102,6 +102,9 @@ class AdaptiveRSIStrategy:
                 oversold = params["oversold_trend"]
                 overbought = params["overbought_trend"]
 
+        # ADX 표시 문자열 생성
+        adx_display = f"{adx_value:.1f}" if adx_value is not None else "N/A"
+
         # 시그널 생성
         if current_rsi < oversold:
             confidence = min(1.0, (oversold - current_rsi) / oversold)
@@ -109,7 +112,7 @@ class AdaptiveRSIStrategy:
                 signal=Signal.BUY,
                 ticker="",
                 confidence=confidence,
-                reason=f"RSI 과매도: {current_rsi:.1f} < {oversold} ({regime}, ADX={adx_value:.1f if adx_value else 'N/A'})",
+                reason=f"RSI 과매도: {current_rsi:.1f} < {oversold} ({regime}, ADX={adx_display})",
                 indicators={
                     "rsi": round(current_rsi, 2),
                     "regime": regime,
@@ -124,7 +127,7 @@ class AdaptiveRSIStrategy:
                 signal=Signal.SELL,
                 ticker="",
                 confidence=confidence,
-                reason=f"RSI 과매수: {current_rsi:.1f} > {overbought} ({regime}, ADX={adx_value:.1f if adx_value else 'N/A'})",
+                reason=f"RSI 과매수: {current_rsi:.1f} > {overbought} ({regime}, ADX={adx_display})",
                 indicators={
                     "rsi": round(current_rsi, 2),
                     "regime": regime,
@@ -138,7 +141,7 @@ class AdaptiveRSIStrategy:
                 signal=Signal.HOLD,
                 ticker="",
                 confidence=0.0,
-                reason=f"RSI 중립: {current_rsi:.1f} ({regime}, ADX={adx_value:.1f if adx_value else 'N/A'})",
+                reason=f"RSI 중립: {current_rsi:.1f} ({regime}, ADX={adx_display})",
                 indicators={
                     "rsi": round(current_rsi, 2),
                     "regime": regime,
