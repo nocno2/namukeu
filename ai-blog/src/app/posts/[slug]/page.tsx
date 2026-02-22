@@ -1,10 +1,11 @@
 import { db, schema } from "@/lib/db";
 import { eq, and, ne, desc, sql, inArray, count } from "drizzle-orm";
 import { notFound } from "next/navigation";
-import { markdownToHtml } from "@/lib/markdown";
+import { markdownToHtml, extractHeadings } from "@/lib/markdown";
 import { generatePostMetadata, generateJsonLd, generateBreadcrumbJsonLd } from "@/lib/seo";
 import { getPostTags } from "@/lib/tags";
 import PostContent from "@/components/PostContent";
+import TableOfContents from "@/components/TableOfContents";
 import ViewTracker from "@/components/ViewTracker";
 import AdBanner from "@/components/AdBanner";
 import LikeButton from "@/components/LikeButton";
@@ -59,6 +60,7 @@ export default async function PostPage({ params }: Props) {
   if (!post) notFound();
 
   const html = await markdownToHtml(post.content);
+  const headings = extractHeadings(html);
   const tags = await getPostTags(post.id);
   const tagNames = tags.map((t) => t.name);
   const jsonLd = generateJsonLd({
@@ -176,6 +178,8 @@ export default async function PostPage({ params }: Props) {
         </header>
 
         {adSlotArticleTop && <AdBanner slot={adSlotArticleTop} format="auto" className="my-6" />}
+
+        <TableOfContents headings={headings} />
 
         <section className="article-body">
           <PostContent html={html} showInArticleAd={true} />

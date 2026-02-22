@@ -42,10 +42,60 @@ function wrapImagesInFigure(html: string): string {
   );
 }
 
+export interface TocHeading {
+  id: string;
+  text: string;
+  level: number;
+}
+
+/** 한글/영문 호환 slugify */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^\w\s가-힣-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+/** h2, h3에 id 속성 추가 */
+function addHeadingIds(html: string): string {
+  const usedIds = new Set<string>();
+  return html.replace(/<(h[23])>(.*?)<\/\1>/g, (_match, tag, content) => {
+    const text = content.replace(/<[^>]*>/g, "");
+    let id = slugify(text);
+    if (!id) id = "heading";
+    if (usedIds.has(id)) {
+      let i = 1;
+      while (usedIds.has(`${id}-${i}`)) i++;
+      id = `${id}-${i}`;
+    }
+    usedIds.add(id);
+    return `<${tag} id="${id}">${content}</${tag}>`;
+  });
+}
+
+/** HTML에서 h2, h3 헤딩 목록 추출 (TOC용) */
+export function extractHeadings(html: string): TocHeading[] {
+  const headings: TocHeading[] = [];
+  const pattern = /<h([23]) id="([^"]+)">(.*?)<\/h\1>/g;
+  let m: RegExpExecArray | null;
+  while ((m = pattern.exec(html)) !== null) {
+    headings.push({
+      level: parseInt(m[1]),
+      id: m[2],
+      text: m[3].replace(/<[^>]*>/g, ""),
+    });
+  }
+  return headings;
+}
+
 export async function markdownToHtml(markdown: string): Promise<string> {
   const result = await processor.process(markdown);
   let html = result.toString();
   // 본문 첫 H1 제거 (페이지 header와 중복 방지)
   html = html.replace(/^<h1>.*?<\/h1>\n?/, "");
-  return wrapImagesInFigure(html);
+  html = wrapImagesInFigure(html);
+  html = addHeadingIds(html);
+  return html;
 }

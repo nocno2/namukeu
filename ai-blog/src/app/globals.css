@@ -176,3 +176,81 @@ body {
   background: var(--bg-subtle);
   font-weight: 600;
 }
+
+/* TOC */
+.toc {
+  margin: 1.5rem 0;
+  border: 1px solid var(--border-light);
+  border-radius: 0.75rem;
+  background: var(--bg-card);
+  overflow: hidden;
+}
+
+.toc-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-primary);
+}
+
+.toc-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.toc-chevron {
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+.toc-chevron-open {
+  transform: rotate(180deg);
+}
+
+.toc-list {
+  list-style: none;
+  padding: 0 1rem 0.75rem;
+  margin: 0;
+  counter-reset: toc;
+}
+
+.toc-item {
+  counter-increment: toc;
+}
+
+.toc-item-sub {
+  padding-left: 1rem;
+}
+
+.toc-link {
+  display: block;
+  padding: 0.3rem 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  transition: color 0.15s;
+  border-left: 2px solid transparent;
+  padding-left: 0.75rem;
+}
+.toc-link:hover {
+  color: var(--accent);
+}
+.toc-link-active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  font-weight: 500;
+}
+
+/* 헤딩 앵커 스크롤 시 상단 여백 */
+.prose h2[id],
+.prose h3[id] {
+  scroll-margin-top: 5rem;
+}
