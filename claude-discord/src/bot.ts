@@ -46,7 +46,9 @@ import {
   type ScheduledTask,
 } from "./scheduler";
 
-const ALLOWED_USER_ID = process.env.DISCORD_USER_ID!;
+const ALLOWED_USER_IDS = new Set(
+  (process.env.DISCORD_USER_ID || "").split(",").map((id) => id.trim()).filter(Boolean)
+);
 const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
 const GATE_URL = process.env.GATE_URL || "http://127.0.0.1:8080";
@@ -468,7 +470,7 @@ export async function createBot(): Promise<Client> {
   // --- Slash command handler ---
   client.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-    if (interaction.user.id !== ALLOWED_USER_ID) {
+    if (!ALLOWED_USER_IDS.has(interaction.user.id)) {
       await interaction.reply({ content: "Unauthorized.", ephemeral: true });
       return;
     }
@@ -662,7 +664,7 @@ export async function createBot(): Promise<Client> {
     if (message.author.bot) return;
 
     // Auth check
-    if (message.author.id !== ALLOWED_USER_ID) return;
+    if (!ALLOWED_USER_IDS.has(message.author.id)) return;
 
     // Check if bot is mentioned, DM, or dedicated channel
     const isMentioned = message.mentions.has(client.user!);
