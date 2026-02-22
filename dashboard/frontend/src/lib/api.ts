@@ -95,6 +95,38 @@ export const api = {
     });
   },
 
+  // DCBOT channels
+  dcbotChannels() {
+    return request<{ channels: Array<{ channel_id: string; last_message_at: string | null }> }>("/api/dcbot/channels");
+  },
+
+  // DCBOT channel settings
+  dcbotSettings() {
+    return request<{ channels: Record<string, { engine: string }>; defaultEngine: string }>("/api/dcbot/settings");
+  },
+  dcbotChannelEngine(channelId: string) {
+    return request<{ channelId: string; engine: string }>(`/api/dcbot/settings/${channelId}`);
+  },
+  setDcbotChannelEngine(channelId: string, engine: "claude" | "gemini") {
+    return request<{ channelId: string; engine: string; ok: boolean }>(`/api/dcbot/settings/${channelId}`, {
+      method: "POST",
+      body: JSON.stringify({ engine }),
+    });
+  },
+  setDcbotDefaultEngine(engine: "claude" | "gemini") {
+    return request<{ engine: string; ok: boolean }>("/api/dcbot/settings/default", {
+      method: "POST",
+      body: JSON.stringify({ engine }),
+    });
+  },
+  dcbotUsage() {
+    return request<{
+      claude: { costUsd: number; requests: number };
+      gemini: { tokens: number; requests: number };
+      lastUpdated: string;
+    }>("/api/dcbot/usage");
+  },
+
   cardPreferences() {
     return request<{ preferences: Record<string, CardPreference> }>("/api/cards/preferences");
   },
@@ -151,6 +183,15 @@ export const api = {
     return request<{ ok: boolean }>(`/api/agent/toggle/${feature}`, {
       method: "POST",
       body: JSON.stringify({ enabled }),
+    });
+  },
+  agentEngine() {
+    return request<{ engine: string }>("/api/agent/engine");
+  },
+  setAgentEngine(engine: "claude" | "gemini") {
+    return request<{ engine: string }>("/api/agent/engine", {
+      method: "POST",
+      body: JSON.stringify({ engine }),
     });
   },
   agentGoals() {
@@ -240,6 +281,13 @@ export const api = {
     return request<{ service: string; days: number; incidents: Incident[] }>(
       `/api/services/${name}/incidents?days=${days}`,
     );
+  },
+
+  events(hours = 24, severity?: string, service?: string) {
+    const params: Record<string, number | string> = { hours };
+    if (severity) params.severity = severity;
+    if (service) params.service = service;
+    return request<{ events: DashboardEvent[]; hours: number }>("/api/events", { params });
   },
 
   n8nStatus() {
@@ -547,6 +595,16 @@ export interface AgentGoal {
   source?: "user" | "evolution";
   created_at: string;
   updated_at: string;
+}
+
+export interface DashboardEvent {
+  id: number;
+  type: string;
+  service_name: string;
+  message: string;
+  severity: "critical" | "warning" | "info" | "success";
+  timestamp: string;
+  notified: number;
 }
 
 export interface N8nStatus {

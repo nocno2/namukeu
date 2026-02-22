@@ -56,6 +56,27 @@ class Database:
 
             CREATE INDEX IF NOT EXISTS idx_incidents_service_time
                 ON incidents (service_name, started_at);
+
+            CREATE TABLE IF NOT EXISTS service_types (
+                service_name TEXT PRIMARY KEY,
+                type TEXT NOT NULL DEFAULT 'evolving'
+            );
+
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,
+                service_name TEXT NOT NULL,
+                message TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'info',
+                timestamp TEXT NOT NULL,
+                notified INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_events_timestamp
+                ON events (timestamp);
+
+            CREATE INDEX IF NOT EXISTS idx_events_service_severity
+                ON events (service_name, severity);
         """)
 
     def create_session(self, username: str, expire_hours: int = 24) -> str:
@@ -197,6 +218,29 @@ class Database:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def insert_event(self, type: str, service_name: str, message: str, severity: str = "info", notified: bool = False):
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO events (type, service_name, message, severity, timestamp, notified) VALUES (?, ?, ?, ?, ?, ?)",
+                (type, service_name, message, severity, datetime.now().isoformat(), int(notified)),
+            )
+            self.conn.commit()
+
+    def get_events(self, since: datetime, severity: str | None = None, service_name: str | None = None, limit: int = 100) -> list[dict]:
+        query = "SELECT id, type, service_name, message, severity, timestamp, notified FROM events WHERE timestamp >= ?"
+        params: list = [since.isoformat()]
+        if severity:
+            query += " AND severity = ?"
+            params.append(severity)
+        if service_name:
+            query += " AND service_name = ?"
+            params.append(service_name)
+        query += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+        with self._lock:
+            rows = self.conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
     def cleanup_old_metrics(self, retention_days: int = 7):
         """Aggregate metrics older than retention_days into hourly summaries, then delete raw data."""
         cutoff = (datetime.now() - timedelta(days=retention_days)).isoformat()
@@ -224,6 +268,26 @@ class Database:
                     "INSERT INTO metrics (timestamp, service_name, status, response_time_ms) VALUES (?, ?, ?, ?)",
                     (row["hour_ts"], row["service_name"], row["status"], row["response_time_ms"]),
                 )
+            self.conn.commit()
+
+    def get_service_type(self, service_name: str) -> str:
+        """Get service type (ktlo or evolving). Defaults to evolving."""
+        with self._lock:
+            row = self.conn.execute(
+                "SELECT type FROM service_types WHERE service_name = ?",
+                (service_name,),
+            ).fetchone()
+        return row["type"] if row else "evolving"
+
+    def set_service_type(self, service_name: str, type: str):
+        """Set service type (ktlo or evolving)."""
+        if type not in ("ktlo", "evolving"):
+            raise ValueError("type must be 'ktlo' or 'evolving'")
+        with self._lock:
+            self.conn.execute(
+                "INSERT OR REPLACE INTO service_types (service_name, type) VALUES (?, ?)",
+                (service_name, type),
+            )
             self.conn.commit()
 
     def close(self):

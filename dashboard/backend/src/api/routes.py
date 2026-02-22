@@ -265,6 +265,27 @@ def service_incidents(
     return {"service": name, "days": days, "incidents": incidents}
 
 
+@router.get("/events")
+def list_events(
+    hours: int = 24,
+    severity: str | None = None,
+    service: str | None = None,
+    limit: int = 100,
+    _=Depends(verify_session),
+    db: Database = Depends(get_db),
+):
+    """최근 이벤트 목록 조회 (기본 24시간)"""
+    hours = min(hours, 168)  # 최대 7일
+    limit = min(limit, 500)
+    since = datetime.now() - timedelta(hours=hours)
+
+    if severity and severity not in ("critical", "warning", "info", "success"):
+        raise HTTPException(status_code=400, detail="severity는 critical/warning/info/success 중 하나")
+
+    events = db.get_events(since, severity=severity, service_name=service, limit=limit)
+    return {"events": events, "hours": hours}
+
+
 class CardPrefUpdate(BaseModel):
     card_id: str
     collapsed: bool | None = None
@@ -893,6 +914,7 @@ def toggle_scheduled_task(
 # --- Agent Control Proxy ---
 
 AGENT_API_BASE = "http://127.0.0.1:8003"
+DCBOT_API_BASE = "http://127.0.0.1:8090"
 AGENT_API_TOKEN = "agent-api-token"
 
 
@@ -922,6 +944,43 @@ async def agent_toggle(feature: str, body: dict, _=Depends(verify_session)):
                 f"{AGENT_API_BASE}/api/toggle/{feature}",
                 json=body, headers=_agent_headers(), timeout=5.0,
             )
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+# ─── Agent Engine Settings ───
+
+
+@router.get("/agent/engine")
+async def get_agent_engine(_=Depends(verify_session)):
+    """Get current agent engine (claude or gemini)."""
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"{AGENT_API_BASE}/api/engine", headers=_agent_headers(), timeout=5.0)
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="Agent API error")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="Agent API unavailable")
+
+
+@router.post("/agent/engine")
+async def set_agent_engine(body: dict, _=Depends(verify_session)):
+    """Set agent engine (claude or gemini)."""
+    engine = body.get("engine")
+    if engine not in ("claude", "gemini"):
+        raise HTTPException(status_code=400, detail="Invalid engine. Use 'claude' or 'gemini'.")
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{AGENT_API_BASE}/api/engine",
+                json={"engine": engine},
+                headers=_agent_headers(),
+                timeout=5.0,
+            )
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="Agent API error")
             return r.json()
         except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="Agent API unavailable")
@@ -1339,3 +1398,98 @@ def export_service_data(
 
     # JSON 반환
     return result
+
+
+# --- DCBOT Settings (Claude/Gemini channel config) ---
+
+
+@router.get("/dcbot/channels")
+async def get_dcbot_channels(_=Depends(verify_session)):
+    """Get known channels from message history."""
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"{DCBOT_API_BASE}/channels", timeout=5.0)
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="DCBOT API error")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="DCBOT API unavailable")
+
+
+@router.get("/dcbot/settings")
+async def get_dcbot_settings(_=Depends(verify_session)):
+    """Get all DCBOT channel settings."""
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"{DCBOT_API_BASE}/settings", timeout=5.0)
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="DCBOT API error")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="DCBOT API unavailable")
+
+
+@router.get("/dcbot/settings/{channelId}")
+async def get_dcbot_channel_engine(channelId: str, _=Depends(verify_session)):
+    """Get engine for a specific channel."""
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"{DCBOT_API_BASE}/settings/{channelId}", timeout=5.0)
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="DCBOT API error")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="DCBOT API unavailable")
+
+
+@router.post("/dcbot/settings/{channelId}")
+async def set_dcbot_channel_engine(channelId: str, body: dict, _=Depends(verify_session)):
+    """Set engine for a specific channel."""
+    engine = body.get("engine")
+    if engine not in ("claude", "gemini"):
+        raise HTTPException(status_code=400, detail="Invalid engine. Use 'claude' or 'gemini'.")
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{DCBOT_API_BASE}/settings/{channelId}",
+                json={"engine": engine},
+                timeout=5.0,
+            )
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="DCBOT API error")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="DCBOT API unavailable")
+
+
+@router.post("/dcbot/settings/default")
+async def set_dcbot_default_engine(body: dict, _=Depends(verify_session)):
+    """Set default engine for DCBOT."""
+    engine = body.get("engine")
+    if engine not in ("claude", "gemini"):
+        raise HTTPException(status_code=400, detail="Invalid engine. Use 'claude' or 'gemini'.")
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.post(
+                f"{DCBOT_API_BASE}/settings/default",
+                json={"engine": engine},
+                timeout=5.0,
+            )
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="DCBOT API error")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="DCBOT API unavailable")
+
+
+@router.get("/dcbot/usage")
+async def get_dcbot_usage(_=Depends(verify_session)):
+    """Get DCBOT usage stats (Claude cost, Gemini tokens)."""
+    async with httpx.AsyncClient() as client:
+        try:
+            r = await client.get(f"{DCBOT_API_BASE}/usage", timeout=5.0)
+            if r.status_code != 200:
+                raise HTTPException(status_code=502, detail="DCBOT API error")
+            return r.json()
+        except (httpx.ConnectError, httpx.TimeoutException):
+            raise HTTPException(status_code=502, detail="DCBOT API unavailable")

@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from "react";
 import { LayoutGrid, RefreshCw, Server, Zap } from "lucide-react";
 import { api, type CardPreference, type ServiceStatus } from "../lib/api";
 import { AutomationHub } from "./AutomationHub";
+import { AgentEnginePanel } from "./AgentEnginePanel";
 import { BlogTraffic } from "./BlogTraffic";
 import { ClaudeUsage } from "./ClaudeUsage";
 import { CoinBacktestStatus } from "./CoinBacktestStatus";
 import { CoinProfitCard } from "./CoinProfitCard";
 import { CommitPanel } from "./CommitPanel";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { EventTimeline } from "./EventTimeline";
 import { Header } from "./Header";
 import { LogViewer } from "./LogViewer";
 import { N8nStatus } from "./N8nStatus";
@@ -48,9 +50,11 @@ type CardItem =
   | { type: "service"; id: string; service: ServiceStatus }
   | { type: "claude"; id: string }
   | { type: "system"; id: string }
+  | { type: "events"; id: string }
   | { type: "blog"; id: string }
   | { type: "train"; id: string }
   | { type: "automation"; id: string }
+  | { type: "agent-engine"; id: string }
   | { type: "n8n"; id: string }
   | { type: "coin"; id: string }
   | { type: "coinProfit"; id: string }
@@ -122,6 +126,7 @@ export function Dashboard({ username, onLogout }: Props) {
 
   const allCards: CardItem[] = [
     { type: "system", id: "system-resources" },
+    { type: "events", id: "event-timeline" },
     { type: "goals", id: "project-goals" },
     ...services.map((svc): CardItem => ({ type: "service", id: svc.name, service: svc })),
     { type: "train", id: "train-status" },
@@ -132,6 +137,7 @@ export function Dashboard({ username, onLogout }: Props) {
     { type: "claude", id: "claude-usage" },
     { type: "n8n", id: "n8n-status" },
     { type: "automation", id: "automation-hub" },
+    { type: "agent-engine", id: "agent-engine-panel" },
   ];
 
   // 탭별 필터링
@@ -255,6 +261,9 @@ export function Dashboard({ username, onLogout }: Props) {
                 case "system":
                   content = <SystemResources {...cardProps(card.id)} />;
                   break;
+                case "events":
+                  content = <EventTimeline {...cardProps(card.id)} />;
+                  break;
                 case "goals":
                   content = <ProjectGoals {...cardProps(card.id)} />;
                   break;
@@ -281,6 +290,9 @@ export function Dashboard({ username, onLogout }: Props) {
                   break;
                 case "automation":
                   content = <AutomationHub {...cardProps(card.id)} />;
+                  break;
+                case "agent-engine":
+                  content = <AgentEnginePanel {...cardProps(card.id)} />;
                   break;
                 default:
                   content = null;

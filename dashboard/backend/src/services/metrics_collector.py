@@ -103,11 +103,18 @@ class MetricsCollector:
             if status == "down":
                 self._down_counts[name] = self._down_counts.get(name, 0) + 1
 
-                # First transition to down: create incident + alert
+                # First transition to down: create incident + alert + event
                 if prev == "running":
                     incident_id = self.db.insert_incident(name)
                     self._active_incidents[name] = incident_id
                     self._recovery_attempts[name] = 0
+                    display = r.get("display_name", name)
+                    self.db.insert_event(
+                        type="service_down",
+                        service_name=name,
+                        message=f"{display} 서비스 다운 감지 (running → down)",
+                        severity="critical",
+                    )
                     await self._send_down_alert(r)
 
                 # Consecutive downs hit threshold: attempt auto-restart (once)
@@ -126,6 +133,14 @@ class MetricsCollector:
                         recovery_attempts=self._recovery_attempts.get(name, 0),
                     )
                     del self._active_incidents[name]
+                    display = r.get("display_name", name)
+                    recovery_note = " (자동 복구)" if auto_recovered else ""
+                    self.db.insert_event(
+                        type="service_recovery",
+                        service_name=name,
+                        message=f"{display} 서비스 복구{recovery_note} (down → running)",
+                        severity="success",
+                    )
                     await self._send_recovery_alert(r, auto_recovered)
 
                 self._down_counts[name] = 0
@@ -165,6 +180,21 @@ class MetricsCollector:
             logger.error(f"Auto-restart failed for {name}: {e}")
             success = False
 
+        display = service.get("display_name", name)
+        if success:
+            self.db.insert_event(
+                type="auto_restart",
+                service_name=name,
+                message=f"{display} 자동 재시작 시도 (연속 {DOWN_THRESHOLD}회 다운)",
+                severity="warning",
+            )
+        else:
+            self.db.insert_event(
+                type="auto_restart_fail",
+                service_name=name,
+                message=f"{display} 자동 재시작 실패",
+                severity="critical",
+            )
         await self._send_restart_alert(service, success)
 
     async def _send_down_alert(self, service: dict):
