@@ -74,13 +74,22 @@ const COIN_TIMEOUT_MS = 10_000;
 // Channel → Project context mapping
 // When the user talks in a project-specific channel, the assistant should
 // focus on that project's codebase and avoid confusion after session resets.
-const CHANNEL_PROJECT_MAP: Record<string, { project: string; codename: string; dir: string; description: string }> = {
+interface ChannelProject {
+  project: string;
+  codename: string;
+  dir: string;
+  description: string;
+  cwd?: string; // 모노레포 밖 프로젝트용 절대 경로. 없으면 기본 PROJECT_DIR 사용
+}
+
+const CHANNEL_PROJECT_MAP: Record<string, ChannelProject> = {
   "1472150448558444576": { project: "coin-auto-trade", codename: "COIN", dir: "coin-auto-trade/", description: "Upbit 자동매매 서버 (Python FastAPI :8001)" },
   "1472220621340676217": { project: "ai-blog", codename: "BLOG", dir: "ai-blog/", description: "수익형 블로그 (Next.js + Bun :3100)" },
   "1472220670497788147": { project: "dashboard", codename: "DASH", dir: "dashboard/", description: "개인 대시보드 (React + FastAPI :8002)" },
   "1472819862123446345": { project: "api-gateway", codename: "GATE", dir: "api-gateway/", description: "API 게이트웨이 (Python FastAPI :8080)" },
   "1472820038607306804": { project: "content-pipeline", codename: "PIPE", dir: "content-pipeline/", description: "스케줄러 + 콘텐츠 파이프라인 (React + FastAPI :8003)" },
   "1473730339460485172": { project: "coin-auto-trade", codename: "COIN", dir: "coin-auto-trade/", description: "Upbit 자동매매 서버 (Python FastAPI :8001)" },
+  "1474976992930693232": { project: "nikke", codename: "NIKKE", dir: "nikke-guide/", description: "NIKKE 택티컬 가이드 (React + Vite :3060)", cwd: "/Users/namwook/Documents/nikke" },
 };
 
 let profileContext = "";
@@ -144,10 +153,13 @@ function buildSystemPrompt(memoryContext: string, conversationRecap?: string, ch
   // Inject project context based on channel
   const channelProject = channelId ? CHANNEL_PROJECT_MAP[channelId] : undefined;
   if (channelProject) {
+    const projectDir = channelProject.cwd
+      ? `${channelProject.cwd}/${channelProject.dir}`
+      : `/Users/namwook/Documents/namukeu/${channelProject.dir}`;
     parts.push(
       `\nPROJECT CONTEXT:` +
       `\nThis channel is dedicated to the **${channelProject.project}** project [${channelProject.codename}].` +
-      `\n- Directory: /Users/namwook/Documents/namukeu/${channelProject.dir}` +
+      `\n- Directory: ${projectDir}` +
       `\n- Description: ${channelProject.description}` +
       `\nFocus on this project when the user asks about code, bugs, features, or deployments.` +
       `\nAlways check the project's CLAUDE.md for project-specific guidelines.` +
@@ -332,11 +344,13 @@ export async function createBot(): Promise<Client> {
           }
 
           const engine = getChannelEngine(task.channelId);
+          const scheduledCwd = CHANNEL_PROJECT_MAP[task.channelId]?.cwd;
           const result = await callAgentWithEngine(finalPrompt, {
             engine,
             sessionId,
             isNewSession: isNew,
             systemPrompt,
+            cwd: scheduledCwd,
             onProgress: (progressMsg) => {
               sendResponse(textChannel, progressMsg).catch(() => {});
             },
@@ -701,11 +715,13 @@ export async function createBot(): Promise<Client> {
         }
 
         const engine = getChannelEngine(channelId);
+        const channelCwd = CHANNEL_PROJECT_MAP[channelId]?.cwd;
         const result = await callAgentWithEngine(finalPrompt, {
           engine,
           sessionId,
           isNewSession: isNew,
           systemPrompt,
+          cwd: channelCwd,
           onProgress: (progressMsg) => {
             sendResponse(message.channel as TextBasedChannel, progressMsg).catch(() => {});
           },
