@@ -79,6 +79,8 @@ class TradingScheduler:
         strategies = self.db.get_strategies(enabled_only=True, exchange=exchange_name)
         for s in strategies:
             params = json.loads(s["params"]) if isinstance(s["params"], str) else s["params"]
+            # DB의 interval 설정을 params에 주입 (하드코딩 방지)
+            params["interval"] = s.get("interval", "minute60")
             self.start_trading(s["ticker"], s["name"], params, s["id"])
         if strategies:
             logger.info(f"{len(strategies)}개 전략 복원")
@@ -131,6 +133,11 @@ class TradingScheduler:
 
     async def _snapshot_loop(self, interval_minutes: int, initial_equity: float | None):
         try:
+            # initial_equity가 None이면 첫 실행 시 현재 총 자산으로 설정
+            if initial_equity is None:
+                summary = await self.portfolio.get_summary()
+                initial_equity = summary["total_equity"]
+                logger.info(f"스냅샷 초기 자산 자동 설정: {initial_equity:,.2f}")
             while True:
                 await self.portfolio.take_snapshot(initial_equity)
                 await asyncio.sleep(interval_minutes * 60)
@@ -156,7 +163,8 @@ class TradingScheduler:
             while True:
                 try:
                     # 1. 데이터 수집 (200MA + RSI period = 220개 이상 필요)
-                    df = await self.exchange.get_ohlcv(ticker, interval="minute60", count=250)
+                    interval = params.get("interval", "minute60")
+                    df = await self.exchange.get_ohlcv(ticker, interval=interval, count=250)
                     if df is None or df.empty or len(df) < strategy.required_candle_count:
                         logger.warning(f"{ticker} 데이터 부족, 건너뜀")
                         await asyncio.sleep(self.trading_interval)
@@ -363,10 +371,16 @@ class TradingScheduler:
             triggered, profit_pct = self.risk_manager.check_partial_profit_take(entry_price, current_price)
             partial_taken = p.get("partial_taken", False)
             if triggered and not partial_taken:
+                volume = p["volume"]
+                # 최소 수량 가드: volume이 너무 작으면 부분 익절 스킵
+                min_volume = self.exchange.info.min_order_value / current_price if current_price > 0 else 0
+                if volume < min_volume * 2:
+                    logger.info(f"부분 익절 스킵 (수량 부족): {p['ticker']} volume={volume}")
+                    continue
+
                 logger.info(f"부분 익절 발동: {p['ticker']} (진입: {entry_price:,.0f}, 현재: {current_price:,.0f}, 수익: {profit_pct:.1f}%)")
 
                 # Sell 50% of position
-                volume = p["volume"]
                 sell_volume = volume * 0.5
 
                 from src.strategies.base import TradeSignal, Signal as Sig
@@ -662,11 +676,17 @@ class TradingScheduler:
             )
             partial_taken = p.get("partial_taken", False)
             if triggered and not partial_taken:
+                volume = p["volume"]
+                # 최소 수량 가드: volume이 너무 작으면 부분 익절 스킵
+                min_volume = self.exchange.info.min_order_value / current_price if current_price > 0 else 0
+                if volume < min_volume * 2:
+                    logger.info(f"선물 부분 익절 스킵 (수량 부족): {p['ticker']} volume={volume}")
+                    continue
+
                 logger.info(f"선물 부분 익절 발동: {p['ticker']} {side} {leverage}x "
                            f"(진입: {entry_price:,.2f}, 현재: {current_price:,.2f}, 수익: {profit_pct:.1f}%)")
 
                 # Sell 50% of position
-                volume = p["volume"]
                 sell_volume = volume * 0.5
 
                 from src.strategies.base import TradeSignal, Signal as Sig

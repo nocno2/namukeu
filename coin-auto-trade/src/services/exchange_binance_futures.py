@@ -34,6 +34,7 @@ class BinanceFuturesExchange:
         self._default_leverage = default_leverage
         self._margin_type = margin_type
         self._initialized_symbols: set[str] = set()
+        self._symbol_info_cache: dict[str, dict] = {}
 
     @property
     def name(self) -> str:
@@ -111,6 +112,32 @@ class BinanceFuturesExchange:
                 logger.warning(f"Set margin type failed for {symbol}: {e}")
 
         self._initialized_symbols.add(symbol)
+
+    async def _get_symbol_info(self, symbol: str) -> dict:
+        """심볼의 stepSize, minQty 등 필터 정보를 캐싱하여 반환."""
+        if symbol in self._symbol_info_cache:
+            return self._symbol_info_cache[symbol]
+        try:
+            info = await asyncio.to_thread(self._client.futures_exchange_info)
+            for s in info.get("symbols", []):
+                sym = s["symbol"]
+                filters = {f["filterType"]: f for f in s.get("filters", [])}
+                lot_filter = filters.get("LOT_SIZE", {})
+                self._symbol_info_cache[sym] = {
+                    "step_size": float(lot_filter.get("stepSize", "0.001")),
+                    "min_qty": float(lot_filter.get("minQty", "0.001")),
+                }
+        except Exception as e:
+            logger.warning(f"심볼 정보 조회 실패: {e}")
+        return self._symbol_info_cache.get(symbol, {"step_size": 0.001, "min_qty": 0.001})
+
+    def _round_quantity(self, quantity: float, step_size: float) -> float:
+        """stepSize 기준으로 수량을 내림 보정."""
+        import math
+        if step_size <= 0:
+            return quantity
+        precision = max(0, -int(math.log10(step_size)))
+        return round(math.floor(quantity / step_size) * step_size, precision)
 
     # --- Quotation (public) ---
 
@@ -267,16 +294,23 @@ class BinanceFuturesExchange:
 
     async def buy_market_order(self, ticker: str, amount: float) -> OrderResult | None:
         """BUY (open long / close short). amount is in USDT."""
+        symbol = self._to_binance_symbol(ticker)
         if self._dry_run:
             logger.info(f"[DRY-RUN] FUTURES BUY {ticker} for {amount:,.2f} USDT")
             return None
         await self._rate_limit()
-        symbol = self._to_binance_symbol(ticker)
         await self.setup_symbol(symbol)
         price = float((await asyncio.to_thread(
             self._client.futures_symbol_ticker, symbol=symbol,
         ))["price"])
-        quantity = round(amount / price, 3)
+        sym_info = await self._get_symbol_info(symbol)
+        quantity = self._round_quantity(amount / price, sym_info["step_size"])
+        if quantity < sym_info["min_qty"]:
+            logger.warning(
+                f"[BinanceFutures] BUY 수량 부족: {ticker} qty={quantity} < min={sym_info['min_qty']} "
+                f"(amount={amount:.4f} USDT, price={price:.2f})"
+            )
+            return None
         result = await asyncio.to_thread(
             self._client.futures_create_order,
             symbol=symbol, side="BUY", type="MARKET", quantity=quantity,
@@ -285,15 +319,23 @@ class BinanceFuturesExchange:
 
     async def sell_market_order(self, ticker: str, volume: float) -> OrderResult | None:
         """SELL (open short / close long). volume is in base asset."""
+        symbol = self._to_binance_symbol(ticker)
         if self._dry_run:
             logger.info(f"[DRY-RUN] FUTURES SELL {ticker} volume={volume}")
             return None
         await self._rate_limit()
-        symbol = self._to_binance_symbol(ticker)
         await self.setup_symbol(symbol)
+        sym_info = await self._get_symbol_info(symbol)
+        quantity = self._round_quantity(volume, sym_info["step_size"])
+        if quantity < sym_info["min_qty"]:
+            logger.warning(
+                f"[BinanceFutures] SELL 수량 부족: {ticker} qty={quantity} < min={sym_info['min_qty']} "
+                f"(volume={volume})"
+            )
+            return None
         result = await asyncio.to_thread(
             self._client.futures_create_order,
-            symbol=symbol, side="SELL", type="MARKET", quantity=round(volume, 3),
+            symbol=symbol, side="SELL", type="MARKET", quantity=quantity,
         )
         return self._parse_order(result)
 
