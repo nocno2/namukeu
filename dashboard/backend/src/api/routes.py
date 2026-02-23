@@ -17,6 +17,11 @@ from src.api import proxy as proxy_module
 from src.core.config import Config
 from src.core.database import Database
 from src.services.health_checker import check_all_services
+from src.services.daily_briefing import (
+    collect_briefing_data,
+    format_briefing_message,
+    send_telegram,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -659,6 +664,10 @@ CRON_META: dict[str, dict[str, str]] = {
     "check_ip.sh": {
         "display_name": "IP 변경 감지",
         "description": "공인 IP 변경 시 텔레그램 알림",
+    },
+    "send_daily_briefing.py": {
+        "display_name": "일일 브리핑",
+        "description": "매일 08:00 서비스 상태 브리핑 텔레그램 발송",
     },
 }
 
@@ -1493,3 +1502,33 @@ async def get_dcbot_usage(_=Depends(verify_session)):
             return r.json()
         except (httpx.ConnectError, httpx.TimeoutException):
             raise HTTPException(status_code=502, detail="DCBOT API unavailable")
+
+
+# --- Daily Briefing ---
+
+
+@router.get("/daily-briefing")
+async def daily_briefing(
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+    db: Database = Depends(get_db),
+):
+    """일일 브리핑 데이터 조회 + 텔레그램 포맷 메시지 생성"""
+    data = await collect_briefing_data(config, db)
+    message = format_briefing_message(data)
+    return {"data": data, "message": message}
+
+
+@router.post("/daily-briefing/send")
+async def send_daily_briefing(
+    _=Depends(verify_session),
+    config: Config = Depends(get_config),
+    db: Database = Depends(get_db),
+):
+    """일일 브리핑을 텔레그램으로 발송"""
+    data = await collect_briefing_data(config, db)
+    message = format_briefing_message(data)
+    success = await send_telegram(message)
+    if not success:
+        raise HTTPException(status_code=502, detail="텔레그램 발송 실패")
+    return {"ok": True, "message": message}
