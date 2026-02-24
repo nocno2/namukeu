@@ -90,7 +90,7 @@ export default async function AdminDashboard() {
         <div className={`border border-[var(--border)] rounded-lg p-4 bg-[var(--bg-card)]`}>
           <div className="flex justify-between items-center mb-2">
             <h2 className="font-semibold text-[var(--text-primary)]">AdSense</h2>
-            <span className={`text-xs px-2 py-1 rounded bg-${adsenseStatusColor}-500/20 text-${adsenseStatusColor}-500`}>
+            <span className={`text-xs px-2 py-1 rounded ${adsenseStatusColor === "green" ? "bg-green-500/20 text-green-500" : "bg-yellow-500/20 text-yellow-500"}`}>
               {adsenseStatus}
             </span>
           </div>
