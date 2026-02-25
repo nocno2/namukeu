@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { LayoutGrid, RefreshCw, Server, Zap } from "lucide-react";
+import { AlertTriangle, LayoutGrid, Play, RefreshCw, ScrollText, Server, Zap } from "lucide-react";
 import { api, type CardPreference, type ServiceStatus } from "../lib/api";
 import { AutomationHub } from "./AutomationHub";
 import { AgentEnginePanel } from "./AgentEnginePanel";
@@ -60,6 +60,76 @@ type CardItem =
   | { type: "coinProfit"; id: string }
   | { type: "revenue"; id: string }
   | { type: "goals"; id: string };
+
+function formatElapsed(checkedAt: string): string {
+  const diff = Date.now() - new Date(checkedAt).getTime();
+  if (diff < 0) return "방금";
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return `${sec}초`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}분`;
+  const hr = Math.floor(min / 60);
+  const remainMin = min % 60;
+  return remainMin > 0 ? `${hr}시간 ${remainMin}분` : `${hr}시간`;
+}
+
+function ActiveIncidentBanner({
+  services,
+  onShowLogs,
+  onRestart,
+}: {
+  services: ServiceStatus[];
+  onShowLogs: (name: string) => void;
+  onRestart: (name: string) => void;
+}) {
+  const downServices = services.filter((s) => s.status === "down");
+  if (downServices.length === 0) return null;
+
+  return (
+    <div className="bg-danger/10 border border-danger/30 rounded-2xl p-4 mb-6">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle size={16} className="text-danger" />
+        <span className="text-sm font-semibold text-danger">
+          활성 장애 {downServices.length}건
+        </span>
+      </div>
+      <div className="space-y-2">
+        {downServices.map((svc) => (
+          <div
+            key={svc.name}
+            className="flex items-center justify-between bg-bg/60 rounded-xl px-3 py-2"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 rounded-full bg-danger animate-pulse" />
+              <span className="text-sm font-medium text-text">
+                {svc.display_name}
+              </span>
+              <span className="text-xs text-text-muted">
+                {formatElapsed(svc.checked_at)} 경과
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onShowLogs(svc.name)}
+                className="flex items-center gap-1 text-xs text-text-muted hover:text-text border border-border rounded-lg px-2 py-1 transition-colors cursor-pointer"
+              >
+                <ScrollText size={12} />
+                로그
+              </button>
+              <button
+                onClick={() => onRestart(svc.name)}
+                className="flex items-center gap-1 text-xs text-white bg-danger hover:bg-danger/80 rounded-lg px-2 py-1 transition-colors cursor-pointer"
+              >
+                <Play size={12} />
+                재시작
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function Dashboard({ username, onLogout }: Props) {
   const [services, setServices] = useState<ServiceStatus[]>([]);
@@ -211,6 +281,16 @@ export function Dashboard({ username, onLogout }: Props) {
             </button>
           </div>
         </div>
+
+        {/* 활성 장애 배너 */}
+        <ActiveIncidentBanner
+          services={services}
+          onShowLogs={(name) => setLogService(name)}
+          onRestart={async (name) => {
+            await api.restart(name);
+            fetchServices();
+          }}
+        />
 
         {/* 탭 */}
         <div className="flex items-center gap-1 mb-6 bg-surface p-1 rounded-xl border border-border w-fit">
