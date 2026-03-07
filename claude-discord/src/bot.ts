@@ -93,6 +93,7 @@ const CHANNEL_PROJECT_MAP: Record<string, ChannelProject> = {
   "1473730339460485172": { project: "coin-auto-trade", codename: "COIN", dir: "coin-auto-trade/", description: "Upbit 자동매매 서버 (Python FastAPI :8001)" },
   "1474976992930693232": { project: "nikke", codename: "NIKKE", dir: "nikke-guide/", description: "NIKKE 택티컬 가이드 (React + Vite :3060)", cwd: "/Users/namwook/Documents/nikke" },
   "1479053957476122707": { project: "supply-line-zero", codename: "SLZ", dir: "supply-line-zero/", description: "Supply Line Zero (Unity 게임 프로젝트)", cwd: "/Users/namwook/Documents/supply-line-zero" },
+  "1479665584739455069": { project: "game", codename: "GAME", dir: "game/", description: "게임 개발 프로젝트", cwd: "/Users/namwook/Documents/game" },
 };
 
 let profileContext = "";
