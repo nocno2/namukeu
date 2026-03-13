@@ -1,10 +1,19 @@
 // Simple HTTP API for DCBOT settings — runs alongside Discord bot.
 
-import { readFile, writeFile, mkdir } from "fs/promises";
+import { mkdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
 import type { AgentEngine } from "@namukeu/agent-core";
+import {
+  initDb,
+  getAllChannelSettings,
+  getChannelSetting,
+  setChannelEngine as dbSetChannelEngine,
+  getGlobalSetting,
+  setGlobalSetting,
+  getKnownChannels,
+} from "./db";
 
-const SETTINGS_FILE = join(process.cwd(), "data", "channel-settings.json");
+const USAGE_FILE = join(process.cwd(), "data", "usage.json");
 const API_PORT = 8090; // DCBOT API port
 
 export interface ChannelSettings {
@@ -24,26 +33,27 @@ const DEFAULT_SETTINGS: DcBotSettings = {
 
 let cachedSettings: DcBotSettings | null = null;
 
-async function loadSettings(): Promise<DcBotSettings> {
+function loadSettingsFromDb(): DcBotSettings {
   if (cachedSettings) return cachedSettings;
 
-  try {
-    const content = await readFile(SETTINGS_FILE, "utf-8");
-    cachedSettings = JSON.parse(content);
-  } catch {
-    cachedSettings = { ...DEFAULT_SETTINGS };
+  const channelRows = getAllChannelSettings();
+  const channels: Record<string, ChannelSettings> = {};
+  for (const row of channelRows) {
+    channels[row.channel_id] = { engine: row.engine as AgentEngine, model: row.model || undefined };
   }
 
-  return cachedSettings!;
+  const defaultEngine = (getGlobalSetting("default_engine") || "claude") as AgentEngine;
+
+  cachedSettings = { channels, defaultEngine };
+  return cachedSettings;
 }
 
-async function saveSettings(settings: DcBotSettings): Promise<void> {
-  cachedSettings = settings;
-  await writeFile(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+async function loadSettings(): Promise<DcBotSettings> {
+  return loadSettingsFromDb();
 }
 
 function getChannelEngine(channelId: string): AgentEngine {
-  const settings = cachedSettings || { channels: {}, defaultEngine: "claude" };
+  const settings = loadSettingsFromDb();
   return settings.channels[channelId]?.engine || settings.defaultEngine;
 }
 
@@ -51,15 +61,68 @@ async function setChannelEngine(
   channelId: string,
   engine: AgentEngine
 ): Promise<void> {
-  const settings = await loadSettings();
-  settings.channels[channelId] = { engine };
-  await saveSettings(settings);
+  dbSetChannelEngine(channelId, engine);
+  cachedSettings = null; // Clear cache
 }
 
 async function setDefaultEngine(engine: AgentEngine): Promise<void> {
-  const settings = await loadSettings();
-  settings.defaultEngine = engine;
-  await saveSettings(settings);
+  setGlobalSetting("default_engine", engine);
+  cachedSettings = null; // Clear cache
+}
+
+// ─── Usage Tracking ───
+
+export interface UsageStats {
+  claude: {
+    costUsd: number;
+    requests: number;
+  };
+  gemini: {
+    tokens: number;
+    requests: number;
+  };
+  lastUpdated: string;
+}
+
+const DEFAULT_USAGE: UsageStats = {
+  claude: { costUsd: 0, requests: 0 },
+  gemini: { tokens: 0, requests: 0 },
+  lastUpdated: new Date().toISOString(),
+};
+
+let cachedUsage: UsageStats | null = null;
+
+async function loadUsage(): Promise<UsageStats> {
+  if (cachedUsage) return cachedUsage;
+
+  try {
+    const content = await readFile(USAGE_FILE, "utf-8");
+    cachedUsage = JSON.parse(content);
+  } catch {
+    cachedUsage = { ...DEFAULT_USAGE };
+  }
+
+  return cachedUsage!;
+}
+
+async function saveUsage(usage: UsageStats): Promise<void> {
+  cachedUsage = usage;
+  await writeFile(USAGE_FILE, JSON.stringify(usage, null, 2));
+}
+
+export async function recordUsage(engine: AgentEngine, tokens?: number, costUsd?: number): Promise<void> {
+  const usage = await loadUsage();
+
+  if (engine === "gemini" && tokens) {
+    usage.gemini.tokens += tokens;
+    usage.gemini.requests += 1;
+  } else if (engine === "claude" && costUsd) {
+    usage.claude.costUsd += costUsd;
+    usage.claude.requests += 1;
+  }
+
+  usage.lastUpdated = new Date().toISOString();
+  await saveUsage(usage);
 }
 
 // ─── HTTP Server ───
@@ -102,6 +165,12 @@ export async function startSettingsServer(): Promise<void> {
       }
 
       try {
+        // GET /channels - get known channels from message history
+        if (path === "/channels" && method === "GET") {
+          const channels = getKnownChannels();
+          return Response.json({ channels }, { headers: corsHeaders });
+        }
+
         // GET /settings - get all settings
         if (path === "/settings" && method === "GET") {
           const settings = await loadSettings();
@@ -138,6 +207,12 @@ export async function startSettingsServer(): Promise<void> {
             return Response.json({ engine, ok: true }, { headers: corsHeaders });
           }
           return Response.json({ error: "Invalid engine" }, { status: 400, headers: corsHeaders });
+        }
+
+        // GET /usage - get usage stats
+        if (path === "/usage" && method === "GET") {
+          const usage = await loadUsage();
+          return Response.json(usage, { headers: corsHeaders });
         }
 
         return Response.json({ error: "Not found" }, { status: 404, headers: corsHeaders });
