@@ -24,6 +24,8 @@ from src.core.config import Config
 from src.core.crypto import CryptoManager
 from src.core.database import Database
 from src.core import runtime
+from src.agent.cycle import CycleOrchestrator
+from src.agent.telegram import TelegramReporter
 from src.services.collector import DataCollector
 from src.services.exchange_factory import create_exchange
 from src.services.notifier import TelegramNotifier
@@ -149,6 +151,24 @@ async def lifespan(app: FastAPI):
         if strategies:
             collector.start()
 
+    # 에이전트 시스템 초기화
+    runtime.agent_db = db
+    upbit_exchange = runtime.exchanges.get("upbit")
+    if upbit_exchange:
+        telegram_reporter = TelegramReporter(notifier, db)
+        orchestrator = CycleOrchestrator(config, db, upbit_exchange, telegram_reporter)
+        runtime.cycle_orchestrator = orchestrator
+
+        # 에이전트 사이클 스케줄러 시작
+        _start_agent_scheduler(config, orchestrator)
+
+        # 일일/주간 보고서 스케줄러 시작
+        _start_report_scheduler(config, orchestrator.agent_runner, db,
+                                orchestrator.context_builder, telegram_reporter)
+        logger.info(f"에이전트 시스템 초기화 완료 (사이클: {config.agent_cycle_hours}시)")
+    else:
+        logger.warning("Upbit 거래소 없음 — 에이전트 시스템 미초기화")
+
     exchanges_str = ", ".join(runtime.exchanges.keys()) or "없음"
     logger.info(
         f"coin-auto-trade 서버 시작 (http://{config.host}:{config.port}) "
@@ -173,7 +193,88 @@ async def lifespan(app: FastAPI):
     runtime.scheduler = None
     runtime.collector = None
     runtime.backtester = None
+    runtime.cycle_orchestrator = None
+    runtime.agent_db = None
     logger.info("coin-auto-trade 서버 종료")
+
+
+def _start_report_scheduler(
+    config: Config, runner, db: Database,
+    context_builder, telegram_reporter: TelegramReporter,
+):
+    """일일/주간 보고서를 자동 발송하는 스케줄러."""
+    import datetime as dt
+    from src.agent.reporter import generate_daily_report, generate_weekly_report
+
+    async def _daily_loop():
+        while True:
+            now = dt.datetime.now()
+            target = now.replace(hour=config.report_daily_hour, minute=0, second=0, microsecond=0)
+            if target <= now:
+                target += dt.timedelta(days=1)
+            await asyncio.sleep((target - now).total_seconds())
+            try:
+                text = await generate_daily_report(runner, db, context_builder)
+                if text:
+                    await telegram_reporter.send_daily_report(text)
+            except Exception as e:
+                logger.error(f"일일 리포트 생성 실패: {e}")
+
+    async def _weekly_loop():
+        while True:
+            now = dt.datetime.now()
+            days_ahead = config.report_weekly_day - now.isoweekday()
+            if days_ahead < 0 or (days_ahead == 0 and now.hour >= config.report_weekly_hour):
+                days_ahead += 7
+            target = (now + dt.timedelta(days=days_ahead)).replace(
+                hour=config.report_weekly_hour, minute=0, second=0, microsecond=0
+            )
+            await asyncio.sleep((target - now).total_seconds())
+            try:
+                text = await generate_weekly_report(runner, db, context_builder)
+                if text:
+                    await telegram_reporter.send_weekly_report(text)
+            except Exception as e:
+                logger.error(f"주간 리포트 생성 실패: {e}")
+
+    asyncio.create_task(_daily_loop())
+    asyncio.create_task(_weekly_loop())
+    logger.info(f"보고서 스케줄러: 일일 {config.report_daily_hour}시, 주간 {config.report_weekly_day}요일 {config.report_weekly_hour}시")
+
+
+def _start_agent_scheduler(config: Config, orchestrator: CycleOrchestrator):
+    """에이전트 사이클을 config.agent_cycle_hours 시간에 자동 실행한다."""
+    import datetime as dt
+
+    async def _scheduler_loop():
+        while True:
+            now = dt.datetime.now()
+            # 다음 실행 시간 계산
+            future_hours = [h for h in config.agent_cycle_hours if h > now.hour]
+            if future_hours:
+                next_hour = future_hours[0]
+                next_run = now.replace(hour=next_hour, minute=0, second=0, microsecond=0)
+            else:
+                # 내일 첫 시간
+                next_hour = config.agent_cycle_hours[0]
+                next_run = (now + dt.timedelta(days=1)).replace(
+                    hour=next_hour, minute=0, second=0, microsecond=0
+                )
+
+            wait_seconds = (next_run - now).total_seconds()
+            logger.info(f"다음 에이전트 사이클: {next_run.strftime('%H:%M')} ({wait_seconds / 3600:.1f}시간 후)")
+            await asyncio.sleep(wait_seconds)
+
+            if not orchestrator.is_running:
+                logger.info("에이전트 사이클 자동 시작")
+                try:
+                    await orchestrator.run_cycle()
+                except Exception as e:
+                    logger.error(f"에이전트 사이클 실패: {e}")
+            else:
+                logger.info("이미 사이클 실행 중, 스킵")
+
+    asyncio.create_task(_scheduler_loop())
 
 
 def create_app() -> FastAPI:
@@ -184,11 +285,14 @@ def create_app() -> FastAPI:
     app = FastAPI(title="coin-auto-trade", version="0.2.0", lifespan=lifespan)
     app.state.config = config
 
+    from src.api.routes_agent import router as agent_router
+
     app.include_router(system_router)
     app.include_router(trading_router)
     app.include_router(strategy_router)
     app.include_router(backtest_router)
     app.include_router(dashboard_router)
+    app.include_router(agent_router)
 
     # Static files for dashboard
     static_dir = Path(__file__).parent / "dashboard" / "static"

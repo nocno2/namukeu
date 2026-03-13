@@ -11,7 +11,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from src.agent.cycle import CycleOrchestrator
     from src.core.config import Config
+    from src.core.database import Database
     from src.services.collector import DataCollector
     from src.services.exchange_base import Exchange
     from src.services.scheduler import TradingScheduler
@@ -33,3 +35,7 @@ scheduler: TradingScheduler | None = None
 collector: DataCollector | None = None
 
 backtester = None
+
+# 에이전트 시스템
+cycle_orchestrator: "CycleOrchestrator | None" = None
+agent_db: "Database | None" = None
