@@ -8,8 +8,7 @@ from src.services.notifier import TelegramNotifier
 from src.services.portfolio import PortfolioTracker
 from src.services.risk_manager import RiskManager
 from src.services.transition_checker import TransitionChecker
-from src.strategies.base import Signal
-from src.strategies.registry import get_strategy
+from src.core.types import Signal, TradeSignal
 
 logger = logging.getLogger(__name__)
 
@@ -149,7 +148,8 @@ class TradingScheduler:
         return getattr(self.exchange, "is_futures", False)
 
     async def _trading_loop(self, ticker: str, strategy_name: str, params: dict, strategy_id: int | None):
-        strategy = get_strategy(strategy_name)
+        # 전략 시스템 제거됨 — 에이전트 시스템으로 대체 예정
+        raise RuntimeError(f"전략 시스템이 제거되었습니다. 에이전트 시스템을 사용하세요: {strategy_name}")
         fee_rate = self.exchange.info.fee_rate
         min_order = self.exchange.info.min_order_value
         quote = self.exchange.info.quote_currency
@@ -353,7 +353,7 @@ class TradingScheduler:
             # Check hard stop-loss first
             if self.risk_manager.check_stop_loss(entry_price, current_price):
                 logger.warning(f"스탑로스 발동: {p['ticker']} (진입: {entry_price:,.0f}, 현재: {current_price:,.0f})")
-                from src.strategies.base import TradeSignal, Signal as Sig
+                from src.core.types import TradeSignal, Signal as Sig
                 signal = TradeSignal(
                     signal=Sig.SELL, ticker=p["ticker"], confidence=1.0,
                     reason=f"스탑로스: {((entry_price - current_price) / entry_price * 100):.1f}% 손실",
@@ -383,7 +383,7 @@ class TradingScheduler:
                 # Sell 50% of position
                 sell_volume = volume * 0.5
 
-                from src.strategies.base import TradeSignal, Signal as Sig
+                from src.core.types import TradeSignal, Signal as Sig
                 signal = TradeSignal(
                     signal=Sig.SELL, ticker=p["ticker"], confidence=1.0,
                     reason=f"부분 익절: {profit_pct:.1f}% 수익에서 50% 청산",
@@ -424,7 +424,7 @@ class TradingScheduler:
                     f"(고점: {high_price:,.0f}, 현재: {current_price:,.0f}, "
                     f"하락: {drop_pct:.1f}%, 수익: {pnl_pct:.1f}%)"
                 )
-                from src.strategies.base import TradeSignal, Signal as Sig
+                from src.core.types import TradeSignal, Signal as Sig
                 signal = TradeSignal(
                     signal=Sig.SELL, ticker=p["ticker"], confidence=1.0,
                     reason=f"트레일링 스탑: 고점 대비 {drop_pct:.1f}% 하락 (수익 {pnl_pct:.1f}%)",
@@ -646,7 +646,7 @@ class TradingScheduler:
                     f"(진입: {entry_price:,.2f}, 현재: {current_price:,.2f}, "
                     f"손실: {effective_loss:.1f}%)"
                 )
-                from src.strategies.base import TradeSignal, Signal as Sig
+                from src.core.types import TradeSignal, Signal as Sig
                 close_signal = Sig.SELL if side == "long" else Sig.BUY
                 signal = TradeSignal(
                     signal=close_signal, ticker=p["ticker"], confidence=1.0,
@@ -689,7 +689,7 @@ class TradingScheduler:
                 # Sell 50% of position
                 sell_volume = volume * 0.5
 
-                from src.strategies.base import TradeSignal, Signal as Sig
+                from src.core.types import TradeSignal, Signal as Sig
                 close_signal = Sig.SELL if side == "long" else Sig.BUY
                 signal = TradeSignal(
                     signal=close_signal, ticker=p["ticker"], confidence=1.0,
@@ -751,7 +751,7 @@ class TradingScheduler:
                     f"(고점: {high_price:,.2f}, 현재: {current_price:,.2f}, "
                     f"하락: {drop_pct:.1f}%, 수익: {pnl_pct:.1f}%)"
                 )
-                from src.strategies.base import TradeSignal, Signal as Sig
+                from src.core.types import TradeSignal, Signal as Sig
                 close_signal = Sig.SELL if side == "long" else Sig.BUY
                 signal = TradeSignal(
                     signal=close_signal, ticker=p["ticker"], confidence=1.0,
@@ -808,7 +808,7 @@ class TradingScheduler:
         if not futures_positions:
             return
 
-        from src.strategies.base import TradeSignal, Signal as Sig
+        from src.core.types import TradeSignal, Signal as Sig
 
         fee_rate = self.exchange.info.fee_rate
         min_order = self.exchange.info.min_order_value

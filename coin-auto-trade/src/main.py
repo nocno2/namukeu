@@ -31,23 +31,6 @@ from src.services.portfolio import PortfolioTracker
 from src.services.risk_manager import RiskLimits, RiskManager
 from src.services.scheduler import TradingScheduler
 
-# Import strategies to trigger registration
-import src.strategies.rsi_strategy  # noqa: F401
-import src.strategies.macd_strategy  # noqa: F401
-import src.strategies.bollinger_strategy  # noqa: F401
-import src.strategies.combined_strategy  # noqa: F401
-import src.strategies.combined_v2_strategy  # noqa: F401
-import src.strategies.trend_strategy  # noqa: F401
-import src.strategies.supertrend_strategy  # noqa: F401
-import src.strategies.ema_crossover_volume_strategy  # noqa: F401
-import src.strategies.rsi_ma_choice_strategy  # noqa: F401
-# import src.strategies.adaptive_rsi_strategy  # noqa: F401  # TEMP: disabled due to bug
-
-# Import pipeline providers to trigger registration
-import src.pipeline.providers.market_regime  # noqa: F401
-import src.pipeline.providers.volume_profile  # noqa: F401
-import src.pipeline.providers.fear_greed  # noqa: F401
-
 LOG_DIR = Path("data/logs")
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -153,9 +136,10 @@ async def lifespan(app: FastAPI):
 
     # Restore enabled strategies per exchange & start snapshot loops
     for provider, scheduler in runtime.schedulers.items():
-        await scheduler.restore_enabled()
+        # 전략 시스템 제거됨 — 에이전트 시스템으로 대체 예정
+        # await scheduler.restore_enabled()
         scheduler.start_snapshot_loop(interval_minutes=10)
-        scheduler.start_transition_check_loop(hour=9, minute=0)  # 매일早上 9시 전환 체크
+        scheduler.start_transition_check_loop(hour=9, minute=0)
 
     # Start data collectors for active tickers per exchange
     for provider, collector in runtime.collectors.items():

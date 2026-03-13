@@ -20,16 +20,8 @@ def get_db() -> Database:
 
 @router.get("/strategies", response_model=list[StrategyInfo])
 def list_strategies(_=Depends(verify)):
-    from src.strategies.registry import list_strategies as ls, get_strategy
-    result = []
-    for name in ls():
-        s = get_strategy(name)
-        result.append(StrategyInfo(
-            name=s.name,
-            required_candle_count=s.required_candle_count,
-            default_params=s.default_params,
-        ))
-    return result
+    # 전략 레지스트리 제거됨 — 에이전트 시스템으로 대체 예정
+    return []
 
 
 @router.get("/strategies/configs", response_model=list[StrategyConfigResponse])
@@ -47,11 +39,7 @@ def create_config(
     _=Depends(verify),
     db: Database = Depends(get_db),
 ):
-    # 전략 존재 확인
-    from src.strategies.registry import list_strategies as ls
-    if body.name not in ls():
-        raise HTTPException(status_code=400, detail=f"Unknown strategy: {body.name}")
-
+    # 전략 레지스트리 제거됨 — 에이전트 시스템으로 대체 예정
     try:
         strategy_id = db.create_strategy(body.name, body.ticker, body.params, body.interval, exchange=body.exchange)
     except Exception as e:

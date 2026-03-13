@@ -108,15 +108,8 @@ def dashboard_strategies(request: Request, db: Database = Depends(get_db)):
     configs = db.get_strategies()
     configs = [{**c, "enabled": bool(c["enabled"])} for c in configs]
 
-    from src.strategies.registry import list_strategies, get_strategy
+    # 전략 레지스트리 제거됨 — 에이전트 시스템으로 대체 예정
     available = []
-    for name in list_strategies():
-        s = get_strategy(name)
-        available.append({
-            "name": s.name,
-            "required_candle_count": s.required_candle_count,
-            "default_params": s.default_params,
-        })
 
     token = runtime.config.api_token if runtime.config else ""
 
@@ -160,15 +153,8 @@ def dashboard_backtest(request: Request, page: int = 1, db: Database = Depends(g
     offset = (page - 1) * per_page
     results = db.get_backtest_results(limit=per_page, offset=offset)
 
-    from src.strategies.registry import list_strategies, get_strategy
+    # 전략 레지스트리 제거됨 — 에이전트 시스템으로 대체 예정
     available = []
-    for name in list_strategies():
-        s = get_strategy(name)
-        available.append({
-            "name": s.name,
-            "required_candle_count": s.required_candle_count,
-            "default_params": s.default_params,
-        })
 
     token = runtime.config.api_token if runtime.config else ""
 

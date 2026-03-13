@@ -7,8 +7,8 @@ import pandas as pd
 
 from src.core.constants import UPBIT_FEE_RATE
 from src.core.database import Database
-from src.strategies.base import Signal, Strategy
-from src.strategies.registry import get_strategy
+from src.core.types import Signal, TradeSignal
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,9 @@ class Backtester:
         self.db = db
 
     async def run(self, config: BacktestConfig) -> BacktestResult:
-        strategy = get_strategy(config.strategy_name)
+        # 전략 시스템 제거됨 — 에이전트 시스템으로 대체 예정
+        raise RuntimeError(f"전략 시스템이 제거되었습니다. 에이전트 시스템을 사용하세요: {config.strategy_name}")
+        strategy = None  # unreachable
 
         df = self.db.get_ohlcv(
             config.ticker, config.interval,
@@ -110,7 +112,7 @@ class Backtester:
             return runtime.collectors.get("binance") or runtime.collectors.get("binance_futures")
         return runtime.collector
 
-    async def _run_spot(self, config: BacktestConfig, strategy: Strategy, df: pd.DataFrame) -> BacktestResult:
+    async def _run_spot(self, config: BacktestConfig, strategy: Any, df: pd.DataFrame) -> BacktestResult:
         capital = config.initial_capital
         position_volume = 0.0
         entry_price = 0.0
@@ -215,7 +217,7 @@ class Backtester:
 
         return self._compute_metrics(config, trades, equity_curve, capital, max_drawdown, daily_returns)
 
-    async def _run_futures(self, config: BacktestConfig, strategy: Strategy, df: pd.DataFrame) -> BacktestResult:
+    async def _run_futures(self, config: BacktestConfig, strategy: Any, df: pd.DataFrame) -> BacktestResult:
         """Backtest with leverage and short positions.
 
         BUY signal: close short → open long

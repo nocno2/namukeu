@@ -1,8 +1,5 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol
-
-import pandas as pd
 
 
 class Signal(Enum):
@@ -19,16 +16,3 @@ class TradeSignal:
     reason: str
     indicators: dict = field(default_factory=dict)
     suggested_amount_percent: float | None = None
-
-
-class Strategy(Protocol):
-    @property
-    def name(self) -> str: ...
-
-    @property
-    def required_candle_count(self) -> int: ...
-
-    @property
-    def default_params(self) -> dict: ...
-
-    def analyze(self, df: pd.DataFrame, params: dict | None = None) -> TradeSignal: ...
