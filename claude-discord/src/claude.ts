@@ -150,9 +150,12 @@ async function parseStream(
 
   // Activity watchdog: track last time we received data from stdout
   let lastDataTime = Date.now();
-  let inactivityWarned = false;
   let initialFeedbackSent = false;
   let completed = false;
+
+  // 단계별 경고: 3분, 5분, 10분에 각 1회만 발송 (스팸 방지)
+  const WARN_THRESHOLDS_MS = [3 * 60_000, 5 * 60_000, 10 * 60_000];
+  let nextWarnIndex = 0;
 
   // Timers for proactive feedback
   const initialTimer = onProgress
@@ -166,12 +169,12 @@ async function parseStream(
 
   const watchdogInterval = onProgress
     ? setInterval(() => {
-        if (completed) return;
+        if (completed || nextWarnIndex >= WARN_THRESHOLDS_MS.length) return;
         const elapsed = Date.now() - lastDataTime;
-        if (elapsed >= INACTIVITY_WARN_MS && !inactivityWarned) {
-          inactivityWarned = true;
+        if (elapsed >= WARN_THRESHOLDS_MS[nextWarnIndex]) {
           const mins = Math.floor(elapsed / 60000);
           onProgress(`⚠️ 응답 대기 중... (${mins}분 이상 활동 없음)`);
+          nextWarnIndex++;
         }
       }, 30_000)
     : null;
@@ -194,7 +197,7 @@ async function parseStream(
 
       // Update watchdog on any data received
       lastDataTime = Date.now();
-      inactivityWarned = false;
+      nextWarnIndex = 0; // 데이터 수신 시 경고 단계 리셋
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -322,10 +325,14 @@ export interface AgentOptions extends ClaudeOptions {
   engine: AgentEngine;
 }
 
+export interface AgentResult extends ClaudeResult {
+  tokens?: number;
+}
+
 export async function callAgentWithEngine(
   prompt: string,
   options: AgentOptions
-): Promise<ClaudeResult> {
+): Promise<AgentResult> {
   const result = await callAgent(prompt, {
     engine: options.engine,
     sessionId: options.sessionId,
@@ -341,6 +348,7 @@ export async function callAgentWithEngine(
     sessionId: result.sessionId,
     error: result.error,
     costUsd: result.costUsd,
+    tokens: result.tokens,
     durationMs: result.durationMs,
   };
 }
