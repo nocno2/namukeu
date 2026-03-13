@@ -146,6 +146,7 @@ async function parseStream(
   // Progress tracking
   let lastProgressTime = Date.now();
   let recentActivities: string[] = [];
+  let lastActivity = "";
   let buffer = "";
 
   // Activity watchdog: track last time we received data from stdout
@@ -173,7 +174,8 @@ async function parseStream(
         const elapsed = Date.now() - lastDataTime;
         if (elapsed >= WARN_THRESHOLDS_MS[nextWarnIndex]) {
           const mins = Math.floor(elapsed / 60000);
-          onProgress(`⚠️ 응답 대기 중... (${mins}분 이상 활동 없음)`);
+          const ctx = lastActivity ? ` (마지막: ${lastActivity})` : "";
+          onProgress(`⏳ 작업 중...${ctx} — ${mins}분 경과`);
           nextWarnIndex++;
         }
       }, 30_000)
@@ -244,6 +246,7 @@ async function parseStream(
       for (const block of event.message.content) {
         if (block.type === "tool_use") {
           const activity = describeToolUse(block.name, block.input);
+          lastActivity = activity;
           recentActivities.push(activity);
           checkProgress();
         }

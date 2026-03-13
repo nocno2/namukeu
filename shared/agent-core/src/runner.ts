@@ -214,6 +214,7 @@ async function parseStream(
   let durationMs: number | undefined;
   const textBlocks: string[] = [];
   let recentActivities: string[] = [];
+  let lastActivity = "";
   let buffer = "";
   let lastDataTime = Date.now();
   let completed = false;
@@ -234,7 +235,8 @@ async function parseStream(
         const elapsed = Date.now() - lastDataTime;
         if (elapsed >= WARN_THRESHOLDS_MS[nextWarnIndex]) {
           const mins = Math.floor(elapsed / 60000);
-          onProgress(`⚠️ 응답 대기 중... (${mins}분 이상 활동 없음)`);
+          const ctx = lastActivity ? ` (마지막: ${lastActivity})` : "";
+          onProgress(`⏳ 작업 중...${ctx} — ${mins}분 경과`);
           nextWarnIndex++;
         }
       }, 30_000)
@@ -289,7 +291,8 @@ async function parseStream(
     if (event.type === "assistant" && event.message?.content) {
       for (const block of event.message.content) {
         if (block.type === "tool_use") {
-          recentActivities.push(`Using ${block.name}`);
+          lastActivity = describeToolUse(block.name, block.input);
+          recentActivities.push(lastActivity);
         }
         if (block.type === "text" && block.text) {
           textBlocks.push(block.text);
@@ -329,6 +332,7 @@ async function parseGeminiStream(
   let tokens: number | undefined;
   let durationMs: number | undefined;
   const textBlocks: string[] = [];
+  let lastActivity = "";
   let buffer = "";
   let lastDataTime = Date.now();
   let completed = false;
@@ -349,7 +353,8 @@ async function parseGeminiStream(
         const elapsed = Date.now() - lastDataTime;
         if (elapsed >= WARN_THRESHOLDS_MS[nextWarnIndex]) {
           const mins = Math.floor(elapsed / 60000);
-          onProgress(`⚠️ 응답 대기 중... (${mins}분 이상 활동 없음)`);
+          const ctx = lastActivity ? ` (마지막: ${lastActivity})` : "";
+          onProgress(`⏳ 작업 중...${ctx} — ${mins}분 경과`);
           nextWarnIndex++;
         }
       }, 30_000)
@@ -424,6 +429,37 @@ async function parseGeminiStream(
     tokens,
     durationMs,
   };
+}
+
+function describeToolUse(name: string, input: any): string {
+  switch (name) {
+    case "Bash":
+      return `실행: ${(input?.command || "").slice(0, 50)}`;
+    case "Read":
+      return `읽기: ${shortPath(input?.file_path)}`;
+    case "Edit":
+      return `수정: ${shortPath(input?.file_path)}`;
+    case "Write":
+      return `작성: ${shortPath(input?.file_path)}`;
+    case "Glob":
+      return `검색: ${input?.pattern || "files"}`;
+    case "Grep":
+      return `검색: ${(input?.pattern || "").slice(0, 30)}`;
+    case "WebSearch":
+      return `웹 검색: ${(input?.query || "").slice(0, 30)}`;
+    case "WebFetch":
+      return `가져오기: ${(input?.url || "").slice(0, 40)}`;
+    case "Agent":
+      return `서브태스크: ${(input?.description || "").slice(0, 30)}`;
+    default:
+      return name;
+  }
+}
+
+function shortPath(path?: string): string {
+  if (!path) return "file";
+  const parts = path.split("/");
+  return parts.length > 2 ? `.../${parts.slice(-2).join("/")}` : path;
 }
 
 function isSessionNotFound(stderr: string): boolean {
