@@ -240,13 +240,14 @@ class CycleOrchestrator:
             # 강제 매도 처리
             for fa in risk_review.forced_actions:
                 if fa.action == "SELL":
-                    await self._execute_sell(cycle_id, fa.ticker, fa.reason)
-                    executed.append({
-                        "ticker": fa.ticker,
-                        "side": "sell",
-                        "amount_krw": 0,
-                        "reason": f"강제매도: {fa.reason}",
-                    })
+                    sold = await self._execute_sell(cycle_id, fa.ticker, fa.reason)
+                    if sold:
+                        executed.append({
+                            "ticker": fa.ticker,
+                            "side": "sell",
+                            "amount_krw": 0,
+                            "reason": f"강제매도: {fa.reason}",
+                        })
 
         # Python 하드코딩 리스크 체크
         positions = self.db.get_positions()
@@ -377,29 +378,47 @@ class CycleOrchestrator:
                     )
 
                 elif action == "SELL":
-                    await self._execute_sell(cycle_id, ticker, decision.reasoning.catalyst)
-                    executed.append({
-                        "ticker": ticker, "side": "sell",
-                        "amount_krw": amount_krw,
-                        "reason": decision.reasoning.catalyst,
-                    })
-                    today_trade_count += 1
+                    sold = await self._execute_sell(cycle_id, ticker, decision.reasoning.catalyst)
+                    if sold:
+                        executed.append({
+                            "ticker": ticker, "side": "sell",
+                            "amount_krw": amount_krw,
+                            "reason": decision.reasoning.catalyst,
+                        })
+                        today_trade_count += 1
 
             except Exception as e:
                 logger.error(f"거래 실행 실패 {ticker} {action}: {e}")
 
         return executed
 
-    async def _execute_sell(self, cycle_id: str, ticker: str, reason: str) -> None:
-        """보유 포지션을 매도한다."""
+    async def _execute_sell(self, cycle_id: str, ticker: str, reason: str) -> bool:
+        """보유 포지션을 매도한다. 성공 시 True 반환."""
         positions = self.db.get_positions()
         pos = next((p for p in positions if p["ticker"] == ticker), None)
         if not pos:
             logger.warning(f"매도 대상 포지션 없음: {ticker}")
-            return
+            return False
 
         volume = pos["volume"]
+
+        # 실거래 모드: 실제 거래소 잔고 확인
+        if not self.config.dry_run:
+            # KRW-BTC → BTC
+            coin = ticker.split("-")[-1] if "-" in ticker else ticker
+            real_balance = await self.exchange.get_balance(coin)
+            if real_balance is None or real_balance <= 0:
+                logger.warning(f"매도 불가: {ticker} 실제 거래소 잔고 없음 (DB 유령 포지션 정리)")
+                self.db.delete_position(ticker)
+                return False
+
         result = await self.exchange.sell_market_order(ticker, volume)
+
+        # 매도 결과 검증 (실거래 모드)
+        if not self.config.dry_run and result is None:
+            logger.error(f"매도 실패: {ticker} 거래소 주문 거부")
+            return False
+
         price = await self.exchange.get_current_price(ticker) or 0
         if isinstance(price, dict):
             price = price.get(ticker, 0)
@@ -417,6 +436,7 @@ class CycleOrchestrator:
             ticker, "SELL", int(amount_krw), price if isinstance(price, (int, float)) else 0,
             1.0, reason,
         )
+        return True
 
     async def _update_knowledge(
         self,
