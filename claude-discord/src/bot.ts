@@ -94,6 +94,7 @@ const CHANNEL_PROJECT_MAP: Record<string, ChannelProject> = {
   "1474976992930693232": { project: "nikke", codename: "NIKKE", dir: "nikke-guide/", description: "NIKKE 택티컬 가이드 (React + Vite :3060)", cwd: "/Users/namwook/Documents/nikke" },
   "1479053957476122707": { project: "supply-line-zero", codename: "SLZ", dir: "supply-line-zero/", description: "Supply Line Zero (Unity 게임 프로젝트)", cwd: "/Users/namwook/Documents/supply-line-zero" },
   "1479665584739455069": { project: "game", codename: "GAME", dir: "game/", description: "게임 개발 프로젝트", cwd: "/Users/namwook/Documents/game" },
+  "1481885835757617202": { project: "pixelcorp", codename: "PIXEL", dir: "pixelcorp/", description: "Pixelcorp 프로젝트", cwd: "/Users/namwook/Documents/pixelcorp" },
 };
 
 let profileContext = "";
@@ -691,99 +692,109 @@ export async function createBot(): Promise<Client> {
     await processMessage(message, content);
   });
 
-  // --- Core message processing ---
-  async function processMessage(message: Message, prompt: string): Promise<void> {
-    const channelId = message.channelId;
+  // --- Queue handler: 대기 메시지를 합쳐서 한 번에 처리 ---
+  queue.onProcess(async (channelId, items) => {
+    const lastMessage = items[items.length - 1].message;
+    const channel = lastMessage.channel as TextBasedChannel;
+    const stopTyping = startTypingIndicator(channel);
 
-    await queue.enqueue(channelId, async () => {
-      const stopTyping = startTypingIndicator(message.channel as TextBasedChannel);
+    try {
+      // 각 메시지를 DB에 개별 저장
+      for (const item of items) {
+        saveMessage(channelId, "user", item.prompt);
+      }
 
-      try {
-        // Save user message to DB
-        saveMessage(channelId, "user", prompt);
+      if (items.length > 1) {
+        console.log(`[queue] Merging ${items.length} messages for channel ${channelId}`);
+      }
 
-        const isNew = sessions.isNewSession(channelId);
-        const sessionId = sessions.getSessionId(channelId);
+      // 프롬프트 합치기 (1개면 그대로, 여러 개면 구분해서 합침)
+      const combinedPrompt = items.length === 1
+        ? items[0].prompt
+        : items.map((item, i) => `[메시지 ${i + 1}]\n${item.prompt}`).join("\n\n");
 
-        let finalPrompt: string;
-        let systemPrompt: string | undefined;
+      const isNew = sessions.isNewSession(channelId);
+      const sessionId = sessions.getSessionId(channelId);
 
-        if (isNew) {
-          const memoryContext = await getMemoryContext();
-          const recap = getConversationRecap(channelId, 30);
-          systemPrompt = buildSystemPrompt(memoryContext, recap, channelId);
-          finalPrompt = prompt;
-        } else {
-          const prefix = buildResumePrefix();
-          finalPrompt = `${prefix}\n\n${prompt}`;
-        }
+      let finalPrompt: string;
+      let systemPrompt: string | undefined;
 
-        const engine = getChannelEngine(channelId);
-        const channelCwd = CHANNEL_PROJECT_MAP[channelId]?.cwd;
-        const result = await callAgentWithEngine(finalPrompt, {
-          engine,
-          sessionId,
-          isNewSession: isNew,
-          systemPrompt,
-          cwd: channelCwd,
-          onProgress: (progressMsg) => {
-            sendResponse(message.channel as TextBasedChannel, progressMsg).catch(() => {});
-          },
-        });
+      if (isNew) {
+        const memoryContext = await getMemoryContext();
+        const recap = getConversationRecap(channelId, 30);
+        systemPrompt = buildSystemPrompt(memoryContext, recap, channelId);
+        finalPrompt = combinedPrompt;
+      } else {
+        const prefix = buildResumePrefix();
+        finalPrompt = `${prefix}\n\n${combinedPrompt}`;
+      }
 
-        // Record usage
-        if (result.success && (result.costUsd || result.tokens)) {
-          await recordUsage(engine, result.tokens, result.costUsd).catch(console.error);
-        }
+      const engine = getChannelEngine(channelId);
+      const channelCwd = CHANNEL_PROJECT_MAP[channelId]?.cwd;
+      const result = await callAgentWithEngine(finalPrompt, {
+        engine,
+        sessionId,
+        isNewSession: isNew,
+        systemPrompt,
+        cwd: channelCwd,
+        onProgress: (progressMsg) => {
+          sendResponse(channel, progressMsg).catch(() => {});
+        },
+      });
 
-        if (!result.success) {
-          await message.reply(`Error: ${result.error?.slice(0, 500) || "Unknown error"}`);
-          return;
-        }
+      // Record usage
+      if (result.success && (result.costUsd || result.tokens)) {
+        await recordUsage(engine, result.tokens, result.costUsd).catch(console.error);
+      }
 
-        // Process memory tags and strip them from response
-        const cleanResponse = await processMemoryTags(result.result);
+      if (!result.success) {
+        await lastMessage.reply(`Error: ${result.error?.slice(0, 500) || "Unknown error"}`);
+        return;
+      }
 
-        // Save assistant response to DB
-        saveMessage(channelId, "assistant", cleanResponse, {
-          costUsd: result.costUsd,
-          durationMs: result.durationMs,
-        });
+      // Process memory tags and strip them from response
+      const cleanResponse = await processMemoryTags(result.result);
 
-        await sessions.markActive(channelId);
+      // Save assistant response to DB
+      saveMessage(channelId, "assistant", cleanResponse, {
+        costUsd: result.costUsd,
+        durationMs: result.durationMs,
+      });
 
-        // Clean up attachment files after processing
-        for (const [, attachment] of message.attachments) {
-          // Use exact message.id for reliable file deletion
-          const uniqueId = message.id;
+      await sessions.markActive(channelId);
+
+      // Clean up attachment files
+      for (const item of items) {
+        for (const [, attachment] of item.message.attachments) {
+          const uniqueId = item.message.id;
           const fileName = attachment.name || `file_${uniqueId}`;
           const filePath = join(UPLOADS_DIR, `${uniqueId}_${fileName}`);
           try {
             await unlink(filePath);
-          } catch (err) {
-            console.warn(`[cleanup] Failed to delete attachment file ${filePath}:`, err);
-            // Notify user about cleanup failure
-            await sendResponse(
-              message.channel as TextBasedChannel,
-              `⚠️ 파일 정리 실패: ${fileName}`
-            ).catch(() => {});
+          } catch {
+            // 무시
           }
         }
-
-        await sendResponse(message.channel as TextBasedChannel, cleanResponse);
-
-        if (result.costUsd) {
-          console.log(
-            `Channel ${channelId}: $${result.costUsd.toFixed(4)} | ${result.durationMs}ms`
-          );
-        }
-      } catch (err) {
-        console.error("Message processing error:", err);
-        await message.reply("An error occurred. Please try again.");
-      } finally {
-        stopTyping();
       }
-    });
+
+      await sendResponse(channel, cleanResponse);
+
+      if (result.costUsd) {
+        console.log(
+          `Channel ${channelId}: $${result.costUsd.toFixed(4)} | ${result.durationMs}ms`
+        );
+      }
+    } catch (err) {
+      console.error("Message processing error:", err);
+      await lastMessage.reply("An error occurred. Please try again.");
+    } finally {
+      stopTyping();
+    }
+  });
+
+  // --- Core message processing ---
+  async function processMessage(message: Message, prompt: string): Promise<void> {
+    await queue.enqueue(message.channelId, prompt, message);
   }
 
   return client;
