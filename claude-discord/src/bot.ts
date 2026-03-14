@@ -771,6 +771,12 @@ export async function createBot(): Promise<Client> {
         durationMs: result.durationMs,
       });
 
+      // Fallback 세션 ID가 생성된 경우 SessionTracker에 반영
+      if (result.sessionId !== sessionId) {
+        console.log(`Session ID changed for channel ${channelId}: ${sessionId.slice(0, 8)} → ${result.sessionId.slice(0, 8)}`);
+        await sessions.updateSessionId(channelId, result.sessionId);
+      }
+
       await sessions.markActive(channelId);
 
       // Clean up attachment files

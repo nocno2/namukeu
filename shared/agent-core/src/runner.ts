@@ -126,6 +126,7 @@ async function callGemini(
     "stream-json",
     "--model",
     model,
+    "--yolo",
   ];
 
   if (options.isNewSession) {

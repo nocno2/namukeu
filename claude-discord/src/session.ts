@@ -100,6 +100,21 @@ export class SessionTracker {
     await this.save();
   }
 
+  async updateSessionId(channelId: string, newSessionId: string): Promise<void> {
+    const existing = this.sessions.get(channelId);
+    const nextGen = (existing?.generation ?? 0) + 1;
+    this.sessions.set(channelId, {
+      channelId,
+      sessionId: newSessionId,
+      generation: nextGen,
+      createdAt: existing?.createdAt || new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+      messageCount: 0,
+    });
+    await this.save();
+    console.log(`Session updated for channel ${channelId}: ${newSessionId.slice(0, 8)}... (gen ${nextGen})`);
+  }
+
   async resetSession(channelId: string): Promise<void> {
     const existing = this.sessions.get(channelId);
     const nextGen = (existing?.generation ?? 0) + 1;
