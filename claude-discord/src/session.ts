@@ -75,6 +75,9 @@ export class SessionTracker {
 
   getSessionId(channelId: string): string {
     const session = this.sessions.get(channelId);
+    if (session && session.sessionId) {
+      return session.sessionId;
+    }
     const generation = session?.generation ?? 0;
     return channelIdToSessionId(channelId, generation);
   }
