@@ -156,6 +156,9 @@ async function callGemini(
     activeChildPid = null;
 
     if (exitCode !== 0 && !result.result) {
+      if (!options.isNewSession && isSessionNotFound(stderr)) {
+        return callGemini(prompt, { ...options, isNewSession: true });
+      }
       return {
         success: false,
         result: "",
@@ -254,8 +257,14 @@ async function parseStream(
       buffer = lines.pop() || "";
 
       for (const line of lines) {
-        const trimmed = line.trim();
+        let trimmed = line.trim();
         if (!trimmed) continue;
+
+        // CLI sometimes prepends non-JSON text (like MCP warnings) on the same line
+        const jsonStart = trimmed.indexOf('{');
+        if (jsonStart > 0) {
+          trimmed = trimmed.substring(jsonStart);
+        }
 
         try {
           const event = JSON.parse(trimmed);
@@ -372,8 +381,14 @@ async function parseGeminiStream(
       buffer = lines.pop() || "";
 
       for (const line of lines) {
-        const trimmed = line.trim();
+        let trimmed = line.trim();
         if (!trimmed) continue;
+
+        // CLI sometimes prepends non-JSON text (like MCP warnings) on the same line
+        const jsonStart = trimmed.indexOf('{');
+        if (jsonStart > 0) {
+          trimmed = trimmed.substring(jsonStart);
+        }
 
         try {
           const event = JSON.parse(trimmed);
@@ -466,6 +481,8 @@ function isSessionNotFound(stderr: string): boolean {
   return (
     lower.includes("no conversation found") ||
     lower.includes("session not found") ||
-    lower.includes("could not find session")
+    lower.includes("could not find session") ||
+    lower.includes("error resuming session") ||
+    lower.includes("invalid session identifier")
   );
 }
