@@ -51,18 +51,7 @@ async function killOrphanedClaude(sessionId: string): Promise<void> {
   }
 }
 
-/** Kill active child Claude process (called on bot shutdown). */
-export function killActiveChild(): void {
-  if (activeChildPid) {
-    try {
-      process.kill(activeChildPid, "SIGTERM");
-      console.log(`Killed active Claude child: ${activeChildPid}`);
-    } catch {
-      // already dead
-    }
-    activeChildPid = null;
-  }
-}
+
 
 export interface ClaudeOptions {
   sessionId: string;
@@ -400,10 +389,14 @@ export interface AgentOptions extends ClaudeOptions {
   engine: AgentEngine;
 }
 
+export interface AgentResult extends ClaudeResult {
+  tokens?: number;
+}
+
 export async function callAgentWithEngine(
   prompt: string,
   options: AgentOptions
-): Promise<ClaudeResult> {
+): Promise<AgentResult> {
   const result = await callAgent(prompt, {
     engine: options.engine,
     sessionId: options.sessionId,
@@ -419,11 +412,9 @@ export async function callAgentWithEngine(
     sessionId: result.sessionId,
     error: result.error,
     costUsd: result.costUsd,
+    tokens: result.tokens,
     durationMs: result.durationMs,
   };
 }
 
-// Override killActiveChild to use shared implementation
-export function killActiveChild(): void {
-  killSharedChild();
-}
+export { killSharedChild as killActiveChild };

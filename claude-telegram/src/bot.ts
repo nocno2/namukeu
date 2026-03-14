@@ -1,7 +1,8 @@
 import { Bot, InlineKeyboard, type Context } from "grammy";
 import { readFile, writeFile, unlink } from "fs/promises";
 import { join } from "path";
-import { callClaude } from "./claude";
+import { callAgentWithEngine } from "./claude";
+import type { AgentEngine } from "@namukeu/agent-core";
 import { SessionTracker, chatIdToSessionId } from "./session";
 import {
   processMemoryTags,
@@ -52,6 +53,7 @@ const ALLOWED_USER_ID = parseInt(process.env.TELEGRAM_USER_ID!, 10);
 const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
+const AGENT_ENGINE = (process.env.AGENT_ENGINE || "claude") as AgentEngine;
 
 // Content-pipeline API for agent commands (REQUIRED)
 const PIPELINE_API = process.env.PIPELINE_API_URL;
@@ -344,6 +346,7 @@ export async function createBot(): Promise<Bot> {
 
     const lines = [
       "Bot Status",
+      `Engine: ${AGENT_ENGINE}`,
       `Session: ${session ? session.sessionId.slice(0, 8) + "..." : "none"}`,
       `Session messages: ${session?.messageCount || 0}`,
       `Total messages (DB): ${msgCount}`,
@@ -1215,8 +1218,8 @@ export async function createBot(): Promise<Bot> {
       try {
         const response = await fetch(`${COIN_API}/portfolio/summary`, {
           headers: {
-            "Authorization": `Bearer ${INTERNAL_KEY}`,
-            "X-Internal-Key": INTERNAL_KEY,
+            "Authorization": `Bearer ${INTERNAL_KEY || ""}`,
+            "X-Internal-Key": INTERNAL_KEY || "",
           },
         });
 
@@ -1284,7 +1287,8 @@ export async function createBot(): Promise<Bot> {
           finalPrompt = `${prefix}\n\n${prompt}`;
         }
 
-        const result = await callClaude(finalPrompt, {
+        const result = await callAgentWithEngine(finalPrompt, {
+          engine: AGENT_ENGINE,
           sessionId,
           isNewSession: isNew,
           systemPrompt,
@@ -1302,6 +1306,7 @@ export async function createBot(): Promise<Bot> {
 
         saveMessage(chatId, "assistant", cleanResponse, {
           costUsd: result.costUsd,
+          tokens: result.tokens,
           durationMs: result.durationMs,
         });
 
@@ -1317,6 +1322,10 @@ export async function createBot(): Promise<Bot> {
         if (result.costUsd) {
           console.log(
             `Chat ${chatId}: $${result.costUsd.toFixed(4)} | ${result.durationMs}ms`
+          );
+        } else if (result.tokens) {
+          console.log(
+            `Chat ${chatId}: ${result.tokens} tokens | ${result.durationMs}ms`
           );
         }
       } catch (err) {

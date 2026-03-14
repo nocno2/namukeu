@@ -128,12 +128,11 @@ async function callGemini(
     model,
   ];
 
-  // Gemini doesn't support custom session-id
-  // Use --resume latest to continue conversation
   if (options.isNewSession) {
-    // Gemini creates new session automatically, no session-id needed
-  } else {
-    args.push("--resume", "latest");
+    // Gemini creates a new session automatically.
+    // The generated session ID will be captured from the first output chunk.
+  } else if (options.sessionId) {
+    args.push("--resume", options.sessionId);
   }
 
   if (options.systemPrompt) {

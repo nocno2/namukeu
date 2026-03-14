@@ -370,11 +370,18 @@ export async function createBot(): Promise<Client> {
             const cleanResponse = await processMemoryTags(result.result);
             saveMessage(task.channelId, "assistant", cleanResponse, {
               costUsd: result.costUsd,
+              tokens: result.tokens,
               durationMs: result.durationMs,
             });
             await sessions.markActive(task.channelId);
             await sendResponse(textChannel, cleanResponse);
-            console.log(`[scheduler] Task "${task.name}" done — $${result.costUsd?.toFixed(4) || "?"}`);
+            if (result.costUsd) {
+              console.log(`[scheduler] Task "${task.name}" done — $${result.costUsd.toFixed(4)}`);
+            } else if (result.tokens) {
+              console.log(`[scheduler] Task "${task.name}" done — ${result.tokens} tokens`);
+            } else {
+              console.log(`[scheduler] Task "${task.name}" done`);
+            }
           } else {
             console.error(`[scheduler] Task "${task.name}" Claude error:`, result.error);
             // Send error notification to channel
@@ -493,9 +500,11 @@ export async function createBot(): Promise<Client> {
         const memorySummary = await getMemorySummary();
         const msgCount = getMessageCount(channelId);
         const uptime = (Date.now() - startTime) / 1000;
+        const engine = getChannelEngine(channelId);
 
         const lines = [
           "**Bot Status**",
+          `Engine: \`${engine}\``,
           `Session: \`${session ? session.sessionId.slice(0, 8) + "..." : "none"}\``,
           `Session messages: ${session?.messageCount || 0}`,
           `Total messages (DB): ${msgCount}`,
@@ -758,6 +767,7 @@ export async function createBot(): Promise<Client> {
       // Save assistant response to DB
       saveMessage(channelId, "assistant", cleanResponse, {
         costUsd: result.costUsd,
+        tokens: result.tokens,
         durationMs: result.durationMs,
       });
 
@@ -782,6 +792,10 @@ export async function createBot(): Promise<Client> {
       if (result.costUsd) {
         console.log(
           `Channel ${channelId}: $${result.costUsd.toFixed(4)} | ${result.durationMs}ms`
+        );
+      } else if (result.tokens) {
+        console.log(
+          `Channel ${channelId}: ${result.tokens} tokens | ${result.durationMs}ms`
         );
       }
     } catch (err) {

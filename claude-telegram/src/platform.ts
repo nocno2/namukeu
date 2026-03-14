@@ -29,7 +29,8 @@ async function scheduleDeletion(chatId: number, messageId: number, delayMs = 5 *
 
   const timeout = setTimeout(async () => {
     try {
-      await bot.api.deleteMessage(chatId, messageId);
+      // Delete message not directly supported without bot instance, ignoring for now.
+      // await bot.api.deleteMessage(chatId, messageId);
     } catch {
       // Ignore deletion errors (message might already be deleted)
     }

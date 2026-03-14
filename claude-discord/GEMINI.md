@@ -20,9 +20,9 @@
 
 | Feature | Claude | Gemini |
 |---------|--------|--------|
-| Session ID | UUID 기반 (`--session-id`) | 미지원 |
-| Resume | `--resume <session_id>` | `--resume latest` |
-| 비용 추적 | USD (`total_cost_usd`) | 토큰만 |
+| Session ID | UUID 기반 (`--session-id`) | UUID 자동 생성 캡처 |
+| Resume | `--resume <session_id>` | `--resume <session_id>` |
+| 비용 추적 | USD (`total_cost_usd`) | 토큰만 (`tokens`) |
 | 채널별 엔진 | 지원 | 지원 |
 
 ## 채널 엔진 설정
@@ -72,7 +72,5 @@ Claude/Gemini 전환:
 
 ## Known Limitations
 
-1. **세션 미보존** - 특정 대화를 ID로 재개 불가
-2. **토큰 기반 비용** - USD 없이 토큰 수만
-3. **모델 가용성** - Google API 접근에 의존
-4. **세션 연속성** - Gemini 세션은 채널별이 아닌 프로젝트별
+1. **토큰 기반 비용** - USD 없이 토큰 수만
+2. **모델 가용성** - Google API 접근에 의존

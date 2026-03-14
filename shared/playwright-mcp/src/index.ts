@@ -40,7 +40,7 @@ export async function startPlaywrightMCP(): Promise<void> {
 
   // If we got here, startup failed — check stderr
   if (serverProcess.stderr) {
-    const errText = await new Response(serverProcess.stderr).text();
+    const errText = await new Response(serverProcess.stderr as any).text();
     if (errText) console.error(`[playwright-mcp] stderr: ${errText.slice(0, 300)}`);
   }
   throw new Error(`Playwright MCP failed to start within 15 seconds`);
