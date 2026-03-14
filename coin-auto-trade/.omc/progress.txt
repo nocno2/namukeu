@@ -1,0 +1,41 @@
+# Ralph Progress — LLM 기반 자율 트레이딩 에이전트
+# Started: 2026-03-14
+
+## Iteration 1: US-001 기존 전략/파이프라인 제거 + 에이전트 구조 생성
+- Status: COMPLETED
+- src/strategies/, src/pipeline/ 삭제
+- src/agent/ 디렉토리 + 빈 모듈 파일 생성
+- data/knowledge/ 지식베이스 구조 생성
+- Signal/TradeSignal → src/core/types.py 이동
+- scheduler.py, backtester.py import 수정
+
+## Iteration 1: US-002 Claude CLI subprocess 래퍼
+- Status: COMPLETED
+- src/agent/claude_cli.py: call_claude(), _parse_stream(), ClaudeResult
+- content-pipeline/backend/src/agent/claude_cli.py 패턴 참고
+
+## Iteration 1: US-003 에이전트 모델 + 프롬프트
+- Status: COMPLETED
+- src/agent/models.py: ResearchReport, TechnicalReport, StrategyDecisions, RiskReview
+- src/agent/prompts.py: 5개 에이전트 시스템 프롬프트
+
+## Iteration 1: US-004 Config + Database 확장
+- Status: COMPLETED
+- config.py: 15개 에이전트 설정 필드 추가
+- database.py: 6개 테이블 + 헬퍼 메서드 추가
+
+## Iteration 2: US-005~US-011 전체 구현
+- Status: COMPLETED
+- US-005: AgentRunner (agents.py) — 5개 에이전트 호출 + JSON 파싱 + DB 기록
+- US-006: MarketScanner (scanner.py) + ContextBuilder (context_builder.py)
+- US-007: CycleOrchestrator (cycle.py) — Phase 1~4 순차 실행, asyncio.gather 병렬, 하드코딩 리스크 한도
+- US-008: routes_agent.py API 엔드포인트 + main.py 스케줄러 등록
+- US-009: TelegramReporter (telegram.py) + reporter.py 일일/주간 보고서 + 스케줄러
+- US-010: KnowledgeBase (knowledge_base.py) — CRUD + enforce_limits + weekly_digest + prune
+- US-011: CLAUDE.md 업데이트, import 테스트 통과, 라우트 등록 확인
+
+## Learnings
+- pandas-ta-classic은 `import pandas_ta_classic as ta`로 사용
+- auth.py에서 verify 함수 사용 (verify_token이 아님)
+- runtime.py에 TYPE_CHECKING 블록에서 타입 import
+- Write 도구 사용 전 반드시 Read 필요

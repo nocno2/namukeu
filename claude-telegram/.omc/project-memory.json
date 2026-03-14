@@ -1,0 +1,130 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1773319607546,
+  "projectRoot": "/Users/namwook/Documents/namukeu/claude-telegram",
+  "techStack": {
+    "languages": [
+      {
+        "name": "JavaScript/TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "package.json"
+        ]
+      },
+      {
+        "name": "TypeScript",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "tsconfig.json"
+        ]
+      }
+    ],
+    "frameworks": [],
+    "packageManager": "npm",
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": "npm run dev",
+    "scripts": {
+      "start": "bun run src/index.ts",
+      "dev": "bun run --watch src/index.ts"
+    }
+  },
+  "conventions": {
+    "namingStyle": "camelCase",
+    "importStyle": "ES modules",
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "scripts",
+      "src"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "dist": {
+      "path": "dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1773319607537,
+      "keyFiles": [
+        "index.js"
+      ]
+    },
+    "config": {
+      "path": "config",
+      "purpose": "Configuration files",
+      "fileCount": 4,
+      "lastAccessed": 1773319607537,
+      "keyFiles": [
+        "profile.example.md",
+        "forbidden.json",
+        "SOUL.md",
+        "profile.md"
+      ]
+    },
+    "uploads": {
+      "path": "uploads",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1773319607537,
+      "keyFiles": []
+    },
+    "daemon": {
+      "path": "daemon",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1773319607537,
+      "keyFiles": [
+        "com.namukeu.claude-telegram.plist"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1773319607537,
+      "keyFiles": [
+        "register-commands.ts"
+      ]
+    },
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 11,
+      "lastAccessed": 1773319607537,
+      "keyFiles": [
+        "agent.db",
+        "messages.db",
+        "auto_actions.json",
+        "sessions.json",
+        "messages.db-shm"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 12,
+      "lastAccessed": 1773319607538,
+      "keyFiles": [
+        "seed-tasks.ts",
+        "revenue.ts",
+        "http-api.ts",
+        "bot.ts",
+        "platform.ts"
+      ]
+    }
+  },
+  "hotPaths": [],
+  "userDirectives": []
+}

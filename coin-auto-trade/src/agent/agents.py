@@ -5,7 +5,7 @@ import logging
 import uuid
 from datetime import datetime
 
-from src.agent.claude_cli import ClaudeResult, call_claude
+from src.agent.gemini_api import GeminiResult, call_gemini
 from src.agent.models import (
     ResearchReport,
     RiskReview,
@@ -34,12 +34,18 @@ def _extract_json(text: str) -> str:
     # ```json ... ``` 블록 추출
     if "```json" in text:
         start = text.index("```json") + 7
-        end = text.index("```", start)
-        return text[start:end].strip()
+        try:
+            end = text.index("```", start)
+            return text[start:end].strip()
+        except ValueError:
+            return text[start:].strip()
     if "```" in text:
         start = text.index("```") + 3
-        end = text.index("```", start)
-        return text[start:end].strip()
+        try:
+            end = text.index("```", start)
+            return text[start:end].strip()
+        except ValueError:
+            return text[start:].strip()
     # { ... } 블록 추출
     first_brace = text.find("{")
     if first_brace >= 0:
@@ -55,7 +61,7 @@ def _extract_json(text: str) -> str:
 
 
 class AgentRunner:
-    """에이전트별 Claude CLI 호출을 관리한다."""
+    """에이전트별 Gemini CLI 호출을 관리한다."""
 
     def __init__(self, config: Config, db: Database):
         self.config = config
@@ -68,6 +74,7 @@ class AgentRunner:
         """리서처 에이전트: 웹 검색으로 시장 뉴스/이벤트를 수집한다."""
         session_id = str(uuid.uuid4())
         prompt = (
+            f"{RESEARCHER_SYSTEM_PROMPT}\n\n"
             "아래 시장 현황을 참고하여 암호화폐 시장 리서치를 수행하라.\n\n"
             f"{market_context}\n\n"
             "반드시 웹 검색을 수행하여 최신 정보를 수집하라."
@@ -78,15 +85,16 @@ class AgentRunner:
             cycle_id=cycle_id,
             session_id=session_id,
             prompt=prompt,
-            system_prompt=RESEARCHER_SYSTEM_PROMPT,
+            model=self.config.researcher_model,
             input_summary=f"시장 컨텍스트 {len(market_context)}자",
+            response_schema=ResearchReport,
         )
         if not result:
             return None
 
         return await self._parse_model_with_retry(
             result, ResearchReport, "researcher",
-            cycle_id, session_id, RESEARCHER_SYSTEM_PROMPT,
+            cycle_id, session_id,
         )
 
     async def run_technician(
@@ -95,6 +103,7 @@ class AgentRunner:
         """테크니컬 에이전트: 차트 데이터 기반 기술적 분석."""
         session_id = str(uuid.uuid4())
         prompt = (
+            f"{TECHNICIAN_SYSTEM_PROMPT}\n\n"
             "아래 차트 데이터와 기술지표를 분석하여 각 종목의 기술적 상태를 평가하라.\n\n"
             f"{chart_context}"
         )
@@ -104,15 +113,16 @@ class AgentRunner:
             cycle_id=cycle_id,
             session_id=session_id,
             prompt=prompt,
-            system_prompt=TECHNICIAN_SYSTEM_PROMPT,
+            model=self.config.technician_model,
             input_summary=f"차트 데이터 {len(chart_context)}자",
+            response_schema=TechnicalReport,
         )
         if not result:
             return None
 
         return await self._parse_model_with_retry(
             result, TechnicalReport, "technician",
-            cycle_id, session_id, TECHNICIAN_SYSTEM_PROMPT,
+            cycle_id, session_id,
         )
 
     async def run_strategist(
@@ -128,7 +138,7 @@ class AgentRunner:
             session_id = str(uuid.uuid4())
             is_new = True
 
-        system_prompt = STRATEGIST_SYSTEM_PROMPT.format(
+        system_instructions = STRATEGIST_SYSTEM_PROMPT.format(
             max_positions=self.config.agent_max_positions,
             max_position_pct=self.config.agent_max_position_pct,
             min_cash_ratio=self.config.agent_min_cash_ratio,
@@ -136,6 +146,7 @@ class AgentRunner:
         )
 
         prompt = (
+            f"{system_instructions if is_new else ''}\n\n"
             "아래 분석 결과를 종합하여 거래 판단을 내려라.\n\n"
             f"{strategy_context}"
         )
@@ -145,9 +156,10 @@ class AgentRunner:
             cycle_id=cycle_id,
             session_id=session_id,
             prompt=prompt,
-            system_prompt=system_prompt if is_new else None,
             is_new_session=is_new,
+            model=self.config.strategist_model,
             input_summary=f"전략 컨텍스트 {len(strategy_context)}자",
+            response_schema=StrategyDecisions,
         )
         if not result:
             return None
@@ -157,7 +169,7 @@ class AgentRunner:
 
         return await self._parse_model_with_retry(
             result, StrategyDecisions, "strategist",
-            cycle_id, session_id, system_prompt,
+            cycle_id, session_id,
         )
 
     async def run_risk_manager(
@@ -166,6 +178,7 @@ class AgentRunner:
         """리스크 매니저: 거래 제안을 검증하고 APPROVE/ADJUST/REJECT."""
         session_id = str(uuid.uuid4())
         prompt = (
+            f"{RISK_MANAGER_SYSTEM_PROMPT}\n\n"
             "아래 거래 제안과 포트폴리오 상태를 검증하라.\n\n"
             f"{risk_context}"
         )
@@ -175,15 +188,16 @@ class AgentRunner:
             cycle_id=cycle_id,
             session_id=session_id,
             prompt=prompt,
-            system_prompt=RISK_MANAGER_SYSTEM_PROMPT,
+            model=self.config.risk_manager_model,
             input_summary=f"리스크 컨텍스트 {len(risk_context)}자",
+            response_schema=RiskReview,
         )
         if not result:
             return None
 
         return await self._parse_model_with_retry(
             result, RiskReview, "risk_manager",
-            cycle_id, session_id, RISK_MANAGER_SYSTEM_PROMPT,
+            cycle_id, session_id,
         )
 
     async def run_reporter(
@@ -192,6 +206,7 @@ class AgentRunner:
         """리포터 에이전트: 텔레그램용 보고서 생성. 텍스트 반환."""
         session_id = str(uuid.uuid4())
         prompt = (
+            f"{REPORTER_SYSTEM_PROMPT}\n\n"
             "아래 사이클 결과를 기반으로 텔레그램 보고서를 작성하라.\n\n"
             f"{report_context}"
         )
@@ -201,7 +216,6 @@ class AgentRunner:
             cycle_id=cycle_id,
             session_id=session_id,
             prompt=prompt,
-            system_prompt=REPORTER_SYSTEM_PROMPT,
             model=self.config.reporter_model,
             input_summary=f"보고서 컨텍스트 {len(report_context)}자",
         )
@@ -218,28 +232,34 @@ class AgentRunner:
         cycle_id: str,
         session_id: str,
         prompt: str,
-        system_prompt: str | None = None,
         is_new_session: bool = True,
         model: str | None = None,
         input_summary: str | None = None,
+        response_schema: type | None = None,
     ) -> dict | None:
-        """Claude CLI를 호출하고 결과를 DB에 기록한다."""
-        agent_model = model or self.config.agent_model
-        logger.info(f"[{agent_type}] Claude CLI 호출 시작 (model={agent_model})")
+        """Gemini API를 호출하고 결과를 DB에 기록한다."""
+        agent_model = model or self.config.strategist_model # Fallback
+        
+        # 프롬프트에 JSON 스키마 요구사항 명시 (Structured Output 대체)
+        if response_schema:
+            schema_json = json.dumps(response_schema.model_json_schema(), indent=2, ensure_ascii=False)
+            prompt += f"\n\n반드시 아래 JSON 스키마 형식을 엄격히 지켜서 답변하라. 다른 설명 없이 순수 JSON만 출력하라:\n{schema_json}"
 
-        cli_result: ClaudeResult = await call_claude(
+        logger.info(f"[{agent_type}] Gemini API 호출 시작 (model={agent_model})")
+
+        cli_result: GeminiResult = await call_gemini(
             prompt=prompt,
             session_id=session_id,
+            api_key=self.config.gemini_api_key,
             is_new_session=is_new_session,
-            system_prompt=system_prompt,
-            claude_path=self.config.claude_path,
-            cwd=self._project_dir,
-            model=agent_model,
+            model_name=agent_model,
             timeout=self.config.agent_cycle_timeout,
+            response_schema=None, 
+            use_json_mode=True if response_schema else False, # 스키마 있을 때만 JSON 모드 활성화
         )
 
         if not cli_result["success"]:
-            logger.error(f"[{agent_type}] Claude CLI 실패: {cli_result.get('error', 'unknown')}")
+            logger.error(f"[{agent_type}] Gemini API 실패: {cli_result.get('error', 'unknown')}")
             # 실패도 기록
             self.db.add_agent_decision(
                 cycle_id=cycle_id,
@@ -247,16 +267,14 @@ class AgentRunner:
                 output_json=json.dumps({"error": cli_result.get("error", "unknown")}),
                 session_id=session_id,
                 input_summary=input_summary,
-                cost_usd=cli_result.get("cost_usd"),
                 duration_ms=cli_result.get("duration_ms"),
             )
             return None
 
         text = cli_result["result"]
+        tokens_info = f"in={cli_result.get('input_tokens', 0)}, out={cli_result.get('output_tokens', 0)}"
         logger.info(
-            f"[{agent_type}] 완료 "
-            f"(cost=${cli_result.get('cost_usd', 0) or 0:.4f}, "
-            f"duration={cli_result.get('duration_ms', 0) or 0}ms)"
+            f"[{agent_type}] 완료 ({tokens_info}, duration={cli_result.get('duration_ms', 0) or 0}ms)"
         )
 
         # DB 기록
@@ -266,20 +284,21 @@ class AgentRunner:
             output_json=text[:10000],
             session_id=cli_result.get("session_id") or session_id,
             input_summary=input_summary,
-            cost_usd=cli_result.get("cost_usd"),
+            cost_usd=0, # Gemini API에서 비용 정보는 토큰으로 대체
             duration_ms=cli_result.get("duration_ms"),
         )
 
         return {
             "text": text,
             "session_id": cli_result.get("session_id") or session_id,
-            "cost_usd": cli_result.get("cost_usd"),
+            "input_tokens": cli_result.get("input_tokens"),
+            "output_tokens": cli_result.get("output_tokens"),
             "duration_ms": cli_result.get("duration_ms"),
         }
 
     async def _parse_model_with_retry(
         self, result: dict, model_class: type, agent_type: str,
-        cycle_id: str, session_id: str, system_prompt: str | None,
+        cycle_id: str, session_id: str,
     ):
         """JSON 결과를 Pydantic 모델로 파싱한다. 실패 시 재시도."""
         text = result.get("text", "")
@@ -295,8 +314,7 @@ class AgentRunner:
                     agent_type=agent_type,
                     cycle_id=cycle_id,
                     session_id=session_id,
-                    prompt="이전 응답이 올바른 JSON 형식이 아니었다. 다른 텍스트 없이 순수 JSON만 다시 출력하라.",
-                    system_prompt=None,
+                    prompt="이전 응답이 올바른 JSON 형식이 아니었다. 다른 텍스트 없이 순수 JSON만 다시 출력하라. (예: ```json ... ```)",
                     is_new_session=False,
                     input_summary="JSON 재시도",
                 )

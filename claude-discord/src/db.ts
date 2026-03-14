@@ -22,6 +22,25 @@ export function initDb(): void {
   db.run(`
     CREATE INDEX IF NOT EXISTS idx_messages_channel_id ON messages(channel_id, created_at DESC)
   `);
+
+  // Channel settings table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS channel_settings (
+      channel_id TEXT PRIMARY KEY,
+      engine TEXT NOT NULL DEFAULT 'claude',
+      model TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+
+  // Global settings table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS global_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
 }
 
 export function saveMessage(
@@ -106,4 +125,65 @@ export function getConversationRecap(
     "Below is a summary of recent messages. Use this to maintain continuity.\n\n" +
     lines.join("\n\n")
   );
+}
+
+// ─── Channel Settings ───
+
+export interface ChannelSetting {
+  channel_id: string;
+  engine: string;
+  model: string | null;
+  updated_at: string;
+}
+
+export function getAllChannelSettings(): ChannelSetting[] {
+  const rows = db.query("SELECT channel_id, engine, model, updated_at FROM channel_settings").all();
+  return rows as ChannelSetting[];
+}
+
+export function getChannelSetting(channelId: string): ChannelSetting | null {
+  const row = db.query("SELECT channel_id, engine, model, updated_at FROM channel_settings WHERE channel_id = ?").get(channelId);
+  return row as ChannelSetting | null;
+}
+
+export function setChannelEngine(channelId: string, engine: string, model?: string): void {
+  db.run(
+    `INSERT OR REPLACE INTO channel_settings (channel_id, engine, model, updated_at) VALUES (?, ?, ?, datetime('now'))`,
+    [channelId, engine, model || null]
+  );
+}
+
+export function deleteChannelSetting(channelId: string): void {
+  db.run("DELETE FROM channel_settings WHERE channel_id = ?", [channelId]);
+}
+
+// ─── Global Settings ───
+
+export function getGlobalSetting(key: string): string | null {
+  const row = db.query("SELECT value FROM global_settings WHERE key = ?").get(key) as { value: string } | null;
+  return row?.value || null;
+}
+
+export function setGlobalSetting(key: string, value: string): void {
+  db.run(
+    `INSERT OR REPLACE INTO global_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))`,
+    [key, value]
+  );
+}
+
+// ─── Channel List from Messages ───
+
+export interface ChannelInfo {
+  channel_id: string;
+  last_message_at: string | null;
+}
+
+export function getKnownChannels(): ChannelInfo[] {
+  const rows = db.query(`
+    SELECT channel_id, MAX(created_at) as last_message_at
+    FROM messages
+    GROUP BY channel_id
+    ORDER BY last_message_at DESC
+  `).all();
+  return rows as ChannelInfo[];
 }

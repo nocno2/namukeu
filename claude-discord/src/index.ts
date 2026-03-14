@@ -6,6 +6,7 @@ import { startPlaywrightMCP, stopPlaywrightMCP } from "@namukeu/playwright-mcp";
 import { stopScheduler } from "./scheduler";
 import { killActiveChild } from "./claude";
 import { startSettingsServer, loadSettings } from "./settings-api";
+import { initDb } from "./db";
 
 const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
@@ -97,6 +98,9 @@ async function main(): Promise<void> {
   };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
+
+  // Initialize DB (for messages and channel settings)
+  initDb();
 
   // Start settings API server
   await startSettingsServer();

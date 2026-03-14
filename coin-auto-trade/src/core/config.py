@@ -24,8 +24,34 @@ class Config:
     futures_leverage: int = 20
     futures_margin_type: str = "ISOLATED"
 
+    # LLM 에이전트 설정
+    gemini_api_key: str = ""
+    researcher_model: str = "gemini-3.1-flash-lite-preview"
+    technician_model: str = "gemini-3.1-flash-lite-preview"
+    strategist_model: str = "gemini-3.1-flash-lite-preview"
+    risk_manager_model: str = "gemini-3.1-flash-lite-preview"
+    reporter_model: str = "gemini-3.1-flash-lite-preview"
+    agent_cycle_hours: list[int] = field(default_factory=lambda: [6, 10, 14, 18, 22])
+    agent_scan_top_n: int = 20
+    agent_cycle_timeout: int = 300
+    agent_max_positions: int = 5
+    agent_max_position_pct: float = 20.0
+    agent_min_cash_ratio: float = 30.0
+    agent_max_daily_loss_pct: float = 3.0
+    agent_max_total_loss_pct: float = 5.0
+    agent_max_trades_per_day: int = 10
+    agent_stop_loss_pct: float = 5.0
+
+    # 보고서 설정
+    report_daily_hour: int = 21
+    report_weekly_day: int = 1  # 1=월요일
+    report_weekly_hour: int = 9
+
     @classmethod
     def from_env(cls) -> "Config":
+        cycle_hours_str = os.environ.get("AGENT_CYCLE_HOURS", "6,10,14,18,22")
+        cycle_hours = [int(h.strip()) for h in cycle_hours_str.split(",") if h.strip()]
+
         return cls(
             api_token=os.environ["API_TOKEN"],
             encryption_key=os.environ["ENCRYPTION_KEY"],
@@ -47,4 +73,24 @@ class Config:
             partial_profit_take_pct=float(v) if (v := os.environ.get("PARTIAL_PROFIT_TAKE_PCT")) else 2.0,
             futures_leverage=int(os.environ.get("FUTURES_LEVERAGE", "20")),
             futures_margin_type=os.environ.get("FUTURES_MARGIN_TYPE", "ISOLATED"),
+            # LLM 에이전트
+            gemini_api_key=os.environ.get("GEMINI_API_KEY", ""),
+            researcher_model=os.environ.get("RESEARCHER_MODEL", "gemini-3.1-flash-lite-preview"),
+            technician_model=os.environ.get("TECHNICIAN_MODEL", "gemini-3.1-flash-lite-preview"),
+            strategist_model=os.environ.get("STRATEGIST_MODEL", "gemini-3.1-pro-preview"),
+            risk_manager_model=os.environ.get("RISK_MANAGER_MODEL", "gemini-3.1-pro-preview"),
+            reporter_model=os.environ.get("REPORTER_MODEL", "gemini-3.1-flash-lite-preview"),
+            agent_cycle_hours=cycle_hours,
+            agent_scan_top_n=int(os.environ.get("AGENT_SCAN_TOP_N", "20")),
+            agent_cycle_timeout=int(os.environ.get("AGENT_CYCLE_TIMEOUT", "300")),
+            agent_max_positions=int(os.environ.get("AGENT_MAX_POSITIONS", "5")),
+            agent_max_position_pct=float(os.environ.get("AGENT_MAX_POSITION_PCT", "20")),
+            agent_min_cash_ratio=float(os.environ.get("AGENT_MIN_CASH_RATIO", "30")),
+            agent_max_daily_loss_pct=float(os.environ.get("AGENT_MAX_DAILY_LOSS_PCT", "3")),
+            agent_max_total_loss_pct=float(os.environ.get("AGENT_MAX_TOTAL_LOSS_PCT", "5")),
+            agent_max_trades_per_day=int(os.environ.get("AGENT_MAX_TRADES_PER_DAY", "10")),
+            agent_stop_loss_pct=float(os.environ.get("AGENT_STOP_LOSS_PCT", "5")),
+            report_daily_hour=int(os.environ.get("REPORT_DAILY_HOUR", "21")),
+            report_weekly_day=int(os.environ.get("REPORT_WEEKLY_DAY", "1")),
+            report_weekly_hour=int(os.environ.get("REPORT_WEEKLY_HOUR", "9")),
         )

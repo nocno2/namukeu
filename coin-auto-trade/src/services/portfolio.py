@@ -71,6 +71,14 @@ class PortfolioTracker:
     async def take_snapshot(self, initial_equity: float | None = None):
         """성과 스냅샷 저장."""
         summary = await self.get_summary()
+
+        if summary["total_equity"] <= 0 or summary["cash_balance"] <= 0:
+            logger.warning(
+                "스냅샷 저장 스킵: total_equity=%.2f, cash_balance=%.2f",
+                summary["total_equity"], summary["cash_balance"],
+            )
+            return
+
         total_pnl = 0.0
         total_pnl_pct = 0.0
 

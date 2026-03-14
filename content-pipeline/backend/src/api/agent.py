@@ -430,3 +430,25 @@ def evolution_state(evo: EvolutionEngine | None = Depends(get_evolution_engine))
     if not evo:
         return {"states": []}
     return {"states": evo.get_all_states()}
+
+
+# ─── Agent Engine Settings ───
+
+
+class EngineBody(BaseModel):
+    engine: str  # "claude" or "gemini"
+
+
+@router.get("/engine", dependencies=[Depends(verify_agent_token)])
+def get_engine(cfg: AgentConfigStore = Depends(get_config_store)):
+    """Get current agent engine (claude or gemini)."""
+    return {"engine": cfg.get("agent_engine", "claude.post")}
+
+
+@router.post("/engine", dependencies=[Depends(verify_agent_token)])
+def set_engine(body: EngineBody, cfg: AgentConfigStore = Depends(get_config_store)):
+    """Set agent engine (claude or gemini)."""
+    if body.engine not in ("claude", "gemini"):
+        raise HTTPException(status_code=400, detail="Invalid engine. Use 'claude' or 'gemini'.")
+    cfg.set("agent_engine", body.engine)
+    return {"engine": body.engine}

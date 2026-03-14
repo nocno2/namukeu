@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
     port: 3004,
+    allowedHosts: ['trade.namukeu.com', 'localhost'],
     proxy: {
       '/api': {
         target: 'http://localhost:8004',

@@ -1,4 +1,4 @@
-# coin-auto-trade
+# coin-auto-trade (Gemini Edition)
 
 > Upbit 암호화폐 LLM 기반 자율 트레이딩 에이전트. 개인용.
 
@@ -7,7 +7,7 @@
 - **Runtime:** Python 3.12
 - **Framework:** FastAPI + uvicorn
 - **DB:** SQLite (로컬, `data/coin-auto-trade.db`)
-- **LLM:** Claude CLI (구독제, subprocess 호출)
+- **LLM:** Gemini API (Direct SDK 호출)
 - **거래소:** pyupbit (Upbit REST + WebSocket)
 - **기술지표:** pandas-ta-classic
 - **대시보드:** Jinja2 + HTMX + TradingView lightweight-charts
@@ -41,8 +41,8 @@ coin-auto-trade/
 ├── src/
 │   ├── main.py              # FastAPI entry point + 에이전트 스케줄러
 │   ├── agent/               # LLM 에이전트 시스템
-│   │   ├── agents.py        # AgentRunner — Claude CLI 호출 관리
-│   │   ├── claude_cli.py    # Claude CLI subprocess 래퍼
+│   │   ├── agents.py        # AgentRunner — Gemini API 호출 관리
+│   │   ├── gemini_api.py    # Gemini API 직접 호출 래퍼
 │   │   ├── models.py        # Pydantic 입출력 모델
 │   │   ├── prompts.py       # 에이전트별 시스템 프롬프트
 │   │   ├── scanner.py       # MarketScanner — 종목 스캐닝
@@ -96,51 +96,6 @@ coin-auto-trade/
 | `python -m src.main` | 서버 시작 |
 | `pip install -e .` | 개발 설치 |
 
-## API Endpoints
-
-### 인증
-모든 API 요청에 `Authorization: Bearer {API_TOKEN}` 헤더 필요. `/health`와 대시보드 페이지 제외.
-
-### 에이전트
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/agent/status` | 에이전트 상태, 마지막/다음 사이클 |
-| POST | `/agent/cycle/trigger` | 수동 사이클 트리거 |
-| GET | `/agent/cycles` | 최근 사이클 목록 |
-| GET | `/agent/cycles/{id}/decisions` | 사이클별 판단 기록 |
-| GET | `/agent/reports` | 보고서 목록 |
-
-### 자격증명
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/credentials` | Upbit API 키 등록 (암호화 저장) |
-| DELETE | `/credentials` | API 키 삭제 |
-
-### 매매
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/trading/mode` | 현재 모드 (dry-run/live) |
-| POST | `/trading/mode` | 모드 전환 |
-| GET | `/trading/positions` | 현재 포지션 |
-| GET | `/trading/orders` | 주문 내역 |
-
-### 포트폴리오
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/portfolio/summary` | 포트폴리오 요약 |
-| GET | `/portfolio/history` | 성과 히스토리 |
-
-### 대시보드
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | 메인 대시보드 |
-| GET | `/dashboard/trades` | 거래 내역 페이지 |
-
 ## 안전 장치
 
 1. `DRY_RUN=true` 기본 — 실거래 전환 시 명시적 API 호출 필요
@@ -160,26 +115,13 @@ coin-auto-trade/
 
 | 변수 | 기본값 | 설명 |
 |------|--------|------|
-| `CLAUDE_PATH` | `claude` | Claude CLI 경로 |
-| `AGENT_MODEL` | `claude-sonnet-4-6` | 에이전트 모델 |
+| `GEMINI_API_KEY` | | Gemini API 키 |
+| `AGENT_MODEL` | `gemini-2.0-flash` | 에이전트 모델 (flash 권장) |
 | `AGENT_CYCLE_HOURS` | `6,10,14,18,22` | 사이클 실행 시간 |
 | `AGENT_SCAN_TOP_N` | `20` | 스캔 종목 수 |
 | `AGENT_CYCLE_TIMEOUT` | `300` | CLI 타임아웃 (초) |
 | `REPORT_DAILY_HOUR` | `21` | 일일 리포트 시간 |
 | `REPORT_WEEKLY_DAY` | `1` | 주간 리포트 요일 (1=월) |
-
-## DB Tables
-
-- `credentials` — 암호화된 API 키
-- `ohlcv` — 캔들 데이터
-- `orders` — 주문 내역
-- `positions` — 보유 포지션
-- `performance_snapshots` — 포트폴리오 스냅샷
-- `agent_sessions` — 에이전트 세션 관리
-- `agent_cycles` — 분석 사이클 기록
-- `agent_decisions` — 에이전트 판단 기록
-- `risk_reviews` — 리스크 검증 기록
-- `reports` — 보고서 저장
 
 ## 보안
 

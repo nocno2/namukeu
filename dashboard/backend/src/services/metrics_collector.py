@@ -203,8 +203,8 @@ class MetricsCollector:
         has_discord = bool(self._discord_webhook_url)
 
         text = (
-            f"🔴 *서비스 다운 감지*\n\n"
-            f"*{service['display_name']}* (`{service['name']}`)\n"
+            f"🔴 <b>서비스 다운 감지</b>\n\n"
+            f"<b>{service['display_name']}</b> (<code>{service['name']}</code>)\n"
             f"상태: running → down\n"
             f"시각: {service['checked_at']}"
         )
@@ -224,8 +224,8 @@ class MetricsCollector:
 
         recovery_note = " (자동 복구)" if auto_recovered else ""
         text = (
-            f"🟢 *서비스 복구{recovery_note}*\n\n"
-            f"*{service['display_name']}* (`{service['name']}`)\n"
+            f"🟢 <b>서비스 복구{recovery_note}</b>\n\n"
+            f"<b>{service['display_name']}</b> (<code>{service['name']}</code>)\n"
             f"상태: down → running\n"
             f"시각: {service['checked_at']}"
         )
@@ -246,8 +246,8 @@ class MetricsCollector:
         emoji = "🔄" if success else "❌"
         result = "자동 재시작 시도" if success else "자동 재시작 실패"
         text = (
-            f"{emoji} *{result}*\n\n"
-            f"*{service['display_name']}* (`{service['name']}`)\n"
+            f"{emoji} <b>{result}</b>\n\n"
+            f"<b>{service['display_name']}</b> (<code>{service['name']}</code>)\n"
             f"연속 {DOWN_THRESHOLD}회 다운 감지 → 자동 복구 시도\n"
             f"시각: {service['checked_at']}"
         )
@@ -267,7 +267,7 @@ class MetricsCollector:
         payload = {
             "chat_id": self._telegram_chat_id,
             "text": text,
-            "parse_mode": "Markdown",
+            "parse_mode": "HTML",
         }
         try:
             async with httpx.AsyncClient() as client:

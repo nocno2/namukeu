@@ -1,4 +1,5 @@
 export * from "./types";
+export { callAgent, killActiveChild } from "./runner";
 export { ForbiddenActions } from "./forbidden";
 export { AuditLog } from "./audit";
 export { TaskStore } from "./tasks";

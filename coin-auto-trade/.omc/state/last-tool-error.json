@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"DISABLE_OMC=true timeout 30 /Users/namwook/.local/bin/claude -p \\\"1+1=\\\" --verbose --output-format stream-json --dangerously-skip-permissions --model claude-sonnet-4-6 </dev/null 2>/dev/nu...",
+  "error": "Exit code 1\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/__init__.py\", line 346, in loads\n    return _default_decoder.decode(s)\n  File \"/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/json/decoder.py\", line 337, in decode\n    obj, end = self.raw_decode(s, idx=_w(s, 0).end())\n  File \"/Library/Developer/Com...",
+  "timestamp": "2026-03-13T18:29:10.591Z",
+  "retry_count": 1
+}

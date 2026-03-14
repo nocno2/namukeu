@@ -1,0 +1,456 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1773394757646,
+  "projectRoot": "/Users/namwook/Documents/namukeu",
+  "techStack": {
+    "languages": [],
+    "frameworks": [],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": null,
+    "lintCommand": null,
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "coin-auto-trade": {
+      "path": "coin-auto-trade",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1773394757615,
+      "keyFiles": [
+        "pyproject.toml",
+        "run_adaptive_rsi_backtest.py",
+        "CLAUDE.md"
+      ]
+    },
+    "api-gateway": {
+      "path": "api-gateway",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1773394757617,
+      "keyFiles": [
+        "requirements.txt",
+        "CLAUDE.md"
+      ]
+    },
+    "trade": {
+      "path": "trade",
+      "purpose": null,
+      "fileCount": 2,
+      "lastAccessed": 1773394757617,
+      "keyFiles": [
+        "CLAUDE.md"
+      ]
+    },
+    "claude-telegram": {
+      "path": "claude-telegram",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1773394757619,
+      "keyFiles": [
+        "bun.lock",
+        "package.json",
+        "index",
+        "tsconfig.json",
+        "GEMINI.md"
+      ]
+    },
+    "shared": {
+      "path": "shared",
+      "purpose": null,
+      "fileCount": 0,
+      "lastAccessed": 1773394757621,
+      "keyFiles": []
+    },
+    "dashboard": {
+      "path": "dashboard",
+      "purpose": null,
+      "fileCount": 4,
+      "lastAccessed": 1773394757621,
+      "keyFiles": [
+        "verify-frontend-build.sh",
+        "verify-build.sh",
+        "CLAUDE.md"
+      ]
+    },
+    "content-pipeline": {
+      "path": "content-pipeline",
+      "purpose": null,
+      "fileCount": 6,
+      "lastAccessed": 1773394757621,
+      "keyFiles": [
+        "n8n-blog-automation-workflow.json",
+        "N8N_API_SPEC.md",
+        "N8N_WORKFLOW.md",
+        "N8N_API_SPEC_V2.md",
+        "N8N_IMPORT_GUIDE.md"
+      ]
+    },
+    "train-go": {
+      "path": "train-go",
+      "purpose": null,
+      "fileCount": 5,
+      "lastAccessed": 1773394757622,
+      "keyFiles": [
+        "pyproject.toml",
+        "CLAUDE.md"
+      ]
+    },
+    "ai-blog": {
+      "path": "ai-blog",
+      "purpose": null,
+      "fileCount": 16,
+      "lastAccessed": 1773394757622,
+      "keyFiles": [
+        "postcss.config.mjs",
+        "tsconfig.tsbuildinfo",
+        "bun.lock",
+        "next-env.d.ts",
+        "README.md"
+      ]
+    },
+    "nikke-guide": {
+      "path": "nikke-guide",
+      "purpose": null,
+      "fileCount": 9,
+      "lastAccessed": 1773394757622,
+      "keyFiles": [
+        "postcss.config.mjs",
+        "bun.lock",
+        "next-env.d.ts",
+        "package.json",
+        "tsconfig.json"
+      ]
+    },
+    "claude-discord": {
+      "path": "claude-discord",
+      "purpose": null,
+      "fileCount": 10,
+      "lastAccessed": 1773394757623,
+      "keyFiles": [
+        "bun.lock",
+        "package.json",
+        "index",
+        "tsconfig.json",
+        "GEMINI.md"
+      ]
+    },
+    "coin-auto-trade/scripts": {
+      "path": "coin-auto-trade/scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1773394757623,
+      "keyFiles": [
+        "check_ip.sh"
+      ]
+    },
+    "coin-auto-trade/data": {
+      "path": "coin-auto-trade/data",
+      "purpose": "Data files",
+      "fileCount": 8,
+      "lastAccessed": 1773394757623,
+      "keyFiles": [
+        "coin-auto-trade.db",
+        "coin_trader.db",
+        "trade.db"
+      ]
+    },
+    "api-gateway/tests": {
+      "path": "api-gateway/tests",
+      "purpose": "Test files",
+      "fileCount": 0,
+      "lastAccessed": 1773394757624,
+      "keyFiles": []
+    },
+    "api-gateway/data": {
+      "path": "api-gateway/data",
+      "purpose": "Data files",
+      "fileCount": 0,
+      "lastAccessed": 1773394757626,
+      "keyFiles": []
+    },
+    "api-gateway/src": {
+      "path": "api-gateway/src",
+      "purpose": "Source code",
+      "fileCount": 4,
+      "lastAccessed": 1773394757626,
+      "keyFiles": [
+        "config.py",
+        "proxy.py",
+        "__init__.py"
+      ]
+    },
+    "claude-telegram/dist": {
+      "path": "claude-telegram/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1773394757628,
+      "keyFiles": [
+        "index.js"
+      ]
+    },
+    "claude-telegram/config": {
+      "path": "claude-telegram/config",
+      "purpose": "Configuration files",
+      "fileCount": 4,
+      "lastAccessed": 1773394757629,
+      "keyFiles": [
+        "profile.example.md",
+        "forbidden.json",
+        "SOUL.md"
+      ]
+    },
+    "claude-telegram/node_modules": {
+      "path": "claude-telegram/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 0,
+      "lastAccessed": 1773394757631,
+      "keyFiles": []
+    },
+    "train-go/data": {
+      "path": "train-go/data",
+      "purpose": "Data files",
+      "fileCount": 2,
+      "lastAccessed": 1773394757634,
+      "keyFiles": [
+        "train-go.db",
+        "test.db"
+      ]
+    },
+    "train-go/src": {
+      "path": "train-go/src",
+      "purpose": "Source code",
+      "fileCount": 2,
+      "lastAccessed": 1773394757634,
+      "keyFiles": [
+        "__init__.py",
+        "main.py"
+      ]
+    },
+    "ai-blog/node_modules": {
+      "path": "ai-blog/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 0,
+      "lastAccessed": 1773394757638,
+      "keyFiles": []
+    },
+    "nikke-guide/node_modules": {
+      "path": "nikke-guide/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 0,
+      "lastAccessed": 1773394757640,
+      "keyFiles": []
+    },
+    "nikke-guide/public": {
+      "path": "nikke-guide/public",
+      "purpose": "Public files",
+      "fileCount": 1,
+      "lastAccessed": 1773394757640,
+      "keyFiles": []
+    },
+    "nikke-guide/scripts": {
+      "path": "nikke-guide/scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 13,
+      "lastAccessed": 1773394757641,
+      "keyFiles": [
+        "screenshot-characters.ts",
+        "debug-page4.ts",
+        "parse-html.py"
+      ]
+    },
+    "claude-discord/dist": {
+      "path": "claude-discord/dist",
+      "purpose": "Distribution/build output",
+      "fileCount": 1,
+      "lastAccessed": 1773394757644,
+      "keyFiles": [
+        "index.js"
+      ]
+    },
+    "claude-discord/config": {
+      "path": "claude-discord/config",
+      "purpose": "Configuration files",
+      "fileCount": 0,
+      "lastAccessed": 1773394757645,
+      "keyFiles": []
+    },
+    "claude-discord/node_modules": {
+      "path": "claude-discord/node_modules",
+      "purpose": "Dependencies",
+      "fileCount": 0,
+      "lastAccessed": 1773394757646,
+      "keyFiles": []
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "claude-discord/src/settings-api.ts",
+      "accessCount": 5,
+      "lastAccessed": 1773402746378,
+      "type": "file"
+    },
+    {
+      "path": "claude-telegram/src/bot.ts",
+      "accessCount": 4,
+      "lastAccessed": 1773402389450,
+      "type": "file"
+    },
+    {
+      "path": "coin-auto-trade/src/strategies/rsi_ma_choice_strategy.py",
+      "accessCount": 3,
+      "lastAccessed": 1773397603698,
+      "type": "file"
+    },
+    {
+      "path": "coin-auto-trade/src/services/backtester.py",
+      "accessCount": 3,
+      "lastAccessed": 1773397603752,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 3,
+      "lastAccessed": 1773402384167,
+      "type": "directory"
+    },
+    {
+      "path": "coin-auto-trade/src/services/scheduler.py",
+      "accessCount": 2,
+      "lastAccessed": 1773395533625,
+      "type": "file"
+    },
+    {
+      "path": "coin-auto-trade/src/services/collector.py",
+      "accessCount": 2,
+      "lastAccessed": 1773395625233,
+      "type": "file"
+    },
+    {
+      "path": "claude-telegram",
+      "accessCount": 2,
+      "lastAccessed": 1773402390514,
+      "type": "directory"
+    },
+    {
+      "path": "claude-discord",
+      "accessCount": 2,
+      "lastAccessed": 1773402391526,
+      "type": "directory"
+    },
+    {
+      "path": "shared/agent-core/src/runner.ts",
+      "accessCount": 2,
+      "lastAccessed": 1773402435684,
+      "type": "file"
+    },
+    {
+      "path": "claude-telegram/src/claude.ts",
+      "accessCount": 2,
+      "lastAccessed": 1773402436544,
+      "type": "file"
+    },
+    {
+      "path": "claude-discord/src/session.ts",
+      "accessCount": 2,
+      "lastAccessed": 1773402565804,
+      "type": "file"
+    },
+    {
+      "path": "coin-auto-trade/src/core/config.py",
+      "accessCount": 1,
+      "lastAccessed": 1773394997808,
+      "type": "file"
+    },
+    {
+      "path": "coin-auto-trade/src/core/database.py",
+      "accessCount": 1,
+      "lastAccessed": 1773395000367,
+      "type": "file"
+    },
+    {
+      "path": "claude-discord/src/index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402348802,
+      "type": "file"
+    },
+    {
+      "path": "shared/agent-core/src/index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402350290,
+      "type": "file"
+    },
+    {
+      "path": "shared/agent-core/src/types.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402350580,
+      "type": "file"
+    },
+    {
+      "path": "claude-discord/src/claude.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402359233,
+      "type": "file"
+    },
+    {
+      "path": "claude-discord/src/queue.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402359635,
+      "type": "file"
+    },
+    {
+      "path": "claude-telegram/src/queue.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402360108,
+      "type": "file"
+    },
+    {
+      "path": "claude-telegram/src/index.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402360521,
+      "type": "file"
+    },
+    {
+      "path": "claude-discord/src/bot.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402368247,
+      "type": "file"
+    },
+    {
+      "path": "shared/agent-core/src",
+      "accessCount": 1,
+      "lastAccessed": 1773402372188,
+      "type": "directory"
+    },
+    {
+      "path": "claude-telegram/src/session.ts",
+      "accessCount": 1,
+      "lastAccessed": 1773402392001,
+      "type": "file"
+    },
+    {
+      "path": "coin-auto-trade/src/strategies/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1773406383435,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

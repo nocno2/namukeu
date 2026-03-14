@@ -1,4 +1,6 @@
 import { spawn } from "bun";
+import { callAgent, killActiveChild as killSharedChild } from "@namukeu/agent-core";
+import type { AgentEngine } from "@namukeu/agent-core";
 
 const HOME = process.env.HOME || "";
 const CLAUDE_PATH = process.env.CLAUDE_PATH || "claude";
@@ -390,4 +392,38 @@ function isSessionNotFound(stderr: string): boolean {
 
 function isSessionInUse(stderr: string): boolean {
   return stderr.includes("is already in use");
+}
+
+// ─── Agent Runner Wrapper ───
+
+export interface AgentOptions extends ClaudeOptions {
+  engine: AgentEngine;
+}
+
+export async function callAgentWithEngine(
+  prompt: string,
+  options: AgentOptions
+): Promise<ClaudeResult> {
+  const result = await callAgent(prompt, {
+    engine: options.engine,
+    sessionId: options.sessionId,
+    isNewSession: options.isNewSession,
+    systemPrompt: options.systemPrompt,
+    cwd: options.cwd,
+    onProgress: options.onProgress,
+  });
+
+  return {
+    success: result.success,
+    result: result.result,
+    sessionId: result.sessionId,
+    error: result.error,
+    costUsd: result.costUsd,
+    durationMs: result.durationMs,
+  };
+}
+
+// Override killActiveChild to use shared implementation
+export function killActiveChild(): void {
+  killSharedChild();
 }

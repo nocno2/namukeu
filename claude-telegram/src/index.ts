@@ -10,7 +10,17 @@ const DATA_DIR = process.env.DATA_DIR || join(import.meta.dir, "..", "data");
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
 
 function validateConfig(): void {
-  const required = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_USER_ID"];
+  const required = [
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_USER_ID",
+    "PIPELINE_API_URL",
+    "AGENT_API_TOKEN",
+    "BLOG_ADMIN_URL",
+    "DASHBOARD_URL",
+    "PROJECT_ROOT",
+    "COIN_API_URL",
+    "INTERNAL_API_KEY",
+  ];
   const missing = required.filter((key) => !process.env[key]);
 
   if (missing.length > 0) {

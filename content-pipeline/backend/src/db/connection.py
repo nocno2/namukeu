@@ -115,6 +115,7 @@ class Database:
                 chat_id TEXT,
                 violations TEXT,
                 cost REAL,
+                tokens INTEGER,
                 duration INTEGER,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );

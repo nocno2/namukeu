@@ -188,7 +188,7 @@ class ContextBuilder:
 
         return "\n".join(lines)
 
-    def build_report_context(
+    async def build_report_context(
         self,
         cycle_id: str,
         research: ResearchReport | None,
@@ -202,6 +202,12 @@ class ContextBuilder:
         lines = [f"=== {report_type} 보고서 작성 요청 ===", ""]
         lines.append(f"사이클 ID: {cycle_id}")
         lines.append(f"보고서 유형: {report_type}")
+        lines.append("")
+
+        # 상세 자산 현황 (보유 KRW, 코인 목록, 수익률 포함)
+        portfolio = await self._build_portfolio_summary()
+        lines.append("## 현재 자산 현황 (상세)")
+        lines.append(portfolio)
         lines.append("")
 
         if research:
@@ -311,21 +317,34 @@ class ContextBuilder:
         total = cash + positions_value
         cash_ratio = (cash / total * 100) if total > 0 else 100
 
+        # 누적 수익률 계산 (기본 자산 1,000만 원 가정 또는 DB에서 첫 스냅샷 조회)
+        snapshots = self.db.get_performance_history(limit=1, order="ASC")
+        if snapshots and snapshots[0].get("total_equity", 0) > 0:
+            initial_equity = snapshots[0]["total_equity"]
+            roi = (total / initial_equity - 1) * 100
+        else:
+            # 스냅샷이 없거나 0이면 현재 자산을 초기 자산으로 가정 (수익률 0%)
+            roi = 0.0
+
         lines = [
-            f"총 자산: {total:,.0f} KRW",
-            f"현금: {cash:,.0f} KRW ({cash_ratio:.1f}%)",
-            f"포지션 가치: {positions_value:,.0f} KRW",
+            f"총 평가 자산: {total:,.0f} KRW",
+            f"보유 현금: {cash:,.0f} KRW ({cash_ratio:.1f}%)",
+            f"누적 수익률: {roi:+.2f}%",
             f"보유 종목 수: {len(positions)} / {self.config.agent_max_positions}",
         ]
 
-        for p in positions:
-            pnl_pct = p.get("unrealized_pnl_pct", 0) or 0
-            curr = p.get("current_price", 0) or 0
-            val = curr * p.get("volume", 0)
-            weight = (val / total * 100) if total > 0 else 0
-            lines.append(
-                f"  - {p['ticker']}: {val:,.0f} KRW ({weight:.1f}%), "
-                f"평단 {p['avg_entry_price']:,.0f}, 손익 {pnl_pct:+.2f}%"
-            )
+        if positions:
+            lines.append("상세 보유 목록 (5,000원 이상):")
+            for p in positions:
+                curr = p.get("current_price", 0) or 0
+                val = curr * p.get("volume", 0)
+                if val < 5000: # 5,000원 미만 제외
+                    continue
+                pnl_pct = p.get("unrealized_pnl_pct", 0) or 0
+                weight = (val / total * 100) if total > 0 else 0
+                lines.append(
+                    f"  - {p['ticker']}: {val:,.0f} KRW ({weight:.1f}%), "
+                    f"평단 {p['avg_entry_price']:,.0f}, 손익 {pnl_pct:+.2f}%"
+                )
 
         return "\n".join(lines)

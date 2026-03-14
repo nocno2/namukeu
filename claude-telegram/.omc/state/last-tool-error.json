@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"kill 93507 && sleep 1 && pm2 restart claude-discord\",\"description\":\"기존 프로세스 종료 후 PM2 재시작\"}",
+  "error": "Exit code 1\n(eval):kill:1: kill 93507 failed: no such process",
+  "timestamp": "2026-03-13T11:06:15.845Z",
+  "retry_count": 1
+}

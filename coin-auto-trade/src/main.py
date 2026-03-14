@@ -243,30 +243,28 @@ def _start_report_scheduler(
 
 
 def _start_agent_scheduler(config: Config, orchestrator: CycleOrchestrator):
-    """에이전트 사이클을 config.agent_cycle_hours 시간에 자동 실행한다."""
+    """매시간 랜덤한 분에 에이전트 사이클을 자동 실행한다."""
     import datetime as dt
+    import random
 
     async def _scheduler_loop():
         while True:
             now = dt.datetime.now()
-            # 다음 실행 시간 계산
-            future_hours = [h for h in config.agent_cycle_hours if h > now.hour]
-            if future_hours:
-                next_hour = future_hours[0]
-                next_run = now.replace(hour=next_hour, minute=0, second=0, microsecond=0)
-            else:
-                # 내일 첫 시간
-                next_hour = config.agent_cycle_hours[0]
-                next_run = (now + dt.timedelta(days=1)).replace(
-                    hour=next_hour, minute=0, second=0, microsecond=0
-                )
-
+            
+            # 다음 정각 시간 계산
+            next_hour_start = (now + dt.timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+            
+            # 다음 시간 내의 랜덤한 분(Minute) 선택
+            random_minute = random.randint(0, 59)
+            next_run = next_hour_start.replace(minute=random_minute)
+            
             wait_seconds = (next_run - now).total_seconds()
-            logger.info(f"다음 에이전트 사이클: {next_run.strftime('%H:%M')} ({wait_seconds / 3600:.1f}시간 후)")
+            logger.info(f"다음 에이전트 사이클 예약: {next_run.strftime('%H:%M')} (랜덤 {random_minute}분 선택, {wait_seconds / 60:.1f}분 후)")
+            
             await asyncio.sleep(wait_seconds)
 
             if not orchestrator.is_running:
-                logger.info("에이전트 사이클 자동 시작")
+                logger.info(f"에이전트 사이클 자동 시작 ({next_run.strftime('%H:%M')})")
                 try:
                     await orchestrator.run_cycle()
                 except Exception as e:

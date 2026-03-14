@@ -1,0 +1,419 @@
+{
+  "version": "1.0.0",
+  "lastScanned": 1773420097037,
+  "projectRoot": "/Users/namwook/Documents/namukeu/coin-auto-trade",
+  "techStack": {
+    "languages": [
+      {
+        "name": "Python",
+        "version": null,
+        "confidence": "high",
+        "markers": [
+          "pyproject.toml"
+        ]
+      }
+    ],
+    "frameworks": [
+      {
+        "name": "fastapi",
+        "version": null,
+        "category": "backend"
+      }
+    ],
+    "packageManager": null,
+    "runtime": null
+  },
+  "build": {
+    "buildCommand": null,
+    "testCommand": "pytest",
+    "lintCommand": "ruff check",
+    "devCommand": null,
+    "scripts": {}
+  },
+  "conventions": {
+    "namingStyle": null,
+    "importStyle": null,
+    "testPattern": null,
+    "fileOrganization": null
+  },
+  "structure": {
+    "isMonorepo": false,
+    "workspaces": [],
+    "mainDirectories": [
+      "scripts",
+      "src"
+    ],
+    "gitBranches": null
+  },
+  "customNotes": [],
+  "directoryMap": {
+    "daemon": {
+      "path": "daemon",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1773420097025,
+      "keyFiles": [
+        "com.namukeu.coin-auto-trade.plist"
+      ]
+    },
+    "data": {
+      "path": "data",
+      "purpose": "Data files",
+      "fileCount": 8,
+      "lastAccessed": 1773420097026,
+      "keyFiles": [
+        "coin-auto-trade.db",
+        "coin-auto-trade.db-shm",
+        "coin-auto-trade.db-wal",
+        "coin_auto_trade.db",
+        "coin_trader.db"
+      ]
+    },
+    "logs": {
+      "path": "logs",
+      "purpose": null,
+      "fileCount": 1,
+      "lastAccessed": 1773420097026,
+      "keyFiles": [
+        "coin.log"
+      ]
+    },
+    "scripts": {
+      "path": "scripts",
+      "purpose": "Build/utility scripts",
+      "fileCount": 1,
+      "lastAccessed": 1773420097027,
+      "keyFiles": [
+        "check_ip.sh"
+      ]
+    },
+    "src": {
+      "path": "src",
+      "purpose": "Source code",
+      "fileCount": 2,
+      "lastAccessed": 1773420097027,
+      "keyFiles": [
+        "__init__.py",
+        "main.py"
+      ]
+    },
+    "src/api": {
+      "path": "src/api",
+      "purpose": "API routes",
+      "fileCount": 7,
+      "lastAccessed": 1773420097030,
+      "keyFiles": [
+        "__init__.py",
+        "auth.py",
+        "routes_backtest.py"
+      ]
+    },
+    "src/models": {
+      "path": "src/models",
+      "purpose": "Data models",
+      "fileCount": 6,
+      "lastAccessed": 1773420097031,
+      "keyFiles": [
+        "__init__.py",
+        "backtest.py",
+        "credential.py"
+      ]
+    },
+    "src/services": {
+      "path": "src/services",
+      "purpose": "Business logic services",
+      "fileCount": 13,
+      "lastAccessed": 1773420097031,
+      "keyFiles": [
+        "__init__.py",
+        "backtester.py",
+        "collector.py"
+      ]
+    }
+  },
+  "hotPaths": [
+    {
+      "path": "src/main.py",
+      "accessCount": 14,
+      "lastAccessed": 1773422952041,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/cycle.py",
+      "accessCount": 10,
+      "lastAccessed": 1773427518338,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/agents.py",
+      "accessCount": 9,
+      "lastAccessed": 1773423168379,
+      "type": "file"
+    },
+    {
+      "path": "src/core/database.py",
+      "accessCount": 8,
+      "lastAccessed": 1773422937647,
+      "type": "file"
+    },
+    {
+      "path": "src/services/scheduler.py",
+      "accessCount": 8,
+      "lastAccessed": 1773422951669,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/claude_cli.py",
+      "accessCount": 8,
+      "lastAccessed": 1773426585029,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 6,
+      "lastAccessed": 1773424449725,
+      "type": "directory"
+    },
+    {
+      "path": ".env",
+      "accessCount": 6,
+      "lastAccessed": 1773425284997,
+      "type": "directory"
+    },
+    {
+      "path": "src/services/backtester.py",
+      "accessCount": 5,
+      "lastAccessed": 1773421669931,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/models.py",
+      "accessCount": 5,
+      "lastAccessed": 1773422936010,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/prompts.py",
+      "accessCount": 5,
+      "lastAccessed": 1773422936367,
+      "type": "file"
+    },
+    {
+      "path": "src/core/config.py",
+      "accessCount": 5,
+      "lastAccessed": 1773423638100,
+      "type": "file"
+    },
+    {
+      "path": "src/services/exchange.py",
+      "accessCount": 5,
+      "lastAccessed": 1773427511512,
+      "type": "file"
+    },
+    {
+      "path": "src/api/routes_strategy.py",
+      "accessCount": 4,
+      "lastAccessed": 1773421686064,
+      "type": "file"
+    },
+    {
+      "path": "src/api/routes_dashboard.py",
+      "accessCount": 4,
+      "lastAccessed": 1773421702631,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/scanner.py",
+      "accessCount": 4,
+      "lastAccessed": 1773422943796,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/telegram.py",
+      "accessCount": 4,
+      "lastAccessed": 1773422950265,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/knowledge_base.py",
+      "accessCount": 4,
+      "lastAccessed": 1773422950619,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/reporter.py",
+      "accessCount": 4,
+      "lastAccessed": 1773422959307,
+      "type": "file"
+    },
+    {
+      "path": "src/strategies/base.py",
+      "accessCount": 3,
+      "lastAccessed": 1773421554220,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 3,
+      "lastAccessed": 1773421724699,
+      "type": "directory"
+    },
+    {
+      "path": "src/api",
+      "accessCount": 3,
+      "lastAccessed": 1773422625195,
+      "type": "directory"
+    },
+    {
+      "path": "src/core/runtime.py",
+      "accessCount": 3,
+      "lastAccessed": 1773422644851,
+      "type": "file"
+    },
+    {
+      "path": "src/api/routes_agent.py",
+      "accessCount": 3,
+      "lastAccessed": 1773422951765,
+      "type": "file"
+    },
+    {
+      "path": "src/services/notifier.py",
+      "accessCount": 2,
+      "lastAccessed": 1773422154325,
+      "type": "file"
+    },
+    {
+      "path": "src/services/portfolio.py",
+      "accessCount": 2,
+      "lastAccessed": 1773422179325,
+      "type": "file"
+    },
+    {
+      "path": "CLAUDE.md",
+      "accessCount": 2,
+      "lastAccessed": 1773422818728,
+      "type": "file"
+    },
+    {
+      "path": "src/strategies/registry.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420275643,
+      "type": "file"
+    },
+    {
+      "path": "src/services/collector.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420282415,
+      "type": "file"
+    },
+    {
+      "path": "src/services/risk_manager.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420282909,
+      "type": "file"
+    },
+    {
+      "path": "src/api/routes_trading.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420290035,
+      "type": "file"
+    },
+    {
+      "path": "src/strategies/rsi_strategy.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420294755,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/pipeline.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420295182,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/base.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420295405,
+      "type": "file"
+    },
+    {
+      "path": "src/models",
+      "accessCount": 1,
+      "lastAccessed": 1773420299858,
+      "type": "directory"
+    },
+    {
+      "path": "src/models/trading.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420307154,
+      "type": "file"
+    },
+    {
+      "path": "src/models/strategy.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420307379,
+      "type": "file"
+    },
+    {
+      "path": "src/services/exchange_factory.py",
+      "accessCount": 1,
+      "lastAccessed": 1773420307557,
+      "type": "file"
+    },
+    {
+      "path": "src/core/constants.py",
+      "accessCount": 1,
+      "lastAccessed": 1773421490332,
+      "type": "file"
+    },
+    {
+      "path": "src/core/types.py",
+      "accessCount": 1,
+      "lastAccessed": 1773421570766,
+      "type": "file"
+    },
+    {
+      "path": "src/agent/__init__.py",
+      "accessCount": 1,
+      "lastAccessed": 1773421585627,
+      "type": "file"
+    },
+    {
+      "path": "data/knowledge/market_lessons.md",
+      "accessCount": 1,
+      "lastAccessed": 1773421604676,
+      "type": "file"
+    },
+    {
+      "path": "data/knowledge/ticker_notes.md",
+      "accessCount": 1,
+      "lastAccessed": 1773421605660,
+      "type": "file"
+    },
+    {
+      "path": "data/knowledge/strategy_rules.md",
+      "accessCount": 1,
+      "lastAccessed": 1773421606065,
+      "type": "file"
+    },
+    {
+      "path": "data/knowledge/mistakes.md",
+      "accessCount": 1,
+      "lastAccessed": 1773421606868,
+      "type": "file"
+    },
+    {
+      "path": "src/api/auth.py",
+      "accessCount": 1,
+      "lastAccessed": 1773422610389,
+      "type": "file"
+    },
+    {
+      "path": "ecosystem.config.cjs",
+      "accessCount": 1,
+      "lastAccessed": 1773424456655,
+      "type": "file"
+    }
+  ],
+  "userDirectives": []
+}

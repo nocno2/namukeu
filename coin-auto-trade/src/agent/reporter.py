@@ -15,7 +15,7 @@ async def generate_daily_report(
     db: Database,
     context_builder: ContextBuilder,
 ) -> str | None:
-    """일일 보고서를 Claude 리포터 에이전트로 생성한다."""
+    """일일 보고서를 Gemini 리포터 에이전트로 생성한다."""
     cycle_id = f"daily-{datetime.now().strftime('%Y%m%d')}"
 
     # 오늘 거래 내역
@@ -54,7 +54,7 @@ async def generate_weekly_report(
     db: Database,
     context_builder: ContextBuilder,
 ) -> str | None:
-    """주간 보고서를 Claude 리포터 에이전트로 생성한다."""
+    """주간 보고서를 Gemini 리포터 에이전트로 생성한다."""
     cycle_id = f"weekly-{datetime.now().strftime('%Y-W%W')}"
 
     week_ago = (datetime.now() - timedelta(days=7)).isoformat()

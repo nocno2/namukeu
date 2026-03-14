@@ -60,7 +60,16 @@ class DataCollector:
         collected = 0
         to = None
 
-        while collected < days * (24 if "minute60" in interval else 1440 if "minute1" in interval else 1):
+        # 간격별 일일 캔들 수 계산
+        candles_per_day_map = {
+            "minute1": 1440, "minute3": 480, "minute5": 288,
+            "minute10": 144, "minute15": 96, "minute30": 48,
+            "minute60": 24, "minute240": 6, "day": 1, "week": 1,
+        }
+        candles_per_day = candles_per_day_map.get(interval, 24)
+        target = days * candles_per_day
+
+        while collected < target:
             try:
                 df = await self.exchange.get_ohlcv(ticker, interval=interval, count=200, to=to)
                 if df is None or df.empty:

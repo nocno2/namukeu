@@ -138,6 +138,72 @@ class Database:
             CREATE INDEX IF NOT EXISTS idx_pipeline_log_ticker_ts
                 ON pipeline_evidence_logs(ticker, created_at);
 
+            CREATE TABLE IF NOT EXISTS agent_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_type TEXT NOT NULL,
+                session_id TEXT NOT NULL UNIQUE,
+                is_active INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT NOT NULL,
+                total_calls INTEGER DEFAULT 0,
+                total_cost_usd REAL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_cycles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cycle_id TEXT NOT NULL UNIQUE,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                status TEXT NOT NULL DEFAULT 'running',
+                scanned_tickers INTEGER DEFAULT 0,
+                analyzed_tickers INTEGER DEFAULT 0,
+                trades_executed INTEGER DEFAULT 0,
+                total_cost_usd REAL DEFAULT 0,
+                total_duration_ms INTEGER DEFAULT 0,
+                error TEXT,
+                summary TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_cycles_started
+                ON agent_cycles(started_at);
+
+            CREATE TABLE IF NOT EXISTS agent_decisions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cycle_id TEXT NOT NULL,
+                agent_type TEXT NOT NULL,
+                session_id TEXT,
+                input_summary TEXT,
+                output_json TEXT NOT NULL,
+                cost_usd REAL,
+                duration_ms INTEGER,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_decisions_cycle
+                ON agent_decisions(cycle_id, agent_type);
+
+            CREATE TABLE IF NOT EXISTS risk_reviews (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cycle_id TEXT NOT NULL,
+                ticker TEXT NOT NULL,
+                original_action TEXT NOT NULL,
+                verdict TEXT NOT NULL,
+                adjusted_amount_krw INTEGER,
+                rejection_reason TEXT,
+                risk_notes TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_risk_reviews_cycle
+                ON risk_reviews(cycle_id);
+
+            CREATE TABLE IF NOT EXISTS reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_type TEXT NOT NULL,
+                content TEXT NOT NULL,
+                sent_at TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_reports_type_created
+                ON reports(report_type, created_at);
+
             CREATE TABLE IF NOT EXISTS backtest_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 strategy_name TEXT NOT NULL,
@@ -524,11 +590,9 @@ class Database:
         )
         self.conn.commit()
 
-    def get_performance_history(self, limit: int = 100) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT * FROM performance_snapshots ORDER BY timestamp DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
+    def get_performance_history(self, limit: int = 100, order: str = "DESC") -> list[dict]:
+        query = f"SELECT * FROM performance_snapshots ORDER BY timestamp {order} LIMIT ?"
+        rows = self.conn.execute(query, (limit,)).fetchall()
         return [dict(r) for r in rows]
 
     # --- Pipeline Evidence Logs ---
@@ -668,15 +732,20 @@ class Database:
 
         return dict(row)
 
-    def get_paper_trading_pnl(self, initial_capital: float = 1_000_000) -> dict:
+    def get_paper_trading_pnl(self, initial_capital: float = 1_000_000, exchange: str | None = None) -> dict:
         """Calculate P&L from paper trading orders with detailed statistics."""
         # Get all completed dry-run orders sorted by time
-        rows = self.conn.execute("""
+        query = """
             SELECT ticker, side, price, volume, amount_krw, created_at
             FROM orders
             WHERE is_dry_run = 1 AND state = 'done'
-            ORDER BY created_at ASC
-        """).fetchall()
+        """
+        params: list = []
+        if exchange:
+            query += " AND exchange = ?"
+            params.append(exchange)
+        query += " ORDER BY created_at ASC"
+        rows = self.conn.execute(query, params).fetchall()
 
         if not rows:
             return {
@@ -763,6 +832,110 @@ class Database:
             "gross_profit": round(gross_profit, 2),
             "gross_loss": round(gross_loss, 2),
         }
+
+    # ── 에이전트 세션 ──
+
+    def upsert_agent_session(self, agent_type: str, session_id: str) -> None:
+        now = datetime.now().isoformat()
+        self.conn.execute("""
+            INSERT INTO agent_sessions (agent_type, session_id, is_active, created_at, last_used_at, total_calls)
+            VALUES (?, ?, 1, ?, ?, 1)
+            ON CONFLICT(session_id) DO UPDATE SET
+                last_used_at = excluded.last_used_at,
+                total_calls = total_calls + 1
+        """, (agent_type, session_id, now, now))
+        self.conn.commit()
+
+    def get_active_session(self, agent_type: str) -> dict | None:
+        row = self.conn.execute(
+            "SELECT * FROM agent_sessions WHERE agent_type = ? AND is_active = 1 ORDER BY last_used_at DESC LIMIT 1",
+            (agent_type,),
+        ).fetchone()
+        return dict(row) if row else None
+
+    def deactivate_session(self, session_id: str) -> None:
+        self.conn.execute("UPDATE agent_sessions SET is_active = 0 WHERE session_id = ?", (session_id,))
+        self.conn.commit()
+
+    # ── 에이전트 사이클 ──
+
+    def create_agent_cycle(self, cycle_id: str) -> None:
+        self.conn.execute(
+            "INSERT INTO agent_cycles (cycle_id, started_at, status) VALUES (?, ?, 'running')",
+            (cycle_id, datetime.now().isoformat()),
+        )
+        self.conn.commit()
+
+    def finish_agent_cycle(self, cycle_id: str, *, status: str = "completed",
+                           scanned: int = 0, analyzed: int = 0, trades: int = 0,
+                           cost_usd: float = 0, duration_ms: int = 0,
+                           error: str | None = None, summary: str | None = None) -> None:
+        self.conn.execute("""
+            UPDATE agent_cycles SET finished_at = ?, status = ?,
+                scanned_tickers = ?, analyzed_tickers = ?, trades_executed = ?,
+                total_cost_usd = ?, total_duration_ms = ?, error = ?, summary = ?
+            WHERE cycle_id = ?
+        """, (datetime.now().isoformat(), status, scanned, analyzed, trades,
+              cost_usd, duration_ms, error, summary, cycle_id))
+        self.conn.commit()
+
+    def get_recent_cycles(self, limit: int = 10) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM agent_cycles ORDER BY started_at DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── 에이전트 판단 기록 ──
+
+    def add_agent_decision(self, cycle_id: str, agent_type: str, output_json: str,
+                           session_id: str | None = None, input_summary: str | None = None,
+                           cost_usd: float | None = None, duration_ms: int | None = None) -> int:
+        cur = self.conn.execute("""
+            INSERT INTO agent_decisions (cycle_id, agent_type, session_id, input_summary, output_json, cost_usd, duration_ms, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (cycle_id, agent_type, session_id, input_summary, output_json, cost_usd, duration_ms, datetime.now().isoformat()))
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore
+
+    def get_cycle_decisions(self, cycle_id: str) -> list[dict]:
+        rows = self.conn.execute(
+            "SELECT * FROM agent_decisions WHERE cycle_id = ? ORDER BY created_at", (cycle_id,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    # ── 리스크 검증 기록 ──
+
+    def add_risk_review(self, cycle_id: str, ticker: str, original_action: str,
+                        verdict: str, adjusted_amount_krw: int | None = None,
+                        rejection_reason: str | None = None, risk_notes: str | None = None) -> int:
+        cur = self.conn.execute("""
+            INSERT INTO risk_reviews (cycle_id, ticker, original_action, verdict, adjusted_amount_krw, rejection_reason, risk_notes, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (cycle_id, ticker, original_action, verdict, adjusted_amount_krw, rejection_reason, risk_notes, datetime.now().isoformat()))
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore
+
+    # ── 보고서 ──
+
+    def add_report(self, report_type: str, content: str, sent_at: str | None = None) -> int:
+        cur = self.conn.execute(
+            "INSERT INTO reports (report_type, content, sent_at, created_at) VALUES (?, ?, ?, ?)",
+            (report_type, content, sent_at, datetime.now().isoformat()),
+        )
+        self.conn.commit()
+        return cur.lastrowid  # type: ignore
+
+    def get_recent_reports(self, report_type: str | None = None, limit: int = 10) -> list[dict]:
+        if report_type:
+            rows = self.conn.execute(
+                "SELECT * FROM reports WHERE report_type = ? ORDER BY created_at DESC LIMIT ?",
+                (report_type, limit),
+            ).fetchall()
+        else:
+            rows = self.conn.execute(
+                "SELECT * FROM reports ORDER BY created_at DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def close(self):
         self.conn.close()

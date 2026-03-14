@@ -144,8 +144,8 @@ class CycleOrchestrator:
             cycle_decisions = self.db.get_cycle_decisions(cycle_id)
             total_cost = sum(d.get("cost_usd", 0) or 0 for d in cycle_decisions)
 
-            # 리포터 에이전트로 보고서 생성
-            report_ctx = self.context_builder.build_report_context(
+            # 리포터 에이전트로 보고서 생성 (상세 자산 현황 포함)
+            report_ctx = await self.context_builder.build_report_context(
                 cycle_id, research, technical, decisions, risk_review,
                 executed_trades, "cycle"
             )

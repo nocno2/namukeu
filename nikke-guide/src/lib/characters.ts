@@ -198,30 +198,104 @@ const dotggIdMap: Record<string, string> = {
   "Arcana": "c581",
 };
 
+// 한국어 → 영어 매핑
+const korToEng: Record<string, string> = {
+  "이노우에 타키나": "2B",
+  "니시키기 치사토": "A2",
+  "벨벳": "Blanc",
+  "레이블": "Admi",
+  "스노우 화이트 : 헤비암즈": "Snow White: Heavy Arms",
+  "브리드 : 사일런트 트랙": "Brid: Silent Track",
+  "디젤 : 윈터 스위츠": "Diesel: Winter Sweets",
+  "솔린 : 프로스트 티켓": "Soline: Frost Ticket",
+  "리버렐리오": "Anchor",
+  "나유타": "Nayuta",
+  "차임": "Chime",
+  "델타 : 닌자 시프": "Delta",
+  "질 발렌타인": "Jill Valentine",
+  "에이다 웡": "Ada Wong",
+  "밀크 : 블루밍 바니": "Milk: Blooming Bunny",
+  "에이드 : 에이전트 바니": "Ade: Agent Bunny",
+  "일레그 : 붐 앤 쇼크": "Elegg: Boom and Shock",
+  "도로시 : 세렌디피티": "Dorothy: Serendipity",
+  "소라": "Sora",
+  "레이븐": "Raven",
+  "이브": "Eve",
+  "아르카나": "Arcana",
+  "미하라 : 본딩 체인": "Mihara: Bonding Chain",
+  "리틀 머메이드": "Little Mermaid",
+  "모리": "Mori",
+  "트리나": "Trina",
+  "아스카 : WILLE": "Asuka: WILLE",
+  "앵커 : 이노센트 메이드": "Anchor: Innocent Maid",
+  "마스트 : 로망틱 메이드": "Mast: Romantic Maid",
+  "마나": "Mana",
+  "라피 : 레드후드": "Rapi: Red Hood",
+  "길로틴 : 윈터 슬레이어": "Guillotine: Winter Slayer",
+  "메이든 : 아이스 로즈": "Maiden: Ice Rose",
+  "플로라": "Flora",
+  "그레이브": "Grave",
+  "신데렐라": "Cinderella",
+  "라푼젤 : 퓨어 그레이스": "Rapunzel: Pure Grace",
+  "루마니": "Rumani",
+  "팬텀": "Phantom",
+  "퀀시 : 이스케이프 퀸": "Quency: Escape Queen",
+  "마리": "Mary",
+  "츠바이": "Tia",
+  "아인": "Ein",
+  "로산나 : 시크 오션": "Rosanna: Chic Ocean",
+  "사쿠라 : 블룸 인 섬머": "Sakura: Bloom in Summer",
+  "클레이": "Clay",
+  "앨리스 : 원더랜드 바니": "Alice: Wonderland Bunny",
+  "소다 : 트윙클링 바니": "Soda: Twinkling Bunny",
+  "크라운": "Crown",
+  "D : 킬러 와이프": "D: Killer Wife",
+  "미카 : 스노우 버디": "Mica: Snow Buddy",
+  "스노우 화이트 : 이노센트 데이즈": "Snow White: Innocent Days",
+  "헬름 : 아쿠아마린": "Helm: Aquamarine",
+  "아니스 : 스파클링 서머": "Anis: Sparkling Summer",
+  "네온 : 블루 오션": "Neon: Blue Ocean",
+  "앤 : 미라클 페어리": "Anne: Miracle Fairy",
+  "루피 : 윈터 쇼퍼": "Rupee: Winter Shopper",
+  "홍련": "Hongren",
+  "스노우 화이트": "Snow White",
+  "라피": "Rapi",
+  "아나": "Anna",
+  "유니": "Yuni",
+  "레오나": "Leona",
+  // 기본 이름들
+  "브리드": "Brid",
+  "디젤": "Diesel",
+  "엠마": "Emma",
+  "은화": "Eunhwa",
+  "드에": "Ade",
+  "일레그": "Elegg",
+};
+
 /** 이미지 URL 생성 */
-function getImageUrl(name: string): string {
-  // 1. Fandom 이미지 우선 (값이 URL이면 직접 반환)
-  const value = fandomImageMap[name];
-  if (value && value.startsWith('http')) {
-    return value;
+export function getImageUrl(name: string): string {
+  // 1. 바로 Fandom 이미지 확인
+  if (fandomImageMap[name]) {
+    return fandomImageMap[name];
   }
 
   // 2. 한국어 → 영어 변환 후 Fandom 확인
-  if (value && !value.startsWith('http')) {
-    // value는 영어 이름
-    const englishUrl = fandomImageMap[value];
-    if (englishUrl && englishUrl.startsWith('http')) {
-      return englishUrl;
-    }
+  const engName = korToEng[name];
+  if (engName && fandomImageMap[engName]) {
+    return fandomImageMap[engName];
   }
 
-  // 3. dotgg.gg 이미지 (대체)
-  const id = dotggIdMap[name];
-  if (id) {
-    return `https://static.dotgg.gg/nikke/characters/si_${id}_00_s.webp`;
+  // 3. dotgg.gg 이미지 (영어 → ID)
+  if (dotggIdMap[name]) {
+    return `https://static.dotgg.gg/nikke/characters/si_${dotggIdMap[name]}_00_s.webp`;
   }
 
-  // 4. 플레이스홀더
+  // 4. 한국어 → 영어 → dotgg
+  if (engName && dotggIdMap[engName]) {
+    return `https://static.dotgg.gg/nikke/characters/si_${dotggIdMap[engName]}_00_s.webp`;
+  }
+
+  // 5. 플레이스홀더
   return `https://placehold.co/300x400/1a1a24/ff2d6a?text=${encodeURIComponent(name)}`;
 }
 

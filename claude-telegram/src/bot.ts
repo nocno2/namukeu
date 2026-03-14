@@ -53,14 +53,14 @@ const USER_NAME = process.env.USER_NAME || "";
 const USER_TIMEZONE = process.env.USER_TIMEZONE || "Asia/Seoul";
 const UPLOADS_DIR = join(import.meta.dir, "..", "uploads");
 
-// Content-pipeline API for agent commands
-const PIPELINE_API = process.env.PIPELINE_API_URL || "http://127.0.0.1:8003";
-const PIPELINE_TOKEN = process.env.AGENT_API_TOKEN || "agent-api-token";
+// Content-pipeline API for agent commands (REQUIRED)
+const PIPELINE_API = process.env.PIPELINE_API_URL;
+const PIPELINE_TOKEN = process.env.AGENT_API_TOKEN;
 
-// Blog admin URL for user-facing links
-const BLOG_ADMIN_URL = process.env.BLOG_ADMIN_URL || "https://blog.namukeu.com/admin";
-const DASHBOARD_URL = process.env.DASHBOARD_URL || "https://dashboard.namukeu.com";
-const PROJECT_ROOT = process.env.PROJECT_ROOT || "/Users/namwook/Documents/namukeu";
+// Blog admin URL for user-facing links (REQUIRED)
+const BLOG_ADMIN_URL = process.env.BLOG_ADMIN_URL;
+const DASHBOARD_URL = process.env.DASHBOARD_URL;
+const PROJECT_ROOT = process.env.PROJECT_ROOT;
 
 let profileContext = "";
 
@@ -1208,9 +1208,9 @@ export async function createBot(): Promise<Bot> {
     try {
       await ctx.answerCallbackQuery({ text: "📊 코인 전략 분석 중..." });
 
-      // Fetch coin portfolio summary
-      const COIN_API = process.env.COIN_API_URL || "http://localhost:8001";
-      const INTERNAL_KEY = process.env.INTERNAL_API_KEY || "dev-secret";
+      // Fetch coin portfolio summary (REQUIRED)
+      const COIN_API = process.env.COIN_API_URL;
+      const INTERNAL_KEY = process.env.INTERNAL_API_KEY;
 
       try {
         const response = await fetch(`${COIN_API}/portfolio/summary`, {

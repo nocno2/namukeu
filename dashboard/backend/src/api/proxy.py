@@ -53,7 +53,7 @@ async def proxy_coin(
                 content=body,
                 timeout=30.0,
             )
-    except httpx.ConnectError:
+    except (httpx.ConnectError, httpx.TimeoutException):
         return Response(content="Service unavailable", status_code=502)
 
     content_type = resp.headers.get("content-type", "")
@@ -124,7 +124,7 @@ async def proxy_tgbot(
                 content=body,
                 timeout=30.0,
             )
-    except httpx.ConnectError:
+    except (httpx.ConnectError, httpx.TimeoutException):
         return Response(content="Service unavailable", status_code=502)
 
     response_body = resp.content

@@ -9,6 +9,7 @@ DEFAULTS = {
     "chaining_enabled": "false",
     "monitors_enabled": "false",
     "evolution_enabled": "true",
+    "agent_engine": "claude",  # "claude" or "gemini"
 }
 
 

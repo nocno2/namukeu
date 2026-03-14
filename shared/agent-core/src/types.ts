@@ -1,5 +1,26 @@
 // ─── Platform Adapter ───
 
+export type AgentEngine = "claude" | "gemini";
+
+export interface AgentRunnerOptions {
+  engine: AgentEngine;
+  sessionId: string;
+  isNewSession: boolean;
+  systemPrompt?: string;
+  cwd?: string;
+  onProgress?: (message: string) => void;
+}
+
+export interface AgentRunnerResult {
+  success: boolean;
+  result: string;
+  sessionId: string;
+  error?: string;
+  costUsd?: number;    // Claude only
+  tokens?: number;     // Gemini only (total_tokens)
+  durationMs?: number;
+}
+
 export interface PlatformAdapter {
   name: "telegram" | "discord";
   maxMessageLength: number;

@@ -1,0 +1,175 @@
+{
+  "title": "LLM 기반 자율 트레이딩 에이전트",
+  "description": "coin-auto-trade를 Claude CLI 기반 멀티 에이전트 트레이딩 시스템으로 전환",
+  "prdPath": ".omc/plans/prd-llm-trading-agent.md",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "기존 전략/파이프라인 제거 + 에이전트 디렉토리 구조 생성",
+      "priority": 1,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/strategies/ 디렉토리가 삭제되었다 (base.py, registry.py, 모든 전략 파일)",
+        "src/pipeline/ 디렉토리가 삭제되었다",
+        "src/agent/__init__.py 파일이 존재한다",
+        "src/agent/ 디렉토리에 빈 모듈 파일들이 생성되었다 (claude_cli.py, agents.py, prompts.py, models.py, scanner.py, context_builder.py, cycle.py, reporter.py, telegram.py, knowledge_base.py)",
+        "data/knowledge/ 디렉토리 구조가 생성되었다 (market_lessons.md, ticker_notes.md, strategy_rules.md, mistakes.md, weekly_digest/)",
+        "기존 코드에서 strategies/pipeline import 참조가 모두 제거 또는 대체되었다",
+        "python -m src.main 실행 시 import 에러가 발생하지 않는다"
+      ]
+    },
+    {
+      "id": "US-002",
+      "title": "Claude CLI subprocess 래퍼 구현",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/agent/claude_cli.py에 call_claude() async 함수가 구현되었다",
+        "call_claude()는 asyncio.create_subprocess_exec로 claude CLI를 호출한다",
+        "--output-format stream-json 파싱으로 result, session_id, cost_usd, duration_ms를 추출한다",
+        "is_new_session=True면 --session-id, False면 --resume 플래그를 사용한다",
+        "system_prompt가 있으면 --append-system-prompt로 전달한다",
+        "타임아웃 시 프로세스를 kill하고 에러를 반환한다",
+        "session not found 에러 시 새 세션으로 자동 재시도한다",
+        "ClaudeResult dataclass/TypedDict가 정의되었다 (success, result, session_id, cost_usd, duration_ms, error)"
+      ]
+    },
+    {
+      "id": "US-003",
+      "title": "에이전트 입출력 모델 + 시스템 프롬프트 정의",
+      "priority": 3,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/agent/models.py에 ResearchReport, TechnicalReport, StrategyDecisions, RiskReview Pydantic 모델이 정의되었다",
+        "각 모델이 PRD 섹션 4.3의 JSON 스키마와 일치한다",
+        "src/agent/prompts.py에 5개 에이전트별 시스템 프롬프트가 문자열 상수로 정의되었다",
+        "전략가 프롬프트에 포트폴리오 제약조건 플레이스홀더({max_positions} 등)가 포함되었다",
+        "리서처 프롬프트에 웹 검색 지시가 포함되었다"
+      ]
+    },
+    {
+      "id": "US-004",
+      "title": "Config + Database 확장 (에이전트 설정 및 테이블)",
+      "priority": 4,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/core/config.py에 CLAUDE_PATH, AGENT_MODEL, AGENT_CYCLE_HOURS, AGENT_SCAN_TOP_N 등 PRD 9.5절의 환경변수가 추가되었다",
+        "src/core/database.py에 agent_sessions, agent_decisions, agent_cycles, risk_reviews, reports 테이블 CREATE문이 추가되었다",
+        "Database.init_tables()에서 새 테이블이 자동 생성된다",
+        "agent_decisions 테이블에 insert/query 헬퍼 메서드가 있다",
+        "python -m src.main으로 서버 시작 시 새 테이블이 정상 생성된다"
+      ]
+    },
+    {
+      "id": "US-005",
+      "title": "AgentRunner — 에이전트별 Claude CLI 호출 관리",
+      "priority": 5,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/agent/agents.py에 AgentRunner 클래스가 구현되었다",
+        "run_researcher()가 리서처 시스템 프롬프트 + 시장 컨텍스트로 Claude CLI를 호출하고 ResearchReport를 반환한다",
+        "run_technician()이 테크니컬 시스템 프롬프트 + 차트 데이터로 호출하고 TechnicalReport를 반환한다",
+        "run_strategist()가 연속 세션(--resume)을 지원하고 StrategyDecisions를 반환한다",
+        "run_risk_manager()가 RiskReview를 반환하고 REJECT 판단을 정확히 파싱한다",
+        "run_reporter()가 보고서 텍스트를 반환한다",
+        "모든 에이전트 호출 결과가 agent_decisions 테이블에 기록된다",
+        "JSON 파싱 실패 시 에러 핸들링이 동작한다 (재시도 또는 사이클 스킵)"
+      ]
+    },
+    {
+      "id": "US-006",
+      "title": "종목 스캐너 + 기술지표 컨텍스트 빌더",
+      "priority": 6,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/agent/scanner.py에 MarketScanner 클래스가 구현되었다",
+        "scan_market()이 업비트 KRW 전 종목을 조회하고 거래량/변동성 기준 Top N을 반환한다",
+        "src/agent/context_builder.py에 ContextBuilder 클래스가 구현되었다",
+        "build_researcher_context()가 시장 개요 텍스트를 생성한다",
+        "build_technician_context()가 종목별 OHLCV + RSI/MACD/BB 등 기술지표를 텍스트로 정리한다",
+        "build_strategist_context()가 리서치+테크니컬 보고서 + 포트폴리오 + 지식베이스를 종합한다",
+        "build_risk_context()가 거래 제안 + 포트폴리오 리스크 데이터를 정리한다"
+      ]
+    },
+    {
+      "id": "US-007",
+      "title": "CycleOrchestrator — 분석 사이클 메인 루프",
+      "priority": 7,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/agent/cycle.py에 CycleOrchestrator 클래스가 구현되었다",
+        "run_cycle()이 Phase 1~4를 순서대로 실행한다: 스캐닝 → 병렬(리서처+테크니컬) → 전략가 → 리스크 → 실행 → 리포터",
+        "리서처와 테크니컬이 asyncio.gather로 병렬 실행된다",
+        "리스크 매니저가 REJECT한 거래는 실행되지 않는다",
+        "승인된 거래가 exchange.py를 통해 실행된다 (dry-run 모드)",
+        "사이클 결과가 agent_cycles 테이블에 기록된다",
+        "CLI 장애(타임아웃/에러) 시 해당 사이클을 안전하게 스킵하고 텔레그램 경고를 보낸다",
+        "Python 하드코딩 리스크 한도(일일손실3%/총손실5%/최대포지션5개/현금30%)가 LLM 판단과 무관하게 강제된다"
+      ]
+    },
+    {
+      "id": "US-008",
+      "title": "스케줄러 — 정기 사이클 자동 실행",
+      "priority": 8,
+      "passes": true,
+      "acceptanceCriteria": [
+        "services/scheduler.py가 사이클 기반 스케줄러로 교체되었다",
+        "AGENT_CYCLE_HOURS 환경변수에 지정된 시간에 자동으로 run_cycle()을 실행한다",
+        "서버 시작 시 스케줄러가 자동으로 등록된다",
+        "수동 사이클 트리거 API가 있다 (POST /agent/cycle/trigger)",
+        "GET /agent/status로 현재 사이클 상태, 마지막 사이클 시간, 다음 사이클 시간을 조회할 수 있다",
+        "src/api/routes_agent.py에 에이전트 관련 엔드포인트가 구현되었다"
+      ]
+    },
+    {
+      "id": "US-009",
+      "title": "텔레그램 보고 시스템",
+      "priority": 9,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/agent/telegram.py에 TelegramReporter 클래스가 구현되었다",
+        "send_trade_alert()로 매수/매도 거래 알림을 PRD 템플릿 형식으로 발송한다",
+        "send_cycle_report()로 사이클 완료 보고를 발송한다",
+        "send_daily_report()로 일일 리포트를 발송한다 (포트폴리오 현황, 거래 내역, AI 분석)",
+        "send_weekly_report()로 주간 리포트를 발송한다 (성과, 베스트/워스트, 회고)",
+        "send_risk_alert()로 리스크 경고를 즉시 발송한다",
+        "일일 리포트가 REPORT_DAILY_HOUR 시간에 자동 발송되도록 스케줄러에 등록된다",
+        "주간 리포트가 REPORT_WEEKLY_DAY/HOUR에 자동 발송되도록 스케줄러에 등록된다",
+        "기존 services/notifier.py의 참조가 telegram.py로 대체되었다"
+      ]
+    },
+    {
+      "id": "US-010",
+      "title": "의사결정 지식베이스 시스템",
+      "priority": 10,
+      "passes": true,
+      "acceptanceCriteria": [
+        "src/agent/knowledge_base.py에 KnowledgeBase 클래스가 구현되었다",
+        "record_lesson()으로 market_lessons.md에 시장 교훈을 추가한다",
+        "record_ticker_note()로 ticker_notes.md에 종목별 관찰을 추가한다",
+        "record_mistake()로 mistakes.md에 실패 사례를 추가한다",
+        "update_rules()로 strategy_rules.md에 매매 원칙을 추가/수정한다",
+        "get_strategist_context()가 전략가용 지식베이스 컨텍스트를 반환한다 (원칙 전체 + 최근 실패 10건 + 관련 종목 노트 + 최근 교훈 5건)",
+        "enforce_limits()가 파일별 최대 줄 수(200/300/100/150)를 초과하면 오래된 항목을 삭제한다",
+        "generate_weekly_digest()가 주간 다이제스트를 생성하고 원본 파일을 압축한다",
+        "prune_stale_tickers()가 30일간 거래 없는 종목 노트를 삭제한다",
+        "사이클 종료 시 자동으로 교훈/노트가 기록된다"
+      ]
+    },
+    {
+      "id": "US-011",
+      "title": "통합 테스트 + 서버 정상 동작 확인",
+      "priority": 11,
+      "passes": true,
+      "acceptanceCriteria": [
+        "python -m src.main으로 서버가 정상 시작된다 (import 에러 없음)",
+        "GET /health가 200을 반환한다",
+        "GET /agent/status가 에이전트 상태 JSON을 반환한다",
+        "POST /agent/cycle/trigger가 사이클을 시작한다 (dry-run 모드)",
+        "dry-run 모드에서 전체 사이클이 에러 없이 완료된다 (Claude CLI 호출 포함)",
+        "사이클 완료 후 agent_decisions, agent_cycles 테이블에 기록이 존재한다",
+        "CLAUDE.md가 새 아키텍처를 반영하도록 업데이트되었다"
+      ]
+    }
+  ]
+}

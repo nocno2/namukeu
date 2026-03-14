@@ -18,14 +18,15 @@ class AuditLog:
         chat_id: str | None = None,
         violations: list | None = None,
         cost: float | None = None,
+        tokens: int | None = None,
         duration: int | None = None,
     ):
         violations_json = json.dumps(violations) if violations else "[]"
         with self.db._lock:
             self.db.conn.execute(
-                """INSERT INTO agent_audit (ts, type, task, chat_id, violations, cost, duration, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
-                (ts, audit_type, task, chat_id, violations_json, cost, duration),
+                """INSERT INTO agent_audit (ts, type, task, chat_id, violations, cost, tokens, duration, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+                (ts, audit_type, task, chat_id, violations_json, cost, tokens, duration),
             )
             self.db.conn.commit()
 
@@ -45,6 +46,16 @@ class AuditLog:
                 (today_str,),
             ).fetchone()
         return row["total"] if row else 0.0
+
+    def get_today_tokens(self, timezone: str = "Asia/Seoul") -> int:
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        with self.db._lock:
+            row = self.db.conn.execute(
+                """SELECT COALESCE(SUM(tokens), 0) as total FROM agent_audit
+                   WHERE date(ts) = ? AND tokens IS NOT NULL""",
+                (today_str,),
+            ).fetchone()
+        return row["total"] if row else 0
 
     def get_proactive_count_last_hour(self) -> int:
         one_hour_ago = (datetime.now() - timedelta(hours=1)).isoformat()
