@@ -28,3 +28,18 @@ dist/
 *.o
 *.so
 *.dylib
+
+# Custom / Monorepo Ignore
+# Bun Single Executable
+claude-discord/index
+claude-telegram/index
+
+# Next.js Build
+.next/
+*/.next/
+
+# Agent Context / CLI State
+.omc/
+.omg/
+*/.omc/
+*/.omg/
