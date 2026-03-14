@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1773319607546,
+  "lastScanned": 1773483992587,
   "projectRoot": "/Users/namwook/Documents/namukeu/claude-telegram",
   "techStack": {
     "languages": [
@@ -48,7 +48,10 @@
       "scripts",
       "src"
     ],
-    "gitBranches": null
+    "gitBranches": {
+      "defaultBranch": "main",
+      "branchingStrategy": null
+    }
   },
   "customNotes": [],
   "directoryMap": {
@@ -56,7 +59,7 @@
       "path": "dist",
       "purpose": "Distribution/build output",
       "fileCount": 1,
-      "lastAccessed": 1773319607537,
+      "lastAccessed": 1773483992577,
       "keyFiles": [
         "index.js"
       ]
@@ -65,7 +68,7 @@
       "path": "config",
       "purpose": "Configuration files",
       "fileCount": 4,
-      "lastAccessed": 1773319607537,
+      "lastAccessed": 1773483992577,
       "keyFiles": [
         "profile.example.md",
         "forbidden.json",
@@ -77,14 +80,14 @@
       "path": "uploads",
       "purpose": null,
       "fileCount": 0,
-      "lastAccessed": 1773319607537,
+      "lastAccessed": 1773483992577,
       "keyFiles": []
     },
     "daemon": {
       "path": "daemon",
       "purpose": null,
       "fileCount": 1,
-      "lastAccessed": 1773319607537,
+      "lastAccessed": 1773483992577,
       "keyFiles": [
         "com.namukeu.claude-telegram.plist"
       ]
@@ -93,7 +96,7 @@
       "path": "scripts",
       "purpose": "Build/utility scripts",
       "fileCount": 1,
-      "lastAccessed": 1773319607537,
+      "lastAccessed": 1773483992577,
       "keyFiles": [
         "register-commands.ts"
       ]
@@ -102,7 +105,7 @@
       "path": "data",
       "purpose": "Data files",
       "fileCount": 11,
-      "lastAccessed": 1773319607537,
+      "lastAccessed": 1773483992577,
       "keyFiles": [
         "agent.db",
         "messages.db",
@@ -115,7 +118,7 @@
       "path": "src",
       "purpose": "Source code",
       "fileCount": 12,
-      "lastAccessed": 1773319607538,
+      "lastAccessed": 1773483992578,
       "keyFiles": [
         "seed-tasks.ts",
         "revenue.ts",
