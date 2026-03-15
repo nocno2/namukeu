@@ -264,7 +264,7 @@ class CycleOrchestrator:
         )
         total_equity = cash + positions_value
 
-        # 일일/총 손실 한도 체크 (Python 강제)
+        # 일일/총 손실 한도 체크 (Python 강제) - 사용자 요청으로 비활성화 (AI 판단에 전적으로 위임)
         snapshots = self.db.get_performance_history(limit=1)
         if snapshots and total_equity > 0:
             latest = snapshots[0]
@@ -272,23 +272,23 @@ class CycleOrchestrator:
             daily_loss_pct = abs(daily_pnl / total_equity * 100) if daily_pnl < 0 else 0
             total_pnl_pct = latest.get("total_pnl_pct", 0) or 0
 
-            if daily_loss_pct >= self.config.agent_max_daily_loss_pct:
-                logger.warning(
-                    f"[리스크 한도] 일일 손실 한도 도달: {daily_loss_pct:.2f}% >= {self.config.agent_max_daily_loss_pct}%"
-                )
-                await self.reporter.send_risk_alert(
-                    f"일일 손실 한도 도달 ({daily_loss_pct:.2f}%). 금일 추가 매수 중단."
-                )
-                return executed  # 매수 중단
+            # if daily_loss_pct >= self.config.agent_max_daily_loss_pct:
+            #     logger.warning(
+            #         f"[리스크 한도] 일일 손실 한도 도달: {daily_loss_pct:.2f}% >= {self.config.agent_max_daily_loss_pct}%"
+            #     )
+            #     await self.reporter.send_risk_alert(
+            #         f"일일 손실 한도 도달 ({daily_loss_pct:.2f}%). 금일 추가 매수 중단."
+            #     )
+            #     return executed  # 매수 중단
 
-            if total_pnl_pct < 0 and abs(total_pnl_pct) >= self.config.agent_max_total_loss_pct:
-                logger.warning(
-                    f"[리스크 한도] 총 손실 한도 도달: {abs(total_pnl_pct):.2f}% >= {self.config.agent_max_total_loss_pct}%"
-                )
-                await self.reporter.send_risk_alert(
-                    f"총 손실 한도 도달 ({abs(total_pnl_pct):.2f}%). 추가 매수 중단."
-                )
-                return executed  # 매수 중단
+            # if total_pnl_pct < 0 and abs(total_pnl_pct) >= self.config.agent_max_total_loss_pct:
+            #     logger.warning(
+            #         f"[리스크 한도] 총 손실 한도 도달: {abs(total_pnl_pct):.2f}% >= {self.config.agent_max_total_loss_pct}%"
+            #     )
+            #     await self.reporter.send_risk_alert(
+            #         f"총 손실 한도 도달 ({abs(total_pnl_pct):.2f}%). 추가 매수 중단."
+            #     )
+            #     return executed  # 매수 중단
 
         # 일일 거래 횟수 체크
         today = datetime.now().strftime("%Y-%m-%d")

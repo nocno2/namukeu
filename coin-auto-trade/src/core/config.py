@@ -37,10 +37,10 @@ class Config:
     agent_max_positions: int = 5
     agent_max_position_pct: float = 20.0
     agent_min_cash_ratio: float = 30.0
-    agent_max_daily_loss_pct: float = 3.0
-    agent_max_total_loss_pct: float = 5.0
+    agent_max_daily_loss_pct: float = 70.0
+    agent_max_total_loss_pct: float = 70.0
     agent_max_trades_per_day: int = 10
-    agent_stop_loss_pct: float = 5.0
+    agent_stop_loss_pct: float = 70.0
 
     # 보고서 설정
     report_daily_hour: int = 21
@@ -86,10 +86,10 @@ class Config:
             agent_max_positions=int(os.environ.get("AGENT_MAX_POSITIONS", "5")),
             agent_max_position_pct=float(os.environ.get("AGENT_MAX_POSITION_PCT", "20")),
             agent_min_cash_ratio=float(os.environ.get("AGENT_MIN_CASH_RATIO", "30")),
-            agent_max_daily_loss_pct=float(os.environ.get("AGENT_MAX_DAILY_LOSS_PCT", "3")),
-            agent_max_total_loss_pct=float(os.environ.get("AGENT_MAX_TOTAL_LOSS_PCT", "5")),
+            agent_max_daily_loss_pct=float(os.environ.get("AGENT_MAX_DAILY_LOSS_PCT", "70")),
+            agent_max_total_loss_pct=float(os.environ.get("AGENT_MAX_TOTAL_LOSS_PCT", "70")),
             agent_max_trades_per_day=int(os.environ.get("AGENT_MAX_TRADES_PER_DAY", "10")),
-            agent_stop_loss_pct=float(os.environ.get("AGENT_STOP_LOSS_PCT", "5")),
+            agent_stop_loss_pct=float(os.environ.get("AGENT_STOP_LOSS_PCT", "70")),
             report_daily_hour=int(os.environ.get("REPORT_DAILY_HOUR", "21")),
             report_weekly_day=int(os.environ.get("REPORT_WEEKLY_DAY", "1")),
             report_weekly_hour=int(os.environ.get("REPORT_WEEKLY_HOUR", "9")),
