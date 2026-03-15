@@ -14,6 +14,7 @@ from src.agent.telegram import TelegramReporter
 from src.core.config import Config
 from src.core.database import Database
 from src.services.exchange import UpbitExchange
+from src.services.portfolio import PortfolioTracker
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ class CycleOrchestrator:
         self.context_builder = ContextBuilder(config, db, exchange)
         self.agent_runner = AgentRunner(config, db)
         self.knowledge_base = KnowledgeBase()
+        self.portfolio = PortfolioTracker(db, exchange)
 
         self._running = False
 
@@ -57,6 +59,10 @@ class CycleOrchestrator:
             return {"error": "사이클 실행 중"}
 
         self._running = True
+        
+        # [NEW] 거래소 잔고와 로컬 DB 강제 동기화 (수동 매매 내역 반영)
+        await self.portfolio.sync_from_exchange()
+        
         cycle_id = datetime.now().strftime("%Y%m%d-%H%M")
         start_time = time.time()
         total_cost = 0.0
@@ -364,6 +370,19 @@ class CycleOrchestrator:
                         price=price, signal_reason=decision.reasoning.catalyst,
                         signal_confidence=decision.confidence,
                     )
+                    
+                    if price > 0:
+                        fee_rate = 0.0005  # Upbit KRW market basic fee
+                        volume = amount_krw * (1 - fee_rate) / float(price)
+                        self.db.upsert_position(
+                            ticker=ticker,
+                            volume=volume,
+                            avg_entry_price=float(price),
+                            strategy_id=None,  # Agent cycle does not use specific strategy IDs
+                            current_price=float(price),
+                            exchange="upbit"
+                        )
+
                     executed.append({
                         "ticker": ticker, "side": "buy",
                         "amount_krw": amount_krw,
